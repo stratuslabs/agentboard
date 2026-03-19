@@ -14,23 +14,23 @@
         "agentboard": "./bin/agentboard.js"
     },
     "dependencies": {
-        "next": "15.3.3",
-        "react": "19.1.0",
-        "react-dom": "19.1.0",
-        "better-sqlite3": "11.8.1",
         "@dnd-kit/core": "6.3.1",
         "@dnd-kit/sortable": "10.0.0",
-        "@dnd-kit/utilities": "3.2.2"
+        "@dnd-kit/utilities": "3.2.2",
+        "better-sqlite3": "11.8.1",
+        "next": "^15.2.4",
+        "react": "19.1.0",
+        "react-dom": "19.1.0"
     },
     "devDependencies": {
-        "typescript": "5.8.3",
+        "@tailwindcss/postcss": "4.1.4",
+        "@types/better-sqlite3": "7.6.13",
         "@types/node": "22.13.14",
         "@types/react": "19.1.0",
         "@types/react-dom": "19.1.0",
-        "@types/better-sqlite3": "7.6.13",
         "eslint": "9.23.0",
         "eslint-config-next": "15.3.3",
         "tailwindcss": "4.1.4",
-        "@tailwindcss/postcss": "4.1.4"
+        "typescript": "5.8.3"
     }
 }

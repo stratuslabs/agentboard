@@ -1,8 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
-import KanbanBoard from "@/components/KanbanBoard";
+
+const KanbanBoard = dynamic(() => import("@/components/KanbanBoard"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-gray-500 text-sm">Loading board...</div>
+    </div>
+  ),
+});
 
 interface Org {
   id: number;
