@@ -19,7 +19,7 @@
 .env
 .env*.local
 
-# database
+# database (legacy SQLite)
 *.db
 *.db-shm
 *.db-wal

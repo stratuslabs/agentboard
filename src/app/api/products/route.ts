@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, slugify, createDefaultBoards } from "@/lib/db";
+import { sql } from "@vercel/postgres";
+import { slugify, createDefaultBoards } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
-  const db = getDb();
   const orgId = request.nextUrl.searchParams.get("org_id");
 
-  let products;
+  let rows;
   if (orgId) {
-    products = db.prepare("SELECT * FROM products WHERE org_id = ? ORDER BY position, name").all(orgId);
+    ({ rows } = await sql`SELECT * FROM products WHERE org_id = ${orgId} ORDER BY position, name`);
   } else {
-    products = db.prepare("SELECT * FROM products ORDER BY position, name").all();
+    ({ rows } = await sql`SELECT * FROM products ORDER BY position, name`);
   }
-  return NextResponse.json(products);
+  return NextResponse.json(rows);
 }
 
 export async function POST(request: NextRequest) {
@@ -20,23 +20,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "org_id and name are required" }, { status: 400 });
   }
 
-  const db = getDb();
   const slug = slugify(name);
-  const maxPos = db.prepare("SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = ?").get(org_id) as { max: number };
+  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = ${org_id}`;
 
   try {
-    const result = db.prepare(
-      "INSERT INTO products (org_id, name, slug, emoji, position) VALUES (?, ?, ?, ?, ?)"
-    ).run(org_id, name, slug, emoji || "📦", maxPos.max + 1);
+    const { rows } = await sql`
+      INSERT INTO products (org_id, name, slug, emoji, position)
+      VALUES (${org_id}, ${name}, ${slug}, ${emoji || '📦'}, ${maxRows[0].max + 1})
+      RETURNING *
+    `;
 
-    const productId = result.lastInsertRowid as number;
-    createDefaultBoards(productId);
+    const productId = rows[0].id;
+    await createDefaultBoards(productId);
 
-    const product = db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
-    return NextResponse.json(product, { status: 201 });
+    return NextResponse.json(rows[0], { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    if (msg.includes("UNIQUE")) {
+    if (msg.includes("unique") || msg.includes("duplicate")) {
       return NextResponse.json({ error: "Product already exists in this org" }, { status: 409 });
     }
     throw e;

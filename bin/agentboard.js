@@ -5,9 +5,8 @@
 // ---------------------------------------------------------------------------
 // AgentBoard CLI
 // ---------------------------------------------------------------------------
-// Modes:
-//   Local  – set AGENTBOARD_DB to a path; uses better-sqlite3 directly.
-//   Remote – set AGENTBOARD_URL + AGENTBOARD_PASSWORD; uses HTTP fetch.
+// Mode: Remote – set AGENTBOARD_URL (+ AGENTBOARD_PASSWORD if auth enabled).
+// For local development, point AGENTBOARD_URL to http://localhost:3000.
 // ---------------------------------------------------------------------------
 
 const fs = require("fs");
@@ -120,474 +119,16 @@ function output(data, flags, idField = "id") {
   }
 }
 
-// ---- Default boards / columns (mirroring db.ts) ---------------------------
-
-const DEFAULT_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const DEFAULT_COLUMNS = [
-  { name: "Backlog", color: "#6B7280" },
-  { name: "Todo", color: "#3B82F6" },
-  { name: "In Progress", color: "#F59E0B" },
-  { name: "In Review", color: "#8B5CF6" },
-  { name: "Done", color: "#10B981" },
-];
-
-// ===========================================================================
-// LOCAL (SQLite) backend
-// ===========================================================================
-
-function getLocalBackend(dbPath) {
-  let Database;
-  try {
-    Database = require("better-sqlite3");
-  } catch {
-    die(
-      "better-sqlite3 is required for local mode. Install it with: npm install better-sqlite3"
-    );
-  }
-
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
-  // Auto-create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS organizations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      slug TEXT NOT NULL UNIQUE,
-      position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      emoji TEXT DEFAULT '📦',
-      position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(org_id, slug)
-    );
-    CREATE TABLE IF NOT EXISTS boards (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      position INTEGER DEFAULT 0,
-      UNIQUE(product_id, slug)
-    );
-    CREATE TABLE IF NOT EXISTS columns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      slug TEXT NOT NULL,
-      position INTEGER DEFAULT 0,
-      color TEXT DEFAULT '#6B7280',
-      UNIQUE(board_id, slug)
-    );
-    CREATE TABLE IF NOT EXISTS cards (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      column_id INTEGER NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
-      title TEXT NOT NULL,
-      description TEXT DEFAULT '',
-      assignee TEXT,
-      priority TEXT DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
-      labels TEXT DEFAULT '',
-      github_issue_url TEXT,
-      github_pr_url TEXT,
-      position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE TABLE IF NOT EXISTS attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-      filename TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  // ---- helper queries ----
-
-  function resolveOrgId(slugOrName) {
-    const row = db
-      .prepare("SELECT id FROM organizations WHERE slug = ? OR name = ?")
-      .get(slugOrName, slugOrName);
-    if (!row) die(`Organization not found: ${slugOrName}`);
-    return row.id;
-  }
-
-  function resolveProductId(slugOrName) {
-    const row = db
-      .prepare("SELECT id FROM products WHERE slug = ? OR name = ?")
-      .get(slugOrName, slugOrName);
-    if (!row) die(`Product not found: ${slugOrName}`);
-    return row.id;
-  }
-
-  function resolveBoardId(productId, slugOrName) {
-    const row = db
-      .prepare(
-        "SELECT id FROM boards WHERE product_id = ? AND (slug = ? OR name = ?)"
-      )
-      .get(productId, slugOrName, slugOrName);
-    if (!row) die(`Board not found: ${slugOrName}`);
-    return row.id;
-  }
-
-  function resolveColumnId(boardId, slugOrName) {
-    const row = db
-      .prepare(
-        "SELECT id FROM columns WHERE board_id = ? AND (slug = ? OR name = ?)"
-      )
-      .get(boardId, slugOrName, slugOrName);
-    if (!row) die(`Column not found: ${slugOrName}`);
-    return row.id;
-  }
-
-  function findDoneColumnForCard(cardId) {
-    const card = db.prepare("SELECT column_id FROM cards WHERE id = ?").get(cardId);
-    if (!card) die(`Card not found: ${cardId}`);
-    const col = db.prepare("SELECT board_id FROM columns WHERE id = ?").get(card.column_id);
-    const done = db
-      .prepare("SELECT id FROM columns WHERE board_id = ? AND slug = 'done'")
-      .get(col.board_id);
-    if (!done) die("No 'Done' column found on this board");
-    return done.id;
-  }
-
-  function createDefaultBoardsForProduct(productId) {
-    const insertBoard = db.prepare(
-      "INSERT INTO boards (product_id, name, slug, position) VALUES (?, ?, ?, ?)"
-    );
-    const insertColumn = db.prepare(
-      "INSERT INTO columns (board_id, name, slug, position, color) VALUES (?, ?, ?, ?, ?)"
-    );
-    for (let i = 0; i < DEFAULT_BOARDS.length; i++) {
-      const boardName = DEFAULT_BOARDS[i];
-      const res = insertBoard.run(productId, boardName, slugify(boardName), i);
-      const boardId = res.lastInsertRowid;
-      for (let j = 0; j < DEFAULT_COLUMNS.length; j++) {
-        const c = DEFAULT_COLUMNS[j];
-        insertColumn.run(boardId, c.name, slugify(c.name), j, c.color);
-      }
-    }
-  }
-
-  return {
-    // -- orgs --
-    orgList() {
-      return db
-        .prepare("SELECT * FROM organizations ORDER BY position, name")
-        .all();
-    },
-    orgAdd(name) {
-      const slug = slugify(name);
-      const maxPos = db
-        .prepare("SELECT COALESCE(MAX(position), -1) as max FROM organizations")
-        .get();
-      const res = db
-        .prepare(
-          "INSERT INTO organizations (name, slug, position) VALUES (?, ?, ?)"
-        )
-        .run(name, slug, maxPos.max + 1);
-      return db
-        .prepare("SELECT * FROM organizations WHERE id = ?")
-        .get(res.lastInsertRowid);
-    },
-    orgRemove(slug) {
-      const res = db
-        .prepare("DELETE FROM organizations WHERE slug = ?")
-        .run(slug);
-      if (res.changes === 0) die(`Organization not found: ${slug}`);
-      return { success: true };
-    },
-
-    // -- products --
-    productList(orgSlug) {
-      if (orgSlug) {
-        const orgId = resolveOrgId(orgSlug);
-        return db
-          .prepare(
-            "SELECT p.*, o.slug AS org_slug FROM products p JOIN organizations o ON p.org_id = o.id WHERE p.org_id = ? ORDER BY p.position, p.name"
-          )
-          .all(orgId);
-      }
-      return db
-        .prepare(
-          "SELECT p.*, o.slug AS org_slug FROM products p JOIN organizations o ON p.org_id = o.id ORDER BY p.position, p.name"
-        )
-        .all();
-    },
-    productAdd(orgSlug, name, emoji) {
-      const orgId = resolveOrgId(orgSlug);
-      const slug = slugify(name);
-      const maxPos = db
-        .prepare(
-          "SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = ?"
-        )
-        .get(orgId);
-      const res = db
-        .prepare(
-          "INSERT INTO products (org_id, name, slug, emoji, position) VALUES (?, ?, ?, ?, ?)"
-        )
-        .run(orgId, name, slug, emoji || "📦", maxPos.max + 1);
-      const productId = res.lastInsertRowid;
-      createDefaultBoardsForProduct(productId);
-      return db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
-    },
-    productRemove(slug) {
-      const res = db.prepare("DELETE FROM products WHERE slug = ?").run(slug);
-      if (res.changes === 0) die(`Product not found: ${slug}`);
-      return { success: true };
-    },
-
-    // -- tasks (cards) --
-    taskAdd(opts) {
-      const productId = resolveProductId(opts.product);
-      const boardId = resolveBoardId(productId, opts.board);
-      // Default column is the first column on the board (Backlog)
-      let columnId;
-      if (opts.column) {
-        columnId = resolveColumnId(boardId, opts.column);
-      } else {
-        const first = db
-          .prepare(
-            "SELECT id FROM columns WHERE board_id = ? ORDER BY position LIMIT 1"
-          )
-          .get(boardId);
-        if (!first) die("Board has no columns");
-        columnId = first.id;
-      }
-      const maxPos = db
-        .prepare(
-          "SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ?"
-        )
-        .get(columnId);
-      const res = db
-        .prepare(
-          `INSERT INTO cards (column_id, title, description, assignee, priority, labels, position)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          columnId,
-          opts.title,
-          opts.description || "",
-          opts.assignee || null,
-          opts.priority || "medium",
-          opts.label || "",
-          maxPos.max + 1
-        );
-      return db
-        .prepare("SELECT * FROM cards WHERE id = ?")
-        .get(res.lastInsertRowid);
-    },
-
-    taskList(opts) {
-      const conditions = [];
-      const values = [];
-      let query = "SELECT cards.*, columns.slug AS column_slug, columns.name AS column_name FROM cards JOIN columns ON cards.column_id = columns.id";
-
-      if (opts.product && opts.board) {
-        const productId = resolveProductId(opts.product);
-        const boardId = resolveBoardId(productId, opts.board);
-        conditions.push("columns.board_id = ?");
-        values.push(boardId);
-      }
-      if (opts.assignee) {
-        conditions.push("cards.assignee = ?");
-        values.push(opts.assignee);
-      }
-      if (opts.priority) {
-        conditions.push("cards.priority = ?");
-        values.push(opts.priority);
-      }
-      if (opts.column) {
-        conditions.push("columns.slug = ?");
-        values.push(opts.column);
-      }
-      if (conditions.length > 0) {
-        query += " WHERE " + conditions.join(" AND ");
-      }
-      query += " ORDER BY cards.position, cards.id";
-      return db.prepare(query).all(...values);
-    },
-
-    taskShow(cardId) {
-      const card = db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-      if (!card) die(`Card not found: ${cardId}`);
-      return card;
-    },
-
-    taskMove(cardId, columnSlug) {
-      const card = db.prepare("SELECT column_id FROM cards WHERE id = ?").get(cardId);
-      if (!card) die(`Card not found: ${cardId}`);
-      const col = db.prepare("SELECT board_id FROM columns WHERE id = ?").get(card.column_id);
-      const targetCol = db
-        .prepare(
-          "SELECT id FROM columns WHERE board_id = ? AND (slug = ? OR name = ?)"
-        )
-        .get(col.board_id, columnSlug, columnSlug);
-      if (!targetCol) die(`Column not found: ${columnSlug}`);
-
-      const maxPos = db
-        .prepare(
-          "SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ?"
-        )
-        .get(targetCol.id);
-      db.prepare(
-        "UPDATE cards SET column_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).run(targetCol.id, maxPos.max + 1, cardId);
-      return db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-    },
-
-    taskUpdate(cardId, updates) {
-      const existing = db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-      if (!existing) die(`Card not found: ${cardId}`);
-
-      const allowed = [
-        "title",
-        "description",
-        "assignee",
-        "priority",
-        "labels",
-      ];
-      const sets = [];
-      const vals = [];
-      for (const f of allowed) {
-        if (updates[f] !== undefined) {
-          sets.push(`${f} = ?`);
-          vals.push(updates[f]);
-        }
-      }
-      if (sets.length === 0) return existing;
-      sets.push("updated_at = CURRENT_TIMESTAMP");
-      vals.push(cardId);
-      db.prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`).run(
-        ...vals
-      );
-      return db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-    },
-
-    taskDone(cardId) {
-      const doneColId = findDoneColumnForCard(cardId);
-      const maxPos = db
-        .prepare(
-          "SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ?"
-        )
-        .get(doneColId);
-      db.prepare(
-        "UPDATE cards SET column_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-      ).run(doneColId, maxPos.max + 1, cardId);
-      return db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-    },
-
-    taskRemove(cardId) {
-      const res = db.prepare("DELETE FROM cards WHERE id = ?").run(cardId);
-      if (res.changes === 0) die(`Card not found: ${cardId}`);
-      return { success: true };
-    },
-
-    taskLink(cardId, opts) {
-      const card = db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-      if (!card) die(`Card not found: ${cardId}`);
-      const sets = [];
-      const vals = [];
-      if (opts.issue) {
-        sets.push("github_issue_url = ?");
-        vals.push(opts.issue);
-      }
-      if (opts.pr) {
-        sets.push("github_pr_url = ?");
-        vals.push(opts.pr);
-      }
-      if (sets.length === 0) die("Provide --issue or --pr URL");
-      sets.push("updated_at = CURRENT_TIMESTAMP");
-      vals.push(cardId);
-      db.prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`).run(
-        ...vals
-      );
-      return db.prepare("SELECT * FROM cards WHERE id = ?").get(cardId);
-    },
-
-    taskAttach(cardId, filePath) {
-      const card = db.prepare("SELECT id FROM cards WHERE id = ?").get(cardId);
-      if (!card) die(`Card not found: ${cardId}`);
-
-      const resolved = path.resolve(filePath);
-      if (!fs.existsSync(resolved)) die(`File not found: ${resolved}`);
-      const content = fs.readFileSync(resolved, "utf-8");
-      const filename = path.basename(resolved);
-
-      const res = db
-        .prepare(
-          "INSERT INTO attachments (card_id, filename, content) VALUES (?, ?, ?)"
-        )
-        .run(cardId, filename, content);
-      return db
-        .prepare("SELECT * FROM attachments WHERE id = ?")
-        .get(res.lastInsertRowid);
-    },
-
-    taskAttachments(cardId) {
-      const card = db.prepare("SELECT id FROM cards WHERE id = ?").get(cardId);
-      if (!card) die(`Card not found: ${cardId}`);
-      return db
-        .prepare(
-          "SELECT id, card_id, filename, created_at FROM attachments WHERE card_id = ? ORDER BY created_at"
-        )
-        .all(cardId);
-    },
-
-    // -- views --
-    boardView(opts) {
-      const productId = resolveProductId(opts.product);
-      const boardId = resolveBoardId(productId, opts.board);
-      const cols = db
-        .prepare(
-          "SELECT * FROM columns WHERE board_id = ? ORDER BY position"
-        )
-        .all(boardId);
-      const result = [];
-      for (const col of cols) {
-        const cards = db
-          .prepare(
-            "SELECT * FROM cards WHERE column_id = ? ORDER BY position, id"
-          )
-          .all(col.id);
-        result.push({ column: col.name, column_slug: col.slug, cards });
-      }
-      return result;
-    },
-
-    myTasks(assignee) {
-      return db
-        .prepare(
-          `SELECT cards.*, columns.slug AS column_slug, columns.name AS column_name,
-                  boards.name AS board_name, products.name AS product_name
-           FROM cards
-           JOIN columns ON cards.column_id = columns.id
-           JOIN boards ON columns.board_id = boards.id
-           JOIN products ON boards.product_id = products.id
-           WHERE cards.assignee = ?
-           ORDER BY cards.priority DESC, cards.position, cards.id`
-        )
-        .all(assignee);
-    },
-  };
-}
-
 // ===========================================================================
 // REMOTE (HTTP) backend
 // ===========================================================================
 
 function getRemoteBackend(baseUrl, password) {
   const base = baseUrl.replace(/\/+$/, "");
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${password}`,
-  };
+  const headers = { "Content-Type": "application/json" };
+  if (password) {
+    headers.Authorization = `Bearer ${password}`;
+  }
 
   async function req(method, urlPath, body) {
     const url = `${base}${urlPath}`;
@@ -655,8 +196,7 @@ function getRemoteBackend(baseUrl, password) {
 
   async function findDoneColumnForCard(cardId) {
     const card = await req("GET", `/api/cards/${cardId}`);
-    const cols = await req("GET", `/api/columns?board_id=`);
-    // We need the board_id from the card's column — fetch all columns to find it
+    // We need the board_id from the card's column — fetch all boards to find it
     const allBoards = await req("GET", "/api/boards");
     let boardId = null;
     for (const board of allBoards) {
@@ -740,7 +280,6 @@ function getRemoteBackend(baseUrl, password) {
       if (opts.assignee) params.set("assignee", opts.assignee);
       if (opts.priority) params.set("priority", opts.priority);
       if (opts.column) {
-        // Need to resolve column to column_id if board is known
         if (opts.product && opts.board) {
           const productId = await resolveProductId(opts.product);
           const boardId = await resolveBoardId(productId, opts.board);
@@ -757,7 +296,6 @@ function getRemoteBackend(baseUrl, password) {
     },
 
     async taskMove(cardId, columnSlug) {
-      // Determine the board from the card, then find the target column
       const card = await req("GET", `/api/cards/${cardId}`);
       const allBoards = await req("GET", "/api/boards");
       let boardId = null;
@@ -882,9 +420,8 @@ Output:
   --quiet    Minimal output (IDs only)
 
 Environment:
-  AGENTBOARD_DB        Path to SQLite database (local mode)
-  AGENTBOARD_URL       Server URL (remote mode)
-  AGENTBOARD_PASSWORD  Auth password (remote mode)
+  AGENTBOARD_URL       Server URL (e.g. http://localhost:3000)
+  AGENTBOARD_PASSWORD  Auth password (if APP_PASSWORD is set)
 `;
   process.stdout.write(usage);
 }
@@ -897,21 +434,16 @@ async function main() {
     process.exit(0);
   }
 
-  // Determine backend
-  const dbPath = process.env.AGENTBOARD_DB;
   const remoteUrl = process.env.AGENTBOARD_URL;
-  const remotePassword = process.env.AGENTBOARD_PASSWORD;
+  const remotePassword = process.env.AGENTBOARD_PASSWORD || "";
 
-  let backend;
-  if (dbPath) {
-    backend = getLocalBackend(dbPath);
-  } else if (remoteUrl && remotePassword) {
-    backend = getRemoteBackend(remoteUrl, remotePassword);
-  } else {
+  if (!remoteUrl) {
     die(
-      "Set AGENTBOARD_DB for local mode, or AGENTBOARD_URL + AGENTBOARD_PASSWORD for remote mode."
+      "Set AGENTBOARD_URL to the server URL (e.g. http://localhost:3000). Set AGENTBOARD_PASSWORD if auth is enabled."
     );
   }
+
+  const backend = getRemoteBackend(remoteUrl, remotePassword);
 
   const cmd = positional[0];
   const sub = positional[1];
@@ -1103,7 +635,7 @@ async function main() {
       die(`Unknown command: ${cmd}. Run 'agentboard help' for usage.`);
     }
   } catch (err) {
-    if (err.code === "SQLITE_CONSTRAINT_UNIQUE" || (err.message && err.message.includes("UNIQUE"))) {
+    if (err.message && (err.message.includes("unique") || err.message.includes("duplicate"))) {
       die("Already exists (duplicate entry).");
     }
     throw err;

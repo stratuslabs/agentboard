@@ -1,11 +1,4 @@
-const Database = require("better-sqlite3");
-const path = require("path");
-
-const dbPath = process.env.AGENTBOARD_DB || path.join(process.cwd(), "agentboard.db");
-const db = new Database(dbPath);
-
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+const { sql } = require("@vercel/postgres");
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -35,67 +28,81 @@ const seedData = {
   ],
 };
 
-const insertOrg = db.prepare(
-  "INSERT OR IGNORE INTO organizations (name, slug, position) VALUES (?, ?, ?)"
-);
-const insertProduct = db.prepare(
-  "INSERT OR IGNORE INTO products (org_id, name, slug, emoji, position) VALUES (?, ?, ?, ?, ?)"
-);
-const insertBoard = db.prepare(
-  "INSERT OR IGNORE INTO boards (product_id, name, slug, position) VALUES (?, ?, ?, ?)"
-);
-const insertColumn = db.prepare(
-  "INSERT OR IGNORE INTO columns (board_id, name, slug, position, color) VALUES (?, ?, ?, ?, ?)"
-);
-
-const seed = db.transaction(() => {
+async function seed() {
   // Insert orgs
   const orgMap = {};
-  seedData.orgs.forEach((org, i) => {
-    const result = insertOrg.run(org.name, org.slug, i);
-    if (result.changes > 0) {
-      orgMap[org.slug] = result.lastInsertRowid;
+  for (let i = 0; i < seedData.orgs.length; i++) {
+    const org = seedData.orgs[i];
+    const { rows } = await sql`
+      INSERT INTO organizations (name, slug, position)
+      VALUES (${org.name}, ${org.slug}, ${i})
+      ON CONFLICT (slug) DO NOTHING
+      RETURNING id
+    `;
+    if (rows.length > 0) {
+      orgMap[org.slug] = rows[0].id;
     } else {
-      const row = db.prepare("SELECT id FROM organizations WHERE slug = ?").get(org.slug);
-      orgMap[org.slug] = row.id;
+      const { rows: existing } = await sql`SELECT id FROM organizations WHERE slug = ${org.slug}`;
+      orgMap[org.slug] = existing[0].id;
     }
-  });
+  }
 
   // Insert products with default boards and columns
-  seedData.products.forEach((product, i) => {
+  for (let i = 0; i < seedData.products.length; i++) {
+    const product = seedData.products[i];
     const orgId = orgMap[product.org];
     const productSlug = slugify(product.name);
-    const result = insertProduct.run(orgId, product.name, productSlug, product.emoji, i);
+
+    const { rows } = await sql`
+      INSERT INTO products (org_id, name, slug, emoji, position)
+      VALUES (${orgId}, ${product.name}, ${productSlug}, ${product.emoji}, ${i})
+      ON CONFLICT (org_id, slug) DO NOTHING
+      RETURNING id
+    `;
 
     let productId;
-    if (result.changes > 0) {
-      productId = result.lastInsertRowid;
+    if (rows.length > 0) {
+      productId = rows[0].id;
     } else {
-      const row = db.prepare("SELECT id FROM products WHERE org_id = ? AND slug = ?").get(orgId, productSlug);
-      productId = row.id;
+      const { rows: existing } = await sql`SELECT id FROM products WHERE org_id = ${orgId} AND slug = ${productSlug}`;
+      productId = existing[0].id;
     }
 
     // Create default boards and columns
-    DEFAULT_BOARDS.forEach((boardName, bi) => {
+    for (let bi = 0; bi < DEFAULT_BOARDS.length; bi++) {
+      const boardName = DEFAULT_BOARDS[bi];
       const boardSlug = slugify(boardName);
-      const boardResult = insertBoard.run(productId, boardName, boardSlug, bi);
+
+      const { rows: boardRows } = await sql`
+        INSERT INTO boards (product_id, name, slug, position)
+        VALUES (${productId}, ${boardName}, ${boardSlug}, ${bi})
+        ON CONFLICT (product_id, slug) DO NOTHING
+        RETURNING id
+      `;
 
       let boardId;
-      if (boardResult.changes > 0) {
-        boardId = boardResult.lastInsertRowid;
+      if (boardRows.length > 0) {
+        boardId = boardRows[0].id;
       } else {
-        const row = db.prepare("SELECT id FROM boards WHERE product_id = ? AND slug = ?").get(productId, boardSlug);
-        boardId = row.id;
+        const { rows: existing } = await sql`SELECT id FROM boards WHERE product_id = ${productId} AND slug = ${boardSlug}`;
+        boardId = existing[0].id;
       }
 
-      DEFAULT_COLUMNS.forEach((col, ci) => {
-        insertColumn.run(boardId, col.name, slugify(col.name), ci, col.color);
-      });
-    });
-  });
+      for (let ci = 0; ci < DEFAULT_COLUMNS.length; ci++) {
+        const col = DEFAULT_COLUMNS[ci];
+        await sql`
+          INSERT INTO columns (board_id, name, slug, position, color)
+          VALUES (${boardId}, ${col.name}, ${slugify(col.name)}, ${ci}, ${col.color})
+          ON CONFLICT (board_id, slug) DO NOTHING
+        `;
+      }
+    }
+  }
+
+  console.log("Seed data inserted successfully.");
+}
+
+seed().catch((err) => {
+  console.error("Seed failed:", err.message);
+  process.exit(1);
 });
-
-seed();
-
-console.log("Seed data inserted successfully.");
-db.close();

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, slugify } from "@/lib/db";
+import { sql } from "@vercel/postgres";
+import { slugify } from "@/lib/db";
 
 export async function GET() {
-  const db = getDb();
-  const orgs = db.prepare("SELECT * FROM organizations ORDER BY position, name").all();
-  return NextResponse.json(orgs);
+  const { rows } = await sql`SELECT * FROM organizations ORDER BY position, name`;
+  return NextResponse.json(rows);
 }
 
 export async function POST(request: NextRequest) {
@@ -13,19 +13,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  const db = getDb();
   const slug = customSlug || slugify(name);
-  const maxPos = db.prepare("SELECT COALESCE(MAX(position), -1) as max FROM organizations").get() as { max: number };
+  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM organizations`;
 
   try {
-    const result = db.prepare(
-      "INSERT INTO organizations (name, slug, position) VALUES (?, ?, ?)"
-    ).run(name, slug, maxPos.max + 1);
-    const org = db.prepare("SELECT * FROM organizations WHERE id = ?").get(result.lastInsertRowid);
-    return NextResponse.json(org, { status: 201 });
+    const { rows } = await sql`
+      INSERT INTO organizations (name, slug, position)
+      VALUES (${name}, ${slug}, ${maxRows[0].max + 1})
+      RETURNING *
+    `;
+    return NextResponse.json(rows[0], { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    if (msg.includes("UNIQUE")) {
+    if (msg.includes("unique") || msg.includes("duplicate")) {
       return NextResponse.json({ error: "Organization already exists" }, { status: 409 });
     }
     throw e;

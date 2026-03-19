@@ -1,59 +1,51 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { sql } from "@vercel/postgres";
 
-let db: Database.Database | null = null;
-
-export function getDb(): Database.Database {
-  if (db) return db;
-
-  const dbPath =
-    process.env.AGENTBOARD_DB || path.join(process.cwd(), "agentboard.db");
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
-  // Auto-create tables if they don't exist
-  db.exec(`
+export async function ensureTables() {
+  await sql`
     CREATE TABLE IF NOT EXISTS organizations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       slug TEXT NOT NULL UNIQUE,
       position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       emoji TEXT DEFAULT '📦',
       position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(org_id, slug)
-    );
-
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS boards (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       position INTEGER DEFAULT 0,
       UNIQUE(product_id, slug)
-    );
-
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS columns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       slug TEXT NOT NULL,
       position INTEGER DEFAULT 0,
       color TEXT DEFAULT '#6B7280',
       UNIQUE(board_id, slug)
-    );
-
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS cards (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       column_id INTEGER NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
@@ -63,20 +55,19 @@ export function getDb(): Database.Database {
       github_issue_url TEXT,
       github_pr_url TEXT,
       position INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
       filename TEXT NOT NULL,
       content TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-
-  return db;
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
 }
 
 export function slugify(text: string): string {
@@ -95,23 +86,24 @@ const DEFAULT_COLUMNS = [
   { name: "Done", color: "#10B981" },
 ];
 
-export function createDefaultBoards(productId: number) {
-  const db = getDb();
-  const insertBoard = db.prepare(
-    "INSERT INTO boards (product_id, name, slug, position) VALUES (?, ?, ?, ?)"
-  );
-  const insertColumn = db.prepare(
-    "INSERT INTO columns (board_id, name, slug, position, color) VALUES (?, ?, ?, ?, ?)"
-  );
-
+export async function createDefaultBoards(productId: number) {
   for (let i = 0; i < DEFAULT_BOARDS.length; i++) {
     const boardName = DEFAULT_BOARDS[i];
-    const result = insertBoard.run(productId, boardName, slugify(boardName), i);
-    const boardId = result.lastInsertRowid as number;
+    const boardSlug = slugify(boardName);
+    const { rows } = await sql`
+      INSERT INTO boards (product_id, name, slug, position)
+      VALUES (${productId}, ${boardName}, ${boardSlug}, ${i})
+      RETURNING id
+    `;
+    const boardId = rows[0].id;
 
     for (let j = 0; j < DEFAULT_COLUMNS.length; j++) {
       const col = DEFAULT_COLUMNS[j];
-      insertColumn.run(boardId, col.name, slugify(col.name), j, col.color);
+      const colSlug = slugify(col.name);
+      await sql`
+        INSERT INTO columns (board_id, name, slug, position, color)
+        VALUES (${boardId}, ${col.name}, ${colSlug}, ${j}, ${col.color})
+      `;
     }
   }
 }

@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { sql } from "@vercel/postgres";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = getDb();
-  const board = db.prepare("SELECT * FROM boards WHERE id = ?").get(id);
-  if (!board) {
+  const { rows } = await sql`SELECT * FROM boards WHERE id = ${id}`;
+  if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(board);
+  return NextResponse.json(rows[0]);
 }

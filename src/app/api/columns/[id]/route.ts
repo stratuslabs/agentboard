@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { sql, db as pool } from "@vercel/postgres";
 
 export async function PATCH(
   request: NextRequest,
@@ -7,28 +7,28 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
-  const db = getDb();
 
-  const existing = db.prepare("SELECT * FROM columns WHERE id = ?").get(id);
-  if (!existing) {
+  const { rows: existing } = await sql`SELECT * FROM columns WHERE id = ${id}`;
+  if (existing.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const updates: string[] = [];
+  const sets: string[] = [];
   const values: unknown[] = [];
+  let paramIdx = 1;
 
-  if (body.name !== undefined) { updates.push("name = ?"); values.push(body.name); }
-  if (body.position !== undefined) { updates.push("position = ?"); values.push(body.position); }
-  if (body.color !== undefined) { updates.push("color = ?"); values.push(body.color); }
+  if (body.name !== undefined) { sets.push(`name = $${paramIdx++}`); values.push(body.name); }
+  if (body.position !== undefined) { sets.push(`position = $${paramIdx++}`); values.push(body.position); }
+  if (body.color !== undefined) { sets.push(`color = $${paramIdx++}`); values.push(body.color); }
 
-  if (updates.length === 0) {
-    return NextResponse.json(existing);
+  if (sets.length === 0) {
+    return NextResponse.json(existing[0]);
   }
 
   values.push(id);
-  db.prepare(`UPDATE columns SET ${updates.join(", ")} WHERE id = ?`).run(...values);
-  const column = db.prepare("SELECT * FROM columns WHERE id = ?").get(id);
-  return NextResponse.json(column);
+  const query = `UPDATE columns SET ${sets.join(", ")} WHERE id = $${paramIdx} RETURNING *`;
+  const { rows } = await pool.query(query, values);
+  return NextResponse.json(rows[0]);
 }
 
 export async function DELETE(
@@ -36,9 +36,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = getDb();
-  const result = db.prepare("DELETE FROM columns WHERE id = ?").run(id);
-  if (result.changes === 0) {
+  const result = await sql`DELETE FROM columns WHERE id = ${id}`;
+  if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   return NextResponse.json({ success: true });

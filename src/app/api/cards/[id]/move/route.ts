@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { sql } from "@vercel/postgres";
 
 export async function PATCH(
   request: NextRequest,
@@ -7,10 +7,9 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const { column_id, position } = await request.json();
-  const db = getDb();
 
-  const card = db.prepare("SELECT * FROM cards WHERE id = ?").get(id);
-  if (!card) {
+  const { rows } = await sql`SELECT * FROM cards WHERE id = ${id}`;
+  if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -20,14 +19,14 @@ export async function PATCH(
 
   let newPosition = position;
   if (newPosition === undefined) {
-    const maxPos = db.prepare("SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ?").get(column_id) as { max: number };
-    newPosition = maxPos.max + 1;
+    const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;
+    newPosition = maxRows[0].max + 1;
   }
 
-  db.prepare(
-    "UPDATE cards SET column_id = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-  ).run(column_id, newPosition, id);
-
-  const updated = db.prepare("SELECT * FROM cards WHERE id = ?").get(id);
-  return NextResponse.json(updated);
+  const { rows: updated } = await sql`
+    UPDATE cards SET column_id = ${column_id}, position = ${newPosition}, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return NextResponse.json(updated[0]);
 }

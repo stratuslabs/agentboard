@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { sql, db as pool } from "@vercel/postgres";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = getDb();
-  const card = db.prepare("SELECT * FROM cards WHERE id = ?").get(id);
-  if (!card) {
+  const { rows } = await sql`SELECT * FROM cards WHERE id = ${id}`;
+  if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(card);
+  return NextResponse.json(rows[0]);
 }
 
 export async function PATCH(
@@ -20,10 +19,9 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
-  const db = getDb();
 
-  const existing = db.prepare("SELECT * FROM cards WHERE id = ?").get(id);
-  if (!existing) {
+  const { rows: existing } = await sql`SELECT * FROM cards WHERE id = ${id}`;
+  if (existing.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -32,26 +30,27 @@ export async function PATCH(
     "github_issue_url", "github_pr_url", "column_id", "position"
   ];
 
-  const updates: string[] = [];
+  const sets: string[] = [];
   const values: unknown[] = [];
+  let paramIdx = 1;
 
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
-      updates.push(`${field} = ?`);
+      sets.push(`${field} = $${paramIdx++}`);
       values.push(body[field]);
     }
   }
 
-  if (updates.length === 0) {
-    return NextResponse.json(existing);
+  if (sets.length === 0) {
+    return NextResponse.json(existing[0]);
   }
 
-  updates.push("updated_at = CURRENT_TIMESTAMP");
+  sets.push("updated_at = NOW()");
   values.push(id);
 
-  db.prepare(`UPDATE cards SET ${updates.join(", ")} WHERE id = ?`).run(...values);
-  const card = db.prepare("SELECT * FROM cards WHERE id = ?").get(id);
-  return NextResponse.json(card);
+  const query = `UPDATE cards SET ${sets.join(", ")} WHERE id = $${paramIdx} RETURNING *`;
+  const { rows } = await pool.query(query, values);
+  return NextResponse.json(rows[0]);
 }
 
 export async function DELETE(
@@ -59,9 +58,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = getDb();
-  const result = db.prepare("DELETE FROM cards WHERE id = ?").run(id);
-  if (result.changes === 0) {
+  const result = await sql`DELETE FROM cards WHERE id = ${id}`;
+  if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   return NextResponse.json({ success: true });
