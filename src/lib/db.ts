@@ -1,5 +1,13 @@
 import { sql } from "@vercel/postgres";
 
+let initialized = false;
+
+export async function initDb() {
+  if (initialized) return;
+  await ensureTables();
+  initialized = true;
+}
+
 export async function ensureTables() {
   await sql`
     CREATE TABLE IF NOT EXISTS organizations (

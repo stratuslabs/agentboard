@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
-import { slugify } from "@/lib/db";
+import { initDb, slugify } from "@/lib/db";
 
 export async function GET() {
+  await initDb();
   const { rows } = await sql`SELECT * FROM organizations ORDER BY position, name`;
   return NextResponse.json(rows);
 }
 
 export async function POST(request: NextRequest) {
+  await initDb();
   const { name, slug: customSlug } = await request.json();
   if (!name) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });

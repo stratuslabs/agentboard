@@ -1,3 +1,4 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 
@@ -5,6 +6,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const { column_id, position } = await request.json();
 

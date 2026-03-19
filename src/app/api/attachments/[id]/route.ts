@@ -1,3 +1,4 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 
@@ -5,6 +6,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const result = await sql`DELETE FROM attachments WHERE id = ${id}`;
   if (result.rowCount === 0) {

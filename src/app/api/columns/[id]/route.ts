@@ -1,3 +1,4 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@vercel/postgres";
 
@@ -5,6 +6,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const body = await request.json();
 
@@ -35,6 +37,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const result = await sql`DELETE FROM columns WHERE id = ${id}`;
   if (result.rowCount === 0) {

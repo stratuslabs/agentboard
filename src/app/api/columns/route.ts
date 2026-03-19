@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
-import { slugify } from "@/lib/db";
+import { initDb, slugify } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
+  await initDb();
   const boardId = request.nextUrl.searchParams.get("board_id");
 
   if (!boardId) {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await initDb();
   const { board_id, name, color } = await request.json();
   if (!board_id || !name) {
     return NextResponse.json({ error: "board_id and name are required" }, { status: 400 });

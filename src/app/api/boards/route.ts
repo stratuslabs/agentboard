@@ -1,7 +1,9 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 
 export async function GET(request: NextRequest) {
+  await initDb();
   const productId = request.nextUrl.searchParams.get("product_id");
 
   if (!productId) {

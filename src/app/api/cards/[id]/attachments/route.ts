@@ -1,3 +1,4 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
 
@@ -5,6 +6,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const { rows } = await sql`SELECT * FROM attachments WHERE card_id = ${id} ORDER BY created_at`;
   return NextResponse.json(rows);
@@ -14,6 +16,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await initDb();
   const { id } = await params;
   const { filename, content } = await request.json();
 

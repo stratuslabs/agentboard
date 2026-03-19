@@ -1,7 +1,9 @@
+import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@vercel/postgres";
 
 export async function GET(request: NextRequest) {
+  await initDb();
   const sp = request.nextUrl.searchParams;
   const boardId = sp.get("board_id");
   const columnId = sp.get("column_id");
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await initDb();
   const body = await request.json();
   const { column_id, title, description, assignee, priority, labels, github_issue_url, github_pr_url } = body;
 
