@@ -1,0 +1,77 @@
+"use client";
+
+import { useState } from "react";
+import Sidebar from "@/components/Sidebar";
+import KanbanBoard from "@/components/KanbanBoard";
+
+interface Org {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+interface Product {
+  id: number;
+  org_id: number;
+  name: string;
+  slug: string;
+  emoji: string;
+}
+
+export default function HomePage() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
+
+  function handleSelectProduct(product: Product, org: Org) {
+    setSelectedProduct(product);
+    setSelectedOrg(org);
+  }
+
+  return (
+    <div className="h-screen flex overflow-hidden bg-surface-900">
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        selectedProductId={selectedProduct?.id ?? null}
+        onSelectProduct={handleSelectProduct}
+      />
+
+      {selectedProduct && selectedOrg ? (
+        <KanbanBoard
+          key={selectedProduct.id}
+          productId={selectedProduct.id}
+          orgName={selectedOrg.name}
+          productName={selectedProduct.name}
+          productEmoji={selectedProduct.emoji}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-2xl bg-surface-800 border border-surface-600 flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+                />
+              </svg>
+            </div>
+            <h2 className="text-lg font-medium text-gray-400 mb-1">
+              Select a product
+            </h2>
+            <p className="text-sm text-gray-600">
+              Choose a product from the sidebar to view its boards
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

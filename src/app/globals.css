@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface-900: #0f1117;
+  --color-surface-800: #1a1d27;
+  --color-surface-700: #252836;
+  --color-surface-600: #2e3245;
+  --color-surface-500: #3d4258;
+  --color-priority-urgent: #ef4444;
+  --color-priority-high: #f97316;
+  --color-priority-medium: #3b82f6;
+  --color-priority-low: #6b7280;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-500) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-surface-500);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-surface-600);
+}
+
+body {
+  background-color: var(--color-surface-900);
+  color: #e2e8f0;
+}
+
+.card-hover {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.sidebar-transition {
+  transition: width 0.2s ease;
+}
+
+.fade-in {
+  animation: fadeIn 0.15s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
