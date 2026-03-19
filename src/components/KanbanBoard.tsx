@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext,
   closestCorners,
@@ -82,18 +82,10 @@ export default function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  useEffect(() => {
-    loadBoards();
-  }, [productId]);
+  const activeBoardIdRef = useRef(activeBoardId);
+  activeBoardIdRef.current = activeBoardId;
 
-  useEffect(() => {
-    if (activeBoardId) {
-      loadColumns();
-      loadCards();
-    }
-  }, [activeBoardId]);
-
-  async function loadBoards() {
+  const loadBoards = useCallback(async () => {
     const res = await fetch(`/api/boards?product_id=${productId}`);
     if (!res.ok) return;
     const data: Board[] = await res.json();
@@ -101,23 +93,36 @@ export default function KanbanBoard({
     if (data.length > 0) {
       setActiveBoardId(data[0].id);
     }
-  }
+  }, [productId]);
 
-  async function loadColumns() {
-    if (!activeBoardId) return;
-    const res = await fetch(`/api/columns?board_id=${activeBoardId}`);
+  const loadColumns = useCallback(async () => {
+    const boardId = activeBoardIdRef.current;
+    if (!boardId) return;
+    const res = await fetch(`/api/columns?board_id=${boardId}`);
     if (res.ok) {
       setColumns(await res.json());
     }
-  }
+  }, []);
 
-  async function loadCards() {
-    if (!activeBoardId) return;
-    const res = await fetch(`/api/cards?board_id=${activeBoardId}`);
+  const loadCards = useCallback(async () => {
+    const boardId = activeBoardIdRef.current;
+    if (!boardId) return;
+    const res = await fetch(`/api/cards?board_id=${boardId}`);
     if (res.ok) {
       setCards(await res.json());
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadBoards();
+  }, [loadBoards]);
+
+  useEffect(() => {
+    if (activeBoardId) {
+      loadColumns();
+      loadCards();
+    }
+  }, [activeBoardId, loadColumns, loadCards]);
 
   const getFilteredCards = useCallback(
     (columnId: number) => {

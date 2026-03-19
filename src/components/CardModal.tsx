@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface Card {
   id: number;
@@ -54,9 +54,16 @@ export default function CardModal({
   const [saving, setSaving] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  const loadAttachments = useCallback(async () => {
+    const res = await fetch(`/api/cards/${card.id}/attachments`);
+    if (res.ok) {
+      setAttachments(await res.json());
+    }
+  }, [card.id]);
+
   useEffect(() => {
     loadAttachments();
-  }, [card.id]);
+  }, [loadAttachments]);
 
   useEffect(() => {
     function handleEsc(e: KeyboardEvent) {
@@ -65,13 +72,6 @@ export default function CardModal({
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
-
-  async function loadAttachments() {
-    const res = await fetch(`/api/cards/${card.id}/attachments`);
-    if (res.ok) {
-      setAttachments(await res.json());
-    }
-  }
 
   async function handleSave() {
     setSaving(true);
