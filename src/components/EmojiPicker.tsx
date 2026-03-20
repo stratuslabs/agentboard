@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 
@@ -10,39 +10,32 @@ interface EmojiPickerProps {
 }
 
 export default function EmojiPicker({ onSelect, onClose }: EmojiPickerProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
     function handleEscape(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   return (
-    <div ref={ref} className="absolute left-0 top-8 z-50">
-      <Picker
-        data={data}
-        onEmojiSelect={(emoji: { native: string }) => onSelect(emoji.native)}
-        theme="dark"
-        previewPosition="none"
-        skinTonePosition="none"
-        perLine={7}
-        emojiSize={22}
-        emojiButtonSize={30}
-        maxFrequentRows={1}
-        set="native"
-      />
-    </div>
+    <>
+      {/* Invisible backdrop to catch outside clicks */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute left-0 top-8 z-50">
+        <Picker
+          data={data}
+          onEmojiSelect={(emoji: { native: string }) => onSelect(emoji.native)}
+          theme="dark"
+          previewPosition="none"
+          skinTonePosition="none"
+          perLine={7}
+          emojiSize={22}
+          emojiButtonSize={30}
+          maxFrequentRows={1}
+          set="native"
+        />
+      </div>
+    </>
   );
 }
