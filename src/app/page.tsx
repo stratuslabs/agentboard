@@ -45,6 +45,7 @@ export default function HomePage() {
   function handleSelectProduct(product: Product, org: Org) {
     setSelectedProduct(product);
     setSelectedOrg(org);
+    try { localStorage.setItem("agentboard-selected", JSON.stringify({ productId: product.id, orgId: org.id })); } catch {}
   }
 
   const toggleStar = useCallback((productId: number) => {

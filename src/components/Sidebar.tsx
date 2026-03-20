@@ -205,6 +205,17 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       setExpandedOrgs(new Set(data.map((o) => o.id)));
     }
     setProductsByOrg(prodMap);
+
+    // Restore last selected product
+    try {
+      const saved = localStorage.getItem("agentboard-selected");
+      if (saved) {
+        const { productId, orgId } = JSON.parse(saved);
+        const org = data.find((o: Org) => o.id === orgId);
+        const product = (prodMap[orgId] || []).find((p: Product) => p.id === productId);
+        if (org && product) onSelectProduct(product, org);
+      }
+    } catch {}
   }
 
   function toggleOrg(orgId: number) {
