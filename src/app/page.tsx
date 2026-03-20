@@ -36,15 +36,22 @@ function saveStarred(starred: Set<number>) {
   try { localStorage.setItem("agentboard-starred-products", JSON.stringify([...starred])); } catch {}
 }
 
+function hasSavedSelection(): boolean {
+  if (typeof window === "undefined") return false;
+  try { return !!localStorage.getItem("agentboard-selected"); } catch { return false; }
+}
+
 export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
   const [starredProducts, setStarredProducts] = useState<Set<number>>(loadStarred);
+  const [isRestoring, setIsRestoring] = useState(hasSavedSelection);
 
   function handleSelectProduct(product: Product, org: Org) {
     setSelectedProduct(product);
     setSelectedOrg(org);
+    setIsRestoring(false);
     try { localStorage.setItem("agentboard-selected", JSON.stringify({ productId: product.id, orgId: org.id })); } catch {}
   }
 
@@ -78,6 +85,16 @@ export default function HomePage() {
           isStarred={starredProducts.has(selectedProduct.id)}
           onToggleStar={() => toggleStar(selectedProduct.id)}
         />
+      ) : isRestoring ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1.5">
+              <div className="w-2 h-8 bg-white/80 rounded-sm animate-pulse" />
+              <div className="w-2 h-6 bg-white/40 rounded-sm animate-pulse [animation-delay:150ms]" />
+              <div className="w-2 h-4 bg-white/20 rounded-sm animate-pulse [animation-delay:300ms]" />
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
