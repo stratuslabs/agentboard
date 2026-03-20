@@ -91,10 +91,11 @@ function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children
 }
 
 // --- Sortable Product Item ---
-function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
+function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange, isStarred, onToggleStar }: {
   product: Product; isSelected: boolean; onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
+  isStarred: boolean; onToggleStar: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `product-${product.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -111,7 +112,7 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative flex items-center mx-1">
+    <div ref={setNodeRef} style={style} className="group/product relative flex items-center mx-1">
       <button {...attributes} {...listeners} className="w-4 h-6 flex items-center justify-center text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder">
         <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
       </button>
@@ -121,6 +122,13 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
       <button onClick={onSelect} onContextMenu={onContextMenu}
         className={`flex-1 text-left px-2 py-1.5 text-sm rounded-md transition-colors truncate ${isSelected ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"}`}>
         {product.name}
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onToggleStar(); }}
+        className={`shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${isStarred ? "text-yellow-400" : "text-gray-600 opacity-0 group-hover/product:opacity-100 hover:text-gray-400"}`}
+        title={isStarred ? "Unstar" : "Star"}>
+        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={isStarred ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isStarred ? 0 : 1.5}>
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
       </button>
       {emojiPickerOpen && (
         <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-2 w-[200px]">
@@ -155,6 +163,14 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   const [emojiPickerProductId, setEmojiPickerProductId] = useState<number | null>(null);
   const [dragOverOrgId, setDragOverOrgId] = useState<number | null>(null);
   const [activeProductDrag, setActiveProductDrag] = useState<Product | null>(null);
+  const [starredProducts, setStarredProducts] = useState<Set<number>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try { const saved = localStorage.getItem("agentboard-starred-products"); return saved ? new Set(JSON.parse(saved)) : new Set(); } catch { return new Set(); }
+  });
+  const [filterMode, setFilterMode] = useState<"all" | "starred">(() => {
+    if (typeof window === "undefined") return "all";
+    try { return (localStorage.getItem("agentboard-sidebar-filter") as "all" | "starred") || "all"; } catch { return "all"; }
+  });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -165,19 +181,46 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     if (!res.ok) return;
     const data: Org[] = await res.json();
     setOrgs(data);
-    const expanded = new Set<number>();
     const prodMap: Record<number, Product[]> = {};
     for (const org of data) {
-      expanded.add(org.id);
       const pRes = await fetch(`/api/products?org_id=${org.id}`);
       if (pRes.ok) prodMap[org.id] = await pRes.json();
     }
-    setExpandedOrgs(expanded);
+    // Restore expanded state from localStorage, or expand all on first visit
+    try {
+      const saved = localStorage.getItem("agentboard-expanded-orgs");
+      if (saved) {
+        setExpandedOrgs(new Set(JSON.parse(saved)));
+      } else {
+        setExpandedOrgs(new Set(data.map((o) => o.id)));
+      }
+    } catch {
+      setExpandedOrgs(new Set(data.map((o) => o.id)));
+    }
     setProductsByOrg(prodMap);
   }
 
   function toggleOrg(orgId: number) {
-    setExpandedOrgs((prev) => { const next = new Set(prev); if (next.has(orgId)) next.delete(orgId); else next.add(orgId); return next; });
+    setExpandedOrgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(orgId)) next.delete(orgId); else next.add(orgId);
+      try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
+
+  function toggleStar(productId: number) {
+    setStarredProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId); else next.add(productId);
+      try { localStorage.setItem("agentboard-starred-products", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }
+
+  function setFilter(mode: "all" | "starred") {
+    setFilterMode(mode);
+    try { localStorage.setItem("agentboard-sidebar-filter", mode); } catch {}
   }
 
   async function handleAddOrg() {
@@ -337,7 +380,11 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         setProductsByOrg((prev) => ({ ...prev, [sourceOrgId]: sourceProducts, [targetOrgId]: targetProducts }));
 
         // Expand target org if collapsed
-        setExpandedOrgs((prev) => { const next = new Set(prev); next.add(targetOrgId); return next; });
+        setExpandedOrgs((prev) => {
+          const next = new Set(prev); next.add(targetOrgId);
+          try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {}
+          return next;
+        });
 
         await fetch("/api/products/move", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: productId, org_id: targetOrgId, position: targetProducts.length - 1 }) });
 
@@ -382,11 +429,34 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         </button>
       </div>
 
+      {/* Filter toggle */}
+      <div className="px-3 pt-2 pb-1">
+        <div className="flex bg-surface-700 rounded-md p-0.5 text-xs">
+          <button onClick={() => setFilter("all")}
+            className={`flex-1 px-2 py-1 rounded transition-colors ${filterMode === "all" ? "bg-surface-600 text-white" : "text-gray-400 hover:text-gray-300"}`}>
+            All
+          </button>
+          <button onClick={() => setFilter("starred")}
+            className={`flex-1 px-2 py-1 rounded transition-colors ${filterMode === "starred" ? "bg-surface-600 text-white" : "text-gray-400 hover:text-gray-300"}`}>
+            ⭐ Starred
+          </button>
+        </div>
+      </div>
+
       {/* Org/Product tree */}
       <div className="flex-1 overflow-y-auto py-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <SortableContext items={orgs.map((o) => `org-${o.id}`)} strategy={verticalListSortingStrategy}>
-            {orgs.map((org) => (
+            {orgs.filter((org) => {
+              if (filterMode === "starred") {
+                return (productsByOrg[org.id] || []).some((p) => starredProducts.has(p.id));
+              }
+              return true;
+            }).map((org) => {
+              const visibleProducts = filterMode === "starred"
+                ? (productsByOrg[org.id] || []).filter((p) => starredProducts.has(p.id))
+                : (productsByOrg[org.id] || []);
+              return (
               <div key={org.id} className="mb-1">
                 <SortableOrgHeader org={org} expanded={expandedOrgs.has(org.id)} onToggle={() => toggleOrg(org.id)}
                   onContextMenu={(e) => handleContextMenu(e, "org", org.id)}
@@ -395,8 +465,8 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
 
                 {expandedOrgs.has(org.id) && (
                   <DroppableOrgZone orgId={org.id} isOver={dragOverOrgId === org.id && activeProductDrag !== null}>
-                    <SortableContext items={(productsByOrg[org.id] || []).map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
-                      {(productsByOrg[org.id] || []).map((product) => (
+                    <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
+                      {visibleProducts.map((product) => (
                         <SortableProductItem key={product.id} product={product} isSelected={selectedProductId === product.id}
                           onSelect={() => onSelectProduct(product, org)}
                           onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
@@ -404,13 +474,15 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                           onEditSubmit={() => handleRenameProduct(product.id, org.id)} onEditCancel={() => { setEditingProductId(null); setEditingProductName(""); }}
                           emojiPickerOpen={emojiPickerProductId === product.id}
                           onEmojiToggle={() => setEmojiPickerProductId(emojiPickerProductId === product.id ? null : product.id)}
-                          onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)} />
+                          onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)}
+                          isStarred={starredProducts.has(product.id)}
+                          onToggleStar={() => toggleStar(product.id)} />
                       ))}
                     </SortableContext>
 
                     {/* Empty drop zone when no products */}
-                    {(productsByOrg[org.id] || []).length === 0 && (
-                      <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">Drop here</div>
+                    {visibleProducts.length === 0 && (
+                      <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">{filterMode === "starred" ? "No starred products" : "Drop here"}</div>
                     )}
 
                     {addingProductOrg === org.id ? (
@@ -431,7 +503,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                   </DroppableOrgZone>
                 )}
               </div>
-            ))}
+            ); })}
           </SortableContext>
 
           <DragOverlay>
