@@ -45,9 +45,10 @@ interface SidebarProps {
 }
 
 // --- Sortable Org Header ---
-function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel }: {
+function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
   org: Org; expanded: boolean; onToggle: () => void; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
+  onMenuClick: (e: React.MouseEvent) => void; menuOpen: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `org-${org.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
@@ -64,7 +65,7 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center">
+    <div ref={setNodeRef} style={style} className="group/org flex items-center">
       <button {...attributes} {...listeners} className="w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 ml-1" title="Drag to reorder">
         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
       </button>
@@ -74,6 +75,11 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
         </svg>
         {org.name}
+      </button>
+      <button onClick={onMenuClick}
+        className={`w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-surface-600 transition-colors shrink-0 mr-1 ${menuOpen ? "text-gray-300 bg-surface-600" : "opacity-0 group-hover/org:opacity-100"}`}
+        title="More options">
+        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
       </button>
     </div>
   );
@@ -167,9 +173,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     if (typeof window === "undefined") return new Set();
     try { const saved = localStorage.getItem("agentboard-starred-products"); return saved ? new Set(JSON.parse(saved)) : new Set(); } catch { return new Set(); }
   });
-  const [filterMode, setFilterMode] = useState<"all" | "starred">(() => {
-    if (typeof window === "undefined") return "all";
-    try { return (localStorage.getItem("agentboard-sidebar-filter") as "all" | "starred") || "all"; } catch { return "all"; }
+  const [orgMenuId, setOrgMenuId] = useState<number | null>(null);
+  const [orgMenuPos, setOrgMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
+  const [showStarredOnly, setShowStarredOnly] = useState<Record<number, boolean>>(() => {
+    if (typeof window === "undefined") return {};
+    try { const saved = localStorage.getItem("agentboard-starred-orgs"); return saved ? JSON.parse(saved) : {}; } catch { return {}; }
   });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -218,9 +227,20 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     });
   }
 
-  function setFilter(mode: "all" | "starred") {
-    setFilterMode(mode);
-    try { localStorage.setItem("agentboard-sidebar-filter", mode); } catch {}
+  function toggleShowStarredOnly(orgId: number) {
+    setShowStarredOnly((prev) => {
+      const next = { ...prev, [orgId]: !prev[orgId] };
+      try { localStorage.setItem("agentboard-starred-orgs", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  function handleOrgMenuClick(e: React.MouseEvent, orgId: number) {
+    e.stopPropagation();
+    if (orgMenuId === orgId) { setOrgMenuId(null); return; }
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setOrgMenuPos({ x: rect.left, y: rect.bottom + 4 });
+    setOrgMenuId(orgId);
   }
 
   async function handleAddOrg() {
@@ -274,9 +294,9 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   }
 
   useEffect(() => {
-    function handleClick() { setContextMenu(null); }
-    if (contextMenu) { window.addEventListener("click", handleClick); return () => window.removeEventListener("click", handleClick); }
-  }, [contextMenu]);
+    function handleClick() { setContextMenu(null); setOrgMenuId(null); }
+    if (contextMenu || orgMenuId !== null) { window.addEventListener("click", handleClick); return () => window.removeEventListener("click", handleClick); }
+  }, [contextMenu, orgMenuId]);
 
   // --- Unified drag handlers ---
   function handleDragStart(event: DragStartEvent) {
@@ -429,42 +449,34 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         </button>
       </div>
 
-      {/* Filter toggle */}
-      <div className="px-3 pt-2 pb-1">
-        <div className="flex bg-surface-700 rounded-md p-0.5 text-xs">
-          <button onClick={() => setFilter("all")}
-            className={`flex-1 px-2 py-1 rounded transition-colors ${filterMode === "all" ? "bg-surface-600 text-white" : "text-gray-400 hover:text-gray-300"}`}>
-            All
-          </button>
-          <button onClick={() => setFilter("starred")}
-            className={`flex-1 px-2 py-1 rounded transition-colors ${filterMode === "starred" ? "bg-surface-600 text-white" : "text-gray-400 hover:text-gray-300"}`}>
-            ⭐ Starred
-          </button>
-        </div>
-      </div>
-
       {/* Org/Product tree */}
       <div className="flex-1 overflow-y-auto py-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <SortableContext items={orgs.map((o) => `org-${o.id}`)} strategy={verticalListSortingStrategy}>
-            {orgs.filter((org) => {
-              if (filterMode === "starred") {
-                return (productsByOrg[org.id] || []).some((p) => starredProducts.has(p.id));
-              }
-              return true;
-            }).map((org) => {
-              const visibleProducts = filterMode === "starred"
-                ? (productsByOrg[org.id] || []).filter((p) => starredProducts.has(p.id))
-                : (productsByOrg[org.id] || []);
+            {orgs.map((org) => {
+              const allProducts = productsByOrg[org.id] || [];
+              const isStarredMode = showStarredOnly[org.id] || false;
+              const starredInOrg = allProducts.filter((p) => starredProducts.has(p.id));
+              // Show starred only if toggled AND there are starred products, otherwise show all
+              const visibleProducts = (isStarredMode && starredInOrg.length > 0) ? starredInOrg : allProducts;
               return (
               <div key={org.id} className="mb-1">
                 <SortableOrgHeader org={org} expanded={expandedOrgs.has(org.id)} onToggle={() => toggleOrg(org.id)}
                   onContextMenu={(e) => handleContextMenu(e, "org", org.id)}
                   isEditing={editingOrgId === org.id} editingName={editingOrgName} onEditChange={setEditingOrgName}
-                  onEditSubmit={() => handleRenameOrg(org.id)} onEditCancel={() => { setEditingOrgId(null); setEditingOrgName(""); }} />
+                  onEditSubmit={() => handleRenameOrg(org.id)} onEditCancel={() => { setEditingOrgId(null); setEditingOrgName(""); }}
+                  onMenuClick={(e) => handleOrgMenuClick(e, org.id)} menuOpen={orgMenuId === org.id} />
 
                 {expandedOrgs.has(org.id) && (
                   <DroppableOrgZone orgId={org.id} isOver={dragOverOrgId === org.id && activeProductDrag !== null}>
+                    {/* Starred-only indicator */}
+                    {isStarredMode && starredInOrg.length > 0 && (
+                      <button onClick={() => setBrowsingOrgId(org.id)}
+                        className="flex items-center gap-1 w-full px-4 py-0.5 text-[10px] text-yellow-500/70 hover:text-yellow-400 transition-colors">
+                        <span>★ Showing starred only</span>
+                        <span className="text-gray-600">· View all</span>
+                      </button>
+                    )}
                     <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
                       {visibleProducts.map((product) => (
                         <SortableProductItem key={product.id} product={product} isSelected={selectedProductId === product.id}
@@ -482,7 +494,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
 
                     {/* Empty drop zone when no products */}
                     {visibleProducts.length === 0 && (
-                      <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">{filterMode === "starred" ? "No starred products" : "Drop here"}</div>
+                      <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">Drop here</div>
                     )}
 
                     {addingProductOrg === org.id ? (
@@ -540,6 +552,75 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
           Logout
         </button>
       </div>
+
+      {/* Org ellipsis dropdown menu */}
+      {orgMenuId !== null && (
+        <div className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]" style={{ left: Math.min(orgMenuPos.x, 200), top: orgMenuPos.y }}>
+          <button onClick={(e) => { e.stopPropagation(); setBrowsingOrgId(orgMenuId); setOrgMenuId(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+            Browse all products
+          </button>
+          {(() => { const starredInOrg = (productsByOrg[orgMenuId] || []).filter((p) => starredProducts.has(p.id)); return starredInOrg.length > 0 ? (
+            <button onClick={(e) => { e.stopPropagation(); toggleShowStarredOnly(orgMenuId); setOrgMenuId(null); }}
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={showStarredOnly[orgMenuId] ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.5}>
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              {showStarredOnly[orgMenuId] ? "Show all products" : "Show starred only"}
+            </button>
+          ) : null; })()}
+          <div className="border-t border-surface-600 my-1" />
+          <button onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); } setOrgMenuId(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            Rename
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteOrg(orgMenuId); setOrgMenuId(null); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-400 hover:bg-red-400/10 hover:text-red-300 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Browse all products overlay */}
+      {browsingOrgId !== null && (() => {
+        const org = orgs.find((o) => o.id === browsingOrgId);
+        const allProducts = productsByOrg[browsingOrgId] || [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBrowsingOrgId(null)}>
+            <div className="bg-surface-800 border border-surface-600 rounded-xl shadow-2xl w-80 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
+                <h3 className="text-sm font-semibold text-white">{org?.name} — All Products</h3>
+                <button onClick={() => setBrowsingOrgId(null)} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2">
+                {allProducts.length === 0 && (
+                  <div className="text-center py-6 text-sm text-gray-500">No products yet</div>
+                )}
+                {allProducts.map((product) => (
+                  <div key={product.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-700 transition-colors">
+                    <span className="text-base">{product.emoji}</span>
+                    <span className="flex-1 text-sm text-gray-200 truncate">{product.name}</span>
+                    <button onClick={() => toggleStar(product.id)}
+                      className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${starredProducts.has(product.id) ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}>
+                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill={starredProducts.has(product.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={starredProducts.has(product.id) ? 0 : 1.5}>
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-surface-600 px-4 py-2">
+                <p className="text-[11px] text-gray-500">Star products to pin them in the sidebar</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Context menu */}
       {contextMenu && (
