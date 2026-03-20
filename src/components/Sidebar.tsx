@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   DndContext,
   closestCenter,
@@ -20,6 +20,9 @@ import {
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import dynamic from "next/dynamic";
+
+const EmojiPicker = dynamic(() => import("./EmojiPicker"), { ssr: false, loading: () => <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-4 text-xs text-gray-400">Loading...</div> });
 
 interface Org {
   id: number;
@@ -126,16 +129,7 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
         {product.name}
       </button>
       {emojiPickerOpen && (
-        <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-2 w-[200px]">
-          <input type="text" placeholder="Paste emoji..." className="w-full px-2 py-1 mb-2 text-sm bg-surface-600 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent" autoFocus
-            onKeyDown={(e) => { if (e.key === "Escape") onEmojiToggle(); }}
-            onChange={(e) => { const val = e.target.value.trim(); if (val) onEmojiChange(val); }} />
-          <div className="grid grid-cols-6 gap-1">
-            {["📦","🧶","🌙","⭐","🎨","📋","🚀","💡","🔧","📊","🎯","🛡️","💬","📝","🔥","🌐","💰","📱"].map((em) => (
-              <button key={em} onClick={() => onEmojiChange(em)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base">{em}</button>
-            ))}
-          </div>
-        </div>
+        <EmojiPicker onSelect={(emoji) => onEmojiChange(emoji)} onClose={onEmojiToggle} />
       )}
     </div>
   );
