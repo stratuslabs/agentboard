@@ -487,7 +487,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                       <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">Drop here</div>
                     )}
 
-                    {addingProductOrg === org.id ? (
+                    {addingProductOrg === org.id && (
                       <div className="px-4 py-1 mx-1">
                         <input type="text" value={addingProductName} onChange={(e) => setAddingProductName(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") handleAddProduct(org.id); if (e.key === "Escape") { setAddingProductOrg(null); setAddingProductName(""); } }}
@@ -495,12 +495,6 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                           className="w-full px-2 py-1 text-sm bg-surface-700 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
                           placeholder="Product name" autoFocus />
                       </div>
-                    ) : (
-                      <button onClick={() => setAddingProductOrg(org.id)}
-                        className="flex items-center gap-1.5 w-full px-4 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors mx-1" style={{ width: "calc(100% - 8px)" }}>
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                        Add product
-                      </button>
                     )}
                   </DroppableOrgZone>
                 )}
@@ -554,6 +548,11 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
             className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             Browse all products
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); const id = orgMenuId; setOrgMenuId(null); setAddingProductOrg(id); setAddingProductName(""); setExpandedOrgs((prev) => { const next = new Set(prev); next.add(id); try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {} return next; }); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Add product
           </button>
 
           <div className="border-t border-surface-600 my-1" />
