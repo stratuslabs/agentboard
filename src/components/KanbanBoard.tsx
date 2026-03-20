@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext,
   closestCorners,
+  rectIntersection,
+  pointerWithin,
   DragOverlay,
   DragStartEvent,
   DragEndEvent,
@@ -12,6 +14,9 @@ import {
   useSensor,
   useSensors,
   useDroppable,
+  CollisionDetection,
+  DroppableContainer,
+  UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -26,6 +31,29 @@ function DroppableColumn({ columnId, children }: { columnId: number; children: R
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
   return <div ref={setNodeRef} className="flex-1 overflow-y-auto p-2 space-y-2">{children}</div>;
 }
+
+// Custom collision detection: prefer cards (pointerWithin), fall back to columns (rectIntersection)
+const customCollisionDetection: CollisionDetection = (args) => {
+  // First try pointerWithin for precise card targeting
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) {
+    // Prefer card collisions over column collisions
+    const cardCollision = pointerCollisions.find((c) => !String(c.id).startsWith("column-"));
+    if (cardCollision) return [cardCollision];
+    return pointerCollisions;
+  }
+
+  // Fall back to rectIntersection for column-level drops
+  const rectCollisions = rectIntersection(args);
+  if (rectCollisions.length > 0) {
+    // Prefer column droppables
+    const columnCollision = rectCollisions.find((c) => String(c.id).startsWith("column-"));
+    if (columnCollision) return [columnCollision];
+    return rectCollisions;
+  }
+
+  return closestCorners(args);
+};
 
 interface Card {
   id: number;
@@ -600,7 +628,7 @@ export default function KanbanBoard({
       <div className="flex-1 overflow-x-auto p-6">
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={customCollisionDetection}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
