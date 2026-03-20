@@ -572,8 +572,10 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                 )}
                 {allProducts.map((product) => (
                   <div key={product.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-700 transition-colors">
-                    <span className="text-base">{product.emoji}</span>
-                    <span className="flex-1 text-sm text-gray-200 truncate">{product.name}</span>
+                    <button onClick={() => { onSelectProduct(product, org!); setBrowsingOrgId(null); }} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                      <span className="text-base shrink-0">{product.emoji}</span>
+                      <span className="text-sm text-gray-200 truncate hover:text-white">{product.name}</span>
+                    </button>
                     <button onClick={() => onToggleStar(product.id)}
                       className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${starredProducts.has(product.id) ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}>
                       <svg className="w-4 h-4" viewBox="0 0 20 20" fill={starredProducts.has(product.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={starredProducts.has(product.id) ? 0 : 1.5}>
