@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import ConfirmModal from "./ConfirmModal";
 
 interface Card {
   id: number;
@@ -52,6 +53,7 @@ export default function CardModal({
   const [newAttachmentContent, setNewAttachmentContent] = useState("");
   const [showAddAttachment, setShowAddAttachment] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const loadAttachments = useCallback(async () => {
@@ -99,7 +101,6 @@ export default function CardModal({
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this card?")) return;
     const res = await fetch(`/api/cards/${card.id}`, { method: "DELETE" });
     if (res.ok) {
       onDelete(card.id);
@@ -361,7 +362,7 @@ export default function CardModal({
           {/* Actions */}
           <div className="flex items-center justify-between pt-2">
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
             >
               Delete card
@@ -376,6 +377,10 @@ export default function CardModal({
           </div>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <ConfirmModal title="Delete Card" message="This card will be permanently deleted." onConfirm={handleDelete} onCancel={() => setShowDeleteConfirm(false)} />
+      )}
     </div>
   );
 }

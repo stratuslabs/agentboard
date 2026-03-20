@@ -22,6 +22,7 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import dynamic from "next/dynamic";
+import ConfirmModal from "./ConfirmModal";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), { ssr: false, loading: () => <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-4 text-xs text-gray-400">Loading...</div> });
 
@@ -152,6 +153,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   const [editingProductName, setEditingProductName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: "org" | "product"; id: number; orgId?: number } | null>(null);
   const [emojiPickerProductId, setEmojiPickerProductId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [dragOverOrgId, setDragOverOrgId] = useState<number | null>(null);
   const [activeProductDrag, setActiveProductDrag] = useState<Product | null>(null);
   const [orgMenuId, setOrgMenuId] = useState<number | null>(null);
@@ -251,9 +253,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     setEditingOrgId(null); setEditingOrgName(""); loadOrgs();
   }
 
-  async function handleDeleteOrg(orgId: number) {
-    if (!confirm("Delete this organization and all its products?")) return;
-    await fetch(`/api/orgs/${orgId}`, { method: "DELETE" }); loadOrgs();
+  function handleDeleteOrg(orgId: number) {
+    setConfirmAction({
+      title: "Delete Organization",
+      message: "This will delete the organization and all its products, boards, and cards.",
+      action: async () => { await fetch(`/api/orgs/${orgId}`, { method: "DELETE" }); loadOrgs(); setConfirmAction(null); },
+    });
   }
 
   async function handleRenameProduct(productId: number, orgId: number) {
@@ -262,9 +267,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     setEditingProductId(null); setEditingProductName(""); await refreshProducts(orgId);
   }
 
-  async function handleDeleteProduct(productId: number, orgId: number) {
-    if (!confirm("Delete this product and all its boards/cards?")) return;
-    await fetch(`/api/products/${productId}`, { method: "DELETE" }); await refreshProducts(orgId);
+  function handleDeleteProduct(productId: number, orgId: number) {
+    setConfirmAction({
+      title: "Delete Product",
+      message: "This will delete the product and all its boards and cards.",
+      action: async () => { await fetch(`/api/products/${productId}`, { method: "DELETE" }); await refreshProducts(orgId); setConfirmAction(null); },
+    });
   }
 
   async function handleChangeEmoji(productId: number, orgId: number, emoji: string) {
@@ -622,6 +630,11 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
             Delete
           </button>
         </div>
+      )}
+
+      {/* Confirm modal */}
+      {confirmAction && (
+        <ConfirmModal title={confirmAction.title} message={confirmAction.message} onConfirm={confirmAction.action} onCancel={() => setConfirmAction(null)} />
       )}
     </div>
   );

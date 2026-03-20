@@ -26,6 +26,7 @@ import {
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardModal from "./CardModal";
+import ConfirmModal from "./ConfirmModal";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -121,6 +122,7 @@ export default function KanbanBoard({
   const [newBoardName, setNewBoardName] = useState("");
   const [boardContextMenu, setBoardContextMenu] = useState<{ boardId: number; x: number; y: number } | null>(null);
   const [renamingBoardId, setRenamingBoardId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [renameBoardName, setRenameBoardName] = useState("");
 
   const sensors = useSensors(
@@ -369,15 +371,21 @@ export default function KanbanBoard({
     }
   }
 
-  async function handleDeleteBoard(boardId: number) {
-    if (!confirm("Delete this board and all its columns/cards?")) return;
-    await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
-    const remaining = boards.filter((b) => b.id !== boardId);
-    setBoards(remaining);
-    if (activeBoardId === boardId) {
-      setActiveBoardId(remaining.length > 0 ? remaining[0].id : null);
-    }
-    loadBoards();
+  function handleDeleteBoard(boardId: number) {
+    setConfirmAction({
+      title: "Delete Board",
+      message: "This will delete the board and all its columns and cards.",
+      action: async () => {
+        await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
+        const remaining = boards.filter((b) => b.id !== boardId);
+        setBoards(remaining);
+        if (activeBoardId === boardId) {
+          setActiveBoardId(remaining.length > 0 ? remaining[0].id : null);
+        }
+        loadBoards();
+        setConfirmAction(null);
+      },
+    });
   }
 
   async function handleMoveBoardLeft(boardId: number) {
@@ -568,8 +576,7 @@ export default function KanbanBoard({
                 onClick={() => {
                   const boardId = boardContextMenu.boardId;
                   setBoardContextMenu(null);
-                  // Timeout to let context menu close before confirm dialog
-                  setTimeout(() => handleDeleteBoard(boardId), 50);
+                  handleDeleteBoard(boardId);
                 }}
               >
                 Delete
@@ -815,6 +822,10 @@ export default function KanbanBoard({
           onUpdate={handleCardUpdate}
           onDelete={handleCardDelete}
         />
+      )}
+
+      {confirmAction && (
+        <ConfirmModal title={confirmAction.title} message={confirmAction.message} onConfirm={confirmAction.action} onCancel={() => setConfirmAction(null)} />
       )}
     </div>
   );
