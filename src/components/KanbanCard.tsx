@@ -6,6 +6,10 @@ interface Card {
   title: string;
   description: string;
   assignee: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  assignee_type: string | null;
+  assignee_color: string | null;
   priority: string;
   labels: string;
   github_issue_url: string | null;
@@ -34,6 +38,10 @@ export default function KanbanCard({ card, onClick }: KanbanCardProps) {
         .map((l) => l.trim())
         .filter(Boolean)
     : [];
+
+  const displayName = card.assignee_name || card.assignee;
+  const displayColor = card.assignee_color || null;
+  const isAgent = card.assignee_type === "agent";
 
   return (
     <div
@@ -73,9 +81,21 @@ export default function KanbanCard({ card, onClick }: KanbanCardProps) {
 
       {/* Bottom row: assignee + priority */}
       <div className="flex items-center justify-between mt-2.5">
-        {card.assignee ? (
-          <div className="w-6 h-6 rounded-full bg-accent/30 flex items-center justify-center text-[10px] font-semibold text-accent-hover uppercase" title={card.assignee}>
-            {card.assignee.charAt(0)}
+        {displayName ? (
+          <div className="flex items-center gap-1.5" title={displayName}>
+            {displayColor ? (
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+                style={{ backgroundColor: displayColor }}
+              >
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-surface-600 flex items-center justify-center text-[10px] font-semibold text-gray-400 uppercase">
+                {displayName.charAt(0)}
+              </div>
+            )}
+            {isAgent && <span className="text-[10px]">{"\u{1F916}"}</span>}
           </div>
         ) : (
           <div />

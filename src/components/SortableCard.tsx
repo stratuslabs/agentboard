@@ -10,6 +10,10 @@ interface Card {
   title: string;
   description: string;
   assignee: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  assignee_type: string | null;
+  assignee_color: string | null;
   priority: string;
   labels: string;
   github_issue_url: string | null;

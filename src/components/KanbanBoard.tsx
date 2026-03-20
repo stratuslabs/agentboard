@@ -62,6 +62,10 @@ interface Card {
   title: string;
   description: string;
   assignee: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  assignee_type: string | null;
+  assignee_color: string | null;
   priority: string;
   labels: string;
   github_issue_url: string | null;
@@ -69,6 +73,13 @@ interface Card {
   position: number;
   created_at: string;
   updated_at: string;
+}
+
+interface Member {
+  id: number;
+  name: string;
+  type: string;
+  color: string;
 }
 
 interface Column {
@@ -118,6 +129,7 @@ export default function KanbanBoard({
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterLabel, setFilterLabel] = useState("");
+  const [members, setMembers] = useState<Member[]>([]);
   const [addingBoard, setAddingBoard] = useState(false);
   const [newBoardName, setNewBoardName] = useState("");
   const [boardContextMenu, setBoardContextMenu] = useState<{ boardId: number; x: number; y: number } | null>(null);
@@ -162,6 +174,7 @@ export default function KanbanBoard({
 
   useEffect(() => {
     loadBoards();
+    fetch("/api/members").then((r) => r.json()).then(setMembers).catch(() => {});
   }, [loadBoards]);
 
   useEffect(() => {
@@ -175,12 +188,12 @@ export default function KanbanBoard({
     (columnId: number) => {
       return cards
         .filter((c) => c.column_id === columnId)
-        .filter(
-          (c) =>
-            !filterAssignee ||
-            (c.assignee &&
-              c.assignee.toLowerCase().includes(filterAssignee.toLowerCase()))
-        )
+        .filter((c) => {
+          if (!filterAssignee) return true;
+          if (filterAssignee === "__unassigned__") return !c.assignee_id && !c.assignee;
+          // filterAssignee is a member id string
+          return String(c.assignee_id) === filterAssignee;
+        })
         .filter((c) => !filterPriority || c.priority === filterPriority)
         .filter(
           (c) =>
@@ -422,9 +435,7 @@ export default function KanbanBoard({
 
   const hasFilters = filterAssignee || filterPriority || filterLabel;
 
-  const assignees = Array.from(
-    new Set(cards.map((c) => c.assignee).filter(Boolean) as string[])
-  );
+  // No longer needed — using members list for filter
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -595,9 +606,10 @@ export default function KanbanBoard({
           className="px-2 py-1 bg-surface-700 border border-surface-500 rounded text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
         >
           <option value="">All assignees</option>
-          {assignees.map((a) => (
-            <option key={a} value={a}>
-              {a}
+          <option value="__unassigned__">Unassigned</option>
+          {members.map((m) => (
+            <option key={m.id} value={String(m.id)}>
+              {m.name}{m.type === "agent" ? " \u{1F916}" : ""}
             </option>
           ))}
         </select>

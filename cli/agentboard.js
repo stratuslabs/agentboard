@@ -129,10 +129,6 @@ function getRemoteBackend(baseUrl, password) {
   if (password) {
     headers.Authorization = `Bearer ${password}`;
   }
-  const agentName = process.env.AGENTBOARD_AGENT_NAME;
-  if (agentName) {
-    headers["X-Agent-Name"] = agentName;
-  }
 
   async function req(method, urlPath, body) {
     const url = `${base}${urlPath}`;
@@ -220,32 +216,7 @@ function getRemoteBackend(baseUrl, password) {
     return done.id;
   }
 
-  // helper: look up member by name
-  async function resolveMemberId(name) {
-    const members = await req("GET", "/api/members");
-    const m = members.find(
-      (x) => x.name.toLowerCase() === name.toLowerCase()
-    );
-    if (!m) die(`Member not found: ${name}`);
-    return m.id;
-  }
-
   return {
-    // -- members --
-    async memberList() {
-      return req("GET", "/api/members");
-    },
-    async memberAdd(name, opts) {
-      return req("POST", "/api/members", {
-        name,
-        type: opts.type || "human",
-        color: opts.color || undefined,
-      });
-    },
-    async memberRemove(id) {
-      return req("DELETE", `/api/members/${id}`);
-    },
-
     // -- orgs --
     async orgList() {
       return req("GET", "/api/orgs");
@@ -289,27 +260,14 @@ function getRemoteBackend(baseUrl, password) {
       } else {
         columnId = await findFirstColumnId(boardId);
       }
-      let assigneeId = null;
-      if (opts.assignee) {
-        try {
-          assigneeId = await resolveMemberId(opts.assignee);
-        } catch {
-          // Fall back to text assignee if member not found
-        }
-      }
-      const body = {
+      return req("POST", "/api/cards", {
         column_id: columnId,
         title: opts.title,
         description: opts.description || "",
+        assignee: opts.assignee || null,
         priority: opts.priority || "medium",
         labels: opts.label || "",
-      };
-      if (assigneeId) {
-        body.assignee_id = assigneeId;
-      } else if (opts.assignee) {
-        body.assignee = opts.assignee;
-      }
-      return req("POST", "/api/cards", body);
+      });
     },
 
     async taskList(opts) {
@@ -319,15 +277,7 @@ function getRemoteBackend(baseUrl, password) {
         const boardId = await resolveBoardId(productId, opts.board);
         params.set("board_id", boardId);
       }
-      if (opts.assignee) {
-        // Try to resolve as member for assignee_id filter
-        try {
-          const memberId = await resolveMemberId(opts.assignee);
-          params.set("assignee_id", memberId);
-        } catch {
-          params.set("assignee", opts.assignee);
-        }
-      }
+      if (opts.assignee) params.set("assignee", opts.assignee);
       if (opts.priority) params.set("priority", opts.priority);
       if (opts.column) {
         if (opts.product && opts.board) {
@@ -362,15 +312,6 @@ function getRemoteBackend(baseUrl, password) {
     },
 
     async taskUpdate(cardId, updates) {
-      // Resolve assignee name to member id if provided
-      if (updates.assignee) {
-        try {
-          updates.assignee_id = await resolveMemberId(updates.assignee);
-          delete updates.assignee;
-        } catch {
-          // Keep as text assignee
-        }
-      }
       return req("PATCH", `/api/cards/${cardId}`, updates);
     },
 
@@ -446,13 +387,7 @@ function getRemoteBackend(baseUrl, password) {
     },
 
     async myTasks(assignee) {
-      // Try to resolve as member first
-      try {
-        const memberId = await resolveMemberId(assignee);
-        return req("GET", `/api/cards?assignee_id=${memberId}`);
-      } catch {
-        return req("GET", `/api/cards?assignee=${encodeURIComponent(assignee)}`);
-      }
+      return req("GET", `/api/cards?assignee=${encodeURIComponent(assignee)}`);
     },
   };
 }
@@ -503,11 +438,6 @@ Boards:
   board remove <board-id>                    Delete a board
   board reorder --product <slug> --ids <1,2,3>  Reorder boards
 
-Members:
-  member list                            List all members
-  member add <name> [--type human|agent] [--color #hex]
-  member remove <id>                     Remove a member
-
 Views:
   board --product <slug> --board <slug>   Show board overview
   my-tasks --assignee <name>              Show tasks for assignee
@@ -517,9 +447,8 @@ Output:
   --quiet    Minimal output (IDs only)
 
 Environment:
-  AGENTBOARD_URL        Server URL (e.g. http://localhost:3000)
-  AGENTBOARD_PASSWORD   Auth password (if APP_PASSWORD is set)
-  AGENTBOARD_AGENT_NAME Agent name (auto-registers as agent member)
+  AGENTBOARD_URL       Server URL (e.g. http://localhost:3000)
+  AGENTBOARD_PASSWORD  Auth password (if APP_PASSWORD is set)
 `;
   process.stdout.write(usage);
 }
@@ -547,31 +476,8 @@ async function main() {
   const sub = positional[1];
 
   try {
-    // ---- member ----
-    if (cmd === "member") {
-      if (sub === "list") {
-        const data = await backend.memberList();
-        output(data, flags);
-      } else if (sub === "add") {
-        const name = positional[2];
-        if (!name) die("Usage: agentboard member add <name> [--type human|agent] [--color #hex]");
-        const data = await backend.memberAdd(name, {
-          type: flags.type,
-          color: flags.color,
-        });
-        output(data, flags);
-      } else if (sub === "remove") {
-        const id = positional[2];
-        if (!id) die("Usage: agentboard member remove <id>");
-        const data = await backend.memberRemove(id);
-        output(data, flags);
-      } else {
-        die(`Unknown member command: ${sub}. Use: list, add, remove`);
-      }
-    }
-
     // ---- org ----
-    else if (cmd === "org") {
+    if (cmd === "org") {
       if (sub === "list") {
         const data = await backend.orgList();
         output(data, flags);

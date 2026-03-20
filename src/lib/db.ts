@@ -68,6 +68,22 @@ export async function ensureTables() {
     )
   `;
   await sql`
+    CREATE TABLE IF NOT EXISTS members (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'human' CHECK(type IN ('human', 'agent')),
+      color TEXT DEFAULT '#6B7280',
+      avatar_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  // Migration: add assignee_id to cards if not present
+  try {
+    await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES members(id) ON DELETE SET NULL`;
+  } catch {
+    // Column may already exist
+  }
+  await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,

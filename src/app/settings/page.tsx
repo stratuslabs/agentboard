@@ -2,11 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import ConfirmModal from "@/components/ConfirmModal";
 
 interface ColumnDef {
   name: string;
   color: string;
 }
+
+interface Member {
+  id: number;
+  name: string;
+  type: string;
+  color: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+const PRESET_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -17,6 +29,18 @@ export default function SettingsPage() {
   const [savingColumns, setSavingColumns] = useState(false);
   const [boardsSaved, setBoardsSaved] = useState(false);
   const [columnsSaved, setColumnsSaved] = useState(false);
+
+  // Team state
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberType, setNewMemberType] = useState<"human" | "agent">("human");
+  const [newMemberColor, setNewMemberColor] = useState(PRESET_COLORS[5]);
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [deletingMember, setDeletingMember] = useState<Member | null>(null);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -35,6 +59,19 @@ export default function SettingsPage() {
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    loadMembers();
+  }, []);
+
+  async function loadMembers() {
+    setLoadingMembers(true);
+    const res = await fetch("/api/members");
+    if (res.ok) {
+      setMembers(await res.json());
+    }
+    setLoadingMembers(false);
+  }
 
   async function saveBoards() {
     setSavingBoards(true);
@@ -60,6 +97,40 @@ export default function SettingsPage() {
     setSavingColumns(false);
     setColumnsSaved(true);
     setTimeout(() => setColumnsSaved(false), 2000);
+  }
+
+  async function handleAddMember() {
+    if (!newMemberName.trim()) return;
+    const res = await fetch("/api/members", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newMemberName.trim(), type: newMemberType, color: newMemberColor }),
+    });
+    if (res.ok) {
+      setNewMemberName("");
+      setNewMemberType("human");
+      setNewMemberColor(PRESET_COLORS[5]);
+      setShowAddMember(false);
+      loadMembers();
+    }
+  }
+
+  async function handleSaveEdit(memberId: number) {
+    if (!editName.trim()) return;
+    await fetch(`/api/members/${memberId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName.trim(), color: editColor }),
+    });
+    setEditingMemberId(null);
+    loadMembers();
+  }
+
+  async function handleDeleteMember() {
+    if (!deletingMember) return;
+    await fetch(`/api/members/${deletingMember.id}`, { method: "DELETE" });
+    setDeletingMember(null);
+    loadMembers();
   }
 
   function moveBoardUp(i: number) {
@@ -90,6 +161,9 @@ export default function SettingsPage() {
     setColumns(next);
   }
 
+  const humanMembers = members.filter((m) => m.type === "human");
+  const agentMembers = members.filter((m) => m.type === "agent");
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-900 flex items-center justify-center">
@@ -114,6 +188,146 @@ export default function SettingsPage() {
           </button>
           <h1 className="text-xl font-semibold text-white">Settings</h1>
         </div>
+
+        {/* Team Section */}
+        <section className="mb-10">
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Team</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Manage team members and agents. Members can be assigned to cards across all products.
+          </p>
+
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => setShowAddMember(!showAddMember)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Member
+            </button>
+          </div>
+
+          {/* Add member form */}
+          {showAddMember && (
+            <div className="bg-surface-800 border border-surface-600 rounded-xl p-4 mb-3 space-y-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddMember(); if (e.key === "Escape") setShowAddMember(false); }}
+                  className="flex-1 px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="Name"
+                  autoFocus
+                />
+                <select
+                  value={newMemberType}
+                  onChange={(e) => setNewMemberType(e.target.value as "human" | "agent")}
+                  className="px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="human">Human</option>
+                  <option value="agent">Agent</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Color:</span>
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setNewMemberColor(c)}
+                    className={`w-5 h-5 rounded-full border-2 transition-colors ${newMemberColor === c ? "border-white" : "border-transparent"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddMember}
+                  className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={() => { setShowAddMember(false); setNewMemberName(""); }}
+                  className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loadingMembers ? (
+            <div className="text-gray-500 text-xs py-4">Loading members...</div>
+          ) : members.length === 0 ? (
+            <div className="bg-surface-800 border border-surface-600 rounded-xl px-4 py-6 text-center text-gray-500 text-sm">
+              No members yet. Add your first team member above.
+            </div>
+          ) : (
+            <div className="bg-surface-800 border border-surface-600 rounded-xl overflow-hidden">
+              {/* Humans */}
+              {humanMembers.length > 0 && (
+                <>
+                  <div className="px-4 py-1.5 bg-surface-700/50 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                    People
+                  </div>
+                  {humanMembers.map((member) => (
+                    <MemberRow
+                      key={member.id}
+                      member={member}
+                      isEditing={editingMemberId === member.id}
+                      editName={editName}
+                      editColor={editColor}
+                      onStartEdit={() => { setEditingMemberId(member.id); setEditName(member.name); setEditColor(member.color); }}
+                      onEditName={setEditName}
+                      onEditColor={setEditColor}
+                      onSaveEdit={() => handleSaveEdit(member.id)}
+                      onCancelEdit={() => setEditingMemberId(null)}
+                      onDelete={() => setDeletingMember(member)}
+                    />
+                  ))}
+                </>
+              )}
+              {/* Agents */}
+              {agentMembers.length > 0 && (
+                <>
+                  <div className="px-4 py-1.5 bg-surface-700/50 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                    Agents
+                  </div>
+                  {agentMembers.map((member) => (
+                    <MemberRow
+                      key={member.id}
+                      member={member}
+                      isEditing={editingMemberId === member.id}
+                      editName={editName}
+                      editColor={editColor}
+                      onStartEdit={() => { setEditingMemberId(member.id); setEditName(member.name); setEditColor(member.color); }}
+                      onEditName={setEditName}
+                      onEditColor={setEditColor}
+                      onSaveEdit={() => handleSaveEdit(member.id)}
+                      onCancelEdit={() => setEditingMemberId(null)}
+                      onDelete={() => setDeletingMember(member)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Coming Soon: Teams */}
+          <div className="mt-6 bg-surface-700 border border-surface-600 rounded-xl px-4 py-4">
+            <div className="flex items-center gap-2 mb-1">
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-400">Teams — Coming Soon</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              Invite team members, manage permissions, and collaborate across your organization.
+            </p>
+          </div>
+        </section>
 
         {/* Default Boards */}
         <section className="mb-10">
@@ -291,6 +505,104 @@ export default function SettingsPage() {
             These columns will be created in every new board for new products.
           </p>
         </section>
+      </div>
+
+      {deletingMember && (
+        <ConfirmModal
+          title="Delete Member"
+          message={`Remove "${deletingMember.name}" from the team? Cards assigned to this member will become unassigned.`}
+          onConfirm={handleDeleteMember}
+          onCancel={() => setDeletingMember(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MemberRow({
+  member,
+  isEditing,
+  editName,
+  editColor,
+  onStartEdit,
+  onEditName,
+  onEditColor,
+  onSaveEdit,
+  onCancelEdit,
+  onDelete,
+}: {
+  member: Member;
+  isEditing: boolean;
+  editName: string;
+  editColor: string;
+  onStartEdit: () => void;
+  onEditName: (v: string) => void;
+  onEditColor: (v: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onDelete: () => void;
+}) {
+  if (isEditing) {
+    return (
+      <div className="px-4 py-2.5 border-b border-surface-700 last:border-b-0 space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => onEditName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") onSaveEdit(); if (e.key === "Escape") onCancelEdit(); }}
+            className="flex-1 px-2 py-1.5 bg-surface-700 border border-surface-500 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
+            autoFocus
+          />
+          <button onClick={onSaveEdit} className="px-2 py-1 bg-accent hover:bg-accent-hover text-white text-xs rounded transition-colors">Save</button>
+          <button onClick={onCancelEdit} className="px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors">Cancel</button>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-400 mr-1">Color:</span>
+          {PRESET_COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => onEditColor(c)}
+              className={`w-4 h-4 rounded-full border-2 transition-colors ${editColor === c ? "border-white" : "border-transparent"}`}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-surface-700 last:border-b-0 group">
+      <div
+        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+        style={{ backgroundColor: member.color }}
+      >
+        {member.name.charAt(0).toUpperCase()}
+      </div>
+      <span className="text-sm text-white flex-1">{member.name}</span>
+      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${member.type === "agent" ? "bg-purple-500/20 text-purple-300" : "bg-surface-600 text-gray-400"}`}>
+        {member.type === "agent" ? "Agent \u{1F916}" : "Human"}
+      </span>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={onStartEdit}
+          className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:text-white hover:bg-surface-600 transition-colors"
+          title="Edit"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+        </button>
+        <button
+          onClick={onDelete}
+          className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+          title="Delete"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );

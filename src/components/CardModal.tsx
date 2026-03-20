@@ -9,6 +9,10 @@ interface Card {
   title: string;
   description: string;
   assignee: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  assignee_type: string | null;
+  assignee_color: string | null;
   priority: string;
   labels: string;
   github_issue_url: string | null;
@@ -16,6 +20,13 @@ interface Card {
   position: number;
   created_at: string;
   updated_at: string;
+}
+
+interface Member {
+  id: number;
+  name: string;
+  type: string;
+  color: string;
 }
 
 interface Attachment {
@@ -41,7 +52,7 @@ export default function CardModal({
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description || "");
-  const [assignee, setAssignee] = useState(card.assignee || "");
+  const [assigneeId, setAssigneeId] = useState<number | null>(card.assignee_id || null);
   const [priority, setPriority] = useState(card.priority);
   const [labels, setLabels] = useState(card.labels || "");
   const [githubIssueUrl, setGithubIssueUrl] = useState(
@@ -54,6 +65,7 @@ export default function CardModal({
   const [showAddAttachment, setShowAddAttachment] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const loadAttachments = useCallback(async () => {
@@ -66,6 +78,13 @@ export default function CardModal({
   useEffect(() => {
     loadAttachments();
   }, [loadAttachments]);
+
+  useEffect(() => {
+    fetch("/api/members")
+      .then((r) => r.json())
+      .then(setMembers)
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     function handleEsc(e: KeyboardEvent) {
@@ -84,7 +103,8 @@ export default function CardModal({
         body: JSON.stringify({
           title,
           description,
-          assignee: assignee || null,
+          assignee_id: assigneeId,
+          assignee: assigneeId ? null : null,
           priority,
           labels,
           github_issue_url: githubIssueUrl || null,
@@ -137,6 +157,9 @@ export default function CardModal({
   function handleOverlayClick(e: React.MouseEvent) {
     if (e.target === overlayRef.current) onClose();
   }
+
+  const selectedMember = members.find((m) => m.id === assigneeId);
+  const fallbackAssignee = !assigneeId && card.assignee ? card.assignee : null;
 
   return (
     <div
@@ -195,13 +218,35 @@ export default function CardModal({
               <label className="block text-xs font-medium text-gray-400 mb-1">
                 Assignee
               </label>
-              <input
-                type="text"
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="w-full px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder="Name"
-              />
+              <select
+                value={assigneeId ?? ""}
+                onChange={(e) => setAssigneeId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.type === "agent" ? " \u{1F916}" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedMember && (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <div
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-semibold text-white"
+                    style={{ backgroundColor: selectedMember.color }}
+                  >
+                    {selectedMember.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs text-gray-400">{selectedMember.name}</span>
+                  {selectedMember.type === "agent" && <span className="text-[10px]">{"\u{1F916}"}</span>}
+                </div>
+              )}
+              {fallbackAssignee && (
+                <div className="text-xs text-gray-500 mt-1">
+                  Legacy: {fallbackAssignee}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
