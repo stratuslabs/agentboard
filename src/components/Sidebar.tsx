@@ -125,13 +125,6 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
         className={`flex-1 text-left px-2 py-1.5 text-sm rounded-md transition-colors truncate ${isSelected ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"}`}>
         {product.name}
       </button>
-      <button onClick={(e) => { e.stopPropagation(); onToggleStar(); }}
-        className={`shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${isStarred ? "text-yellow-400" : "text-gray-600 opacity-0 group-hover/product:opacity-100 hover:text-gray-400"}`}
-        title={isStarred ? "Unstar" : "Star"}>
-        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={isStarred ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isStarred ? 0 : 1.5}>
-          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-        </svg>
-      </button>
       {emojiPickerOpen && (
         <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-2 w-[200px]">
           <input type="text" placeholder="Paste emoji..." className="w-full px-2 py-1 mb-2 text-sm bg-surface-600 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent" autoFocus
@@ -168,9 +161,9 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   const [orgMenuId, setOrgMenuId] = useState<number | null>(null);
   const [orgMenuPos, setOrgMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
-  const [showStarredOnly, setShowStarredOnly] = useState<Record<number, boolean>>(() => {
+  const [showAllProducts, setShowAllProducts] = useState<Record<number, boolean>>(() => {
     if (typeof window === "undefined") return {};
-    try { const saved = localStorage.getItem("agentboard-starred-orgs"); return saved ? JSON.parse(saved) : {}; } catch { return {}; }
+    try { const saved = localStorage.getItem("agentboard-show-all-orgs"); return saved ? JSON.parse(saved) : {}; } catch { return {}; }
   });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
@@ -221,10 +214,10 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     });
   }
 
-  function toggleShowStarredOnly(orgId: number) {
-    setShowStarredOnly((prev) => {
+  function toggleShowAllProducts(orgId: number) {
+    setShowAllProducts((prev) => {
       const next = { ...prev, [orgId]: !prev[orgId] };
-      try { localStorage.setItem("agentboard-starred-orgs", JSON.stringify(next)); } catch {}
+      try { localStorage.setItem("agentboard-show-all-orgs", JSON.stringify(next)); } catch {}
       return next;
     });
   }
@@ -449,10 +442,10 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
           <SortableContext items={orgs.map((o) => `org-${o.id}`)} strategy={verticalListSortingStrategy}>
             {orgs.map((org) => {
               const allProducts = productsByOrg[org.id] || [];
-              const isStarredMode = showStarredOnly[org.id] || false;
+              const isShowAll = showAllProducts[org.id] || false;
               const starredInOrg = allProducts.filter((p) => starredProducts.has(p.id));
-              // Show starred only if toggled AND there are starred products, otherwise show all
-              const visibleProducts = (isStarredMode && starredInOrg.length > 0) ? starredInOrg : allProducts;
+              // Default: show only starred. Show all if toggled or if no starred products exist
+              const visibleProducts = (isShowAll || starredInOrg.length === 0) ? allProducts : starredInOrg;
               return (
               <div key={org.id} className="mb-1">
                 <SortableOrgHeader org={org} expanded={expandedOrgs.has(org.id)} onToggle={() => toggleOrg(org.id)}
@@ -464,11 +457,11 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                 {expandedOrgs.has(org.id) && (
                   <DroppableOrgZone orgId={org.id} isOver={dragOverOrgId === org.id && activeProductDrag !== null}>
                     {/* Starred-only indicator */}
-                    {isStarredMode && starredInOrg.length > 0 && (
-                      <button onClick={() => setBrowsingOrgId(org.id)}
-                        className="flex items-center gap-1 w-full px-4 py-0.5 text-[10px] text-yellow-500/70 hover:text-yellow-400 transition-colors">
-                        <span>★ Showing starred only</span>
-                        <span className="text-gray-600">· View all</span>
+                    {!isShowAll && starredInOrg.length > 0 && starredInOrg.length < allProducts.length && (
+                      <button onClick={() => toggleShowAllProducts(org.id)}
+                        className="flex items-center gap-1 w-full px-4 py-0.5 text-[10px] text-gray-500 hover:text-gray-400 transition-colors">
+                        <span>{starredInOrg.length} of {allProducts.length}</span>
+                        <span className="text-gray-600">· Show all</span>
                       </button>
                     )}
                     <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
@@ -556,12 +549,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
             Browse all products
           </button>
           {(() => { const starredInOrg = (productsByOrg[orgMenuId] || []).filter((p) => starredProducts.has(p.id)); return starredInOrg.length > 0 ? (
-            <button onClick={(e) => { e.stopPropagation(); toggleShowStarredOnly(orgMenuId); setOrgMenuId(null); }}
+            <button onClick={(e) => { e.stopPropagation(); toggleShowAllProducts(orgMenuId); setOrgMenuId(null); }}
               className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={showStarredOnly[orgMenuId] ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={showAllProducts[orgMenuId] ? "none" : "currentColor"} stroke="currentColor" strokeWidth={showAllProducts[orgMenuId] ? 1.5 : 0}>
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              {showStarredOnly[orgMenuId] ? "Show all products" : "Show starred only"}
+              {showAllProducts[orgMenuId] ? "Show starred only" : "Show all products"}
             </button>
           ) : null; })()}
           <div className="border-t border-surface-600 my-1" />
