@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 
@@ -27,15 +27,34 @@ interface Product {
   emoji: string;
 }
 
+function loadStarred(): Set<number> {
+  if (typeof window === "undefined") return new Set();
+  try { const saved = localStorage.getItem("agentboard-starred-products"); return saved ? new Set(JSON.parse(saved)) : new Set(); } catch { return new Set(); }
+}
+
+function saveStarred(starred: Set<number>) {
+  try { localStorage.setItem("agentboard-starred-products", JSON.stringify([...starred])); } catch {}
+}
+
 export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
+  const [starredProducts, setStarredProducts] = useState<Set<number>>(loadStarred);
 
   function handleSelectProduct(product: Product, org: Org) {
     setSelectedProduct(product);
     setSelectedOrg(org);
   }
+
+  const toggleStar = useCallback((productId: number) => {
+    setStarredProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId); else next.add(productId);
+      saveStarred(next);
+      return next;
+    });
+  }, []);
 
   return (
     <div className="h-screen flex overflow-hidden bg-surface-900">
@@ -44,6 +63,8 @@ export default function HomePage() {
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         selectedProductId={selectedProduct?.id ?? null}
         onSelectProduct={handleSelectProduct}
+        starredProducts={starredProducts}
+        onToggleStar={toggleStar}
       />
 
       {selectedProduct && selectedOrg ? (
@@ -53,6 +74,8 @@ export default function HomePage() {
           orgName={selectedOrg.name}
           productName={selectedProduct.name}
           productEmoji={selectedProduct.emoji}
+          isStarred={starredProducts.has(selectedProduct.id)}
+          onToggleStar={() => toggleStar(selectedProduct.id)}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
