@@ -23,6 +23,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), { ssr: false, loading: () => <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-4 text-xs text-gray-400">Loading...</div> });
 
@@ -47,8 +48,6 @@ interface SidebarProps {
   onToggle: () => void;
   selectedProductId: number | null;
   onSelectProduct: (product: Product, org: Org) => void;
-  starredProducts: Set<number>;
-  onToggleStar: (productId: number) => void;
 }
 
 // --- Sortable Org Header ---
@@ -138,11 +137,11 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, starredProducts, onToggleStar }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct }: SidebarProps) {
   const router = useRouter();
+  const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct, isStarred, setShowAllOrg } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [productsByOrg, setProductsByOrg] = useState<Record<number, Product[]>>({});
-  const [expandedOrgs, setExpandedOrgs] = useState<Set<number>>(new Set());
   const [addingOrgName, setAddingOrgName] = useState("");
   const [showAddOrg, setShowAddOrg] = useState(false);
   const [addingProductOrg, setAddingProductOrg] = useState<number | null>(null);
@@ -159,10 +158,10 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   const [orgMenuId, setOrgMenuId] = useState<number | null>(null);
   const [orgMenuPos, setOrgMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
-  const [showAllProducts, setShowAllProducts] = useState<Record<number, boolean>>(() => {
-    if (typeof window === "undefined") return {};
-    try { const saved = localStorage.getItem("agentboard-show-all-orgs"); return saved ? JSON.parse(saved) : {}; } catch { return {}; }
-  });
+
+  const expandedOrgs = new Set(prefs.expandedOrgs);
+  const starredProducts = new Set(prefs.starredProducts);
+  const showAllProducts = prefs.showAllOrgs;
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
 
@@ -178,46 +177,27 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       const pRes = await fetch(`/api/products?org_id=${org.id}`);
       if (pRes.ok) prodMap[org.id] = await pRes.json();
     }
-    // Restore expanded state from localStorage, or expand all on first visit
-    try {
-      const saved = localStorage.getItem("agentboard-expanded-orgs");
-      if (saved) {
-        setExpandedOrgs(new Set(JSON.parse(saved)));
-      } else {
-        setExpandedOrgs(new Set(data.map((o) => o.id)));
-      }
-    } catch {
-      setExpandedOrgs(new Set(data.map((o) => o.id)));
+    // If no expanded orgs preference exists, expand all
+    if (prefs.expandedOrgs.length === 0) {
+      setExpandedOrgs(data.map((o) => o.id));
     }
     setProductsByOrg(prodMap);
 
-    // Restore last selected product
-    try {
-      const saved = localStorage.getItem("agentboard-selected");
-      if (saved) {
-        const { productId, orgId } = JSON.parse(saved);
-        const org = data.find((o: Org) => o.id === orgId);
-        const product = (prodMap[orgId] || []).find((p: Product) => p.id === productId);
-        if (org && product) onSelectProduct(product, org);
-      }
-    } catch {}
+    // Restore last selected product from context
+    if (prefs.selectedProduct) {
+      const { productId, orgId } = prefs.selectedProduct;
+      const org = data.find((o: Org) => o.id === orgId);
+      const product = (prodMap[orgId] || []).find((p: Product) => p.id === productId);
+      if (org && product) onSelectProduct(product, org);
+    }
   }
 
   function toggleOrg(orgId: number) {
-    setExpandedOrgs((prev) => {
-      const next = new Set(prev);
-      if (next.has(orgId)) next.delete(orgId); else next.add(orgId);
-      try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {}
-      return next;
-    });
+    toggleExpandedOrg(orgId);
   }
 
   function toggleShowAllProducts(orgId: number) {
-    setShowAllProducts((prev) => {
-      const next = { ...prev, [orgId]: !prev[orgId] };
-      try { localStorage.setItem("agentboard-show-all-orgs", JSON.stringify(next)); } catch {}
-      return next;
-    });
+    setShowAllOrg(orgId, !showAllProducts[orgId]);
   }
 
   function handleOrgMenuClick(e: React.MouseEvent, orgId: number) {
@@ -307,7 +287,6 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     if (overId.startsWith("org-drop-")) {
       setDragOverOrgId(parseInt(overId.replace("org-drop-", ""), 10));
     } else if (overId.startsWith("product-")) {
-      // Find which org this product belongs to
       const productId = parseInt(overId.replace("product-", ""), 10);
       for (const [orgId, products] of Object.entries(productsByOrg)) {
         if (products.find((p) => p.id === productId)) {
@@ -348,14 +327,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     if (activeId.startsWith("product-")) {
       const productId = parseInt(activeId.replace("product-", ""), 10);
 
-      // Find source org
       let sourceOrgId: number | null = null;
       for (const [orgId, products] of Object.entries(productsByOrg)) {
         if (products.find((p) => p.id === productId)) { sourceOrgId = parseInt(orgId, 10); break; }
       }
       if (!sourceOrgId) return;
 
-      // Determine target org
       let targetOrgId: number | null = null;
 
       if (overId.startsWith("org-drop-")) {
@@ -370,7 +347,6 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       if (!targetOrgId) return;
 
       if (sourceOrgId === targetOrgId) {
-        // Same org — reorder
         const products = productsByOrg[sourceOrgId] || [];
         const overProductId = parseInt(overId.replace("product-", ""), 10);
         const oldIndex = products.findIndex((p) => p.id === productId);
@@ -381,8 +357,6 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
           await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: newProducts.map((p) => p.id) }) });
         }
       } else {
-        // Different org — move product
-        // Optimistic: remove from source, add to target
         const sourceProducts = (productsByOrg[sourceOrgId] || []).filter((p) => p.id !== productId);
         const movedProduct = (productsByOrg[sourceOrgId] || []).find((p) => p.id === productId);
         if (!movedProduct) return;
@@ -390,16 +364,14 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         const targetProducts = [...(productsByOrg[targetOrgId] || []), { ...movedProduct, org_id: targetOrgId }];
         setProductsByOrg((prev) => ({ ...prev, [sourceOrgId]: sourceProducts, [targetOrgId]: targetProducts }));
 
-        // Expand target org if collapsed
-        setExpandedOrgs((prev) => {
-          const next = new Set(prev); next.add(targetOrgId);
-          try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {}
-          return next;
-        });
+        // Expand target org if collapsed — update via context
+        if (!expandedOrgs.has(targetOrgId)) {
+          const next = [...prefs.expandedOrgs, targetOrgId];
+          setExpandedOrgs(next);
+        }
 
         await fetch("/api/products/move", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: productId, org_id: targetOrgId, position: targetProducts.length - 1 }) });
 
-        // Reorder both
         await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: sourceProducts.map((p) => p.id) }) });
         await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: targetProducts.map((p) => p.id) }) });
       }
@@ -478,7 +450,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                           onEmojiToggle={() => setEmojiPickerProductId(emojiPickerProductId === product.id ? null : product.id)}
                           onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)}
                           isStarred={starredProducts.has(product.id)}
-                          onToggleStar={() => onToggleStar(product.id)} />
+                          onToggleStar={() => toggleStarredProduct(product.id)} />
                       ))}
                     </SortableContext>
 
@@ -549,7 +521,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             Browse all products
           </button>
-          <button onClick={(e) => { e.stopPropagation(); const id = orgMenuId; setOrgMenuId(null); setAddingProductOrg(id); setAddingProductName(""); setExpandedOrgs((prev) => { const next = new Set(prev); next.add(id); try { localStorage.setItem("agentboard-expanded-orgs", JSON.stringify([...next])); } catch {} return next; }); }}
+          <button onClick={(e) => { e.stopPropagation(); const id = orgMenuId; setOrgMenuId(null); setAddingProductOrg(id); setAddingProductName(""); if (!expandedOrgs.has(id)) { const next = [...prefs.expandedOrgs, id]; setExpandedOrgs(next); } }}
             className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             Add product
@@ -592,7 +564,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                       <span className="text-base shrink-0">{product.emoji}</span>
                       <span className="text-sm text-gray-200 truncate hover:text-white">{product.name}</span>
                     </button>
-                    <button onClick={() => onToggleStar(product.id)}
+                    <button onClick={() => toggleStarredProduct(product.id)}
                       className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${starredProducts.has(product.id) ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}>
                       <svg className="w-4 h-4" viewBox="0 0 20 20" fill={starredProducts.has(product.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={starredProducts.has(product.id) ? 0 : 1.5}>
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />

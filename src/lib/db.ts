@@ -100,6 +100,13 @@ export async function ensureTables() {
     )
   `;
   await sql`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
     INSERT INTO settings (key, value)
     VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
     ON CONFLICT DO NOTHING

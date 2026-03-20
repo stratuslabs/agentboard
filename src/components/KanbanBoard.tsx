@@ -27,6 +27,7 @@ import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardModal from "./CardModal";
 import ConfirmModal from "./ConfirmModal";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -104,8 +105,6 @@ interface KanbanBoardProps {
   orgName: string;
   productName: string;
   productEmoji: string;
-  isStarred: boolean;
-  onToggleStar: () => void;
 }
 
 export default function KanbanBoard({
@@ -113,9 +112,10 @@ export default function KanbanBoard({
   orgName,
   productName,
   productEmoji,
-  isStarred,
-  onToggleStar,
 }: KanbanBoardProps) {
+  const { isStarred: isStarredFn, toggleStarredProduct } = usePreferences();
+  const isStarred = isStarredFn(productId);
+  const onToggleStar = () => toggleStarredProduct(productId);
   const [boards, setBoards] = useState<Board[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
