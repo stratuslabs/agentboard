@@ -459,13 +459,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                 {expandedOrgs.has(org.id) && (
                   <DroppableOrgZone orgId={org.id} isOver={dragOverOrgId === org.id && activeProductDrag !== null}>
                     {/* Starred-only indicator */}
-                    {!isShowAll && starredInOrg.length > 0 && starredInOrg.length < allProducts.length && (
-                      <button onClick={() => toggleShowAllProducts(org.id)}
-                        className="flex items-center gap-1 w-full px-4 py-0.5 text-[10px] text-gray-500 hover:text-gray-400 transition-colors">
-                        <span>{starredInOrg.length} of {allProducts.length}</span>
-                        <span className="text-gray-600">· Show all</span>
-                      </button>
-                    )}
+
                     <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
                       {visibleProducts.map((product) => (
                         <SortableProductItem key={product.id} product={product} isSelected={selectedProductId === product.id}
@@ -550,15 +544,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             Browse all products
           </button>
-          {(() => { const starredInOrg = (productsByOrg[orgMenuId] || []).filter((p) => starredProducts.has(p.id)); return starredInOrg.length > 0 ? (
-            <button onClick={(e) => { e.stopPropagation(); toggleShowAllProducts(orgMenuId); setOrgMenuId(null); }}
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill={showAllProducts[orgMenuId] ? "none" : "currentColor"} stroke="currentColor" strokeWidth={showAllProducts[orgMenuId] ? 1.5 : 0}>
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              {showAllProducts[orgMenuId] ? "Show starred only" : "Show all products"}
-            </button>
-          ) : null; })()}
+
           <div className="border-t border-surface-600 my-1" />
           <button onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); } setOrgMenuId(null); }}
             className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
