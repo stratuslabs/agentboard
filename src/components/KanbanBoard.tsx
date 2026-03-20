@@ -7,17 +7,25 @@ import {
   DragOverlay,
   DragStartEvent,
   DragEndEvent,
+  DragOverEvent,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
+  arrayMove,
 } from "@dnd-kit/sortable";
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardModal from "./CardModal";
+
+function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
+  return <div ref={setNodeRef} className="flex-1 overflow-y-auto p-2 space-y-2">{children}</div>;
+}
 
 interface Card {
   id: number;
@@ -155,6 +163,36 @@ export default function KanbanBoard({
     if (card) setActiveCard(card);
   }
 
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const cardId = active.id as number;
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+
+    // Determine target column
+    let targetColumnId: number | null = null;
+    const overCard = cards.find((c) => c.id === over.id);
+    if (overCard) {
+      targetColumnId = overCard.column_id;
+    } else {
+      const colIdStr = String(over.id);
+      if (colIdStr.startsWith("column-")) {
+        targetColumnId = parseInt(colIdStr.replace("column-", ""), 10);
+      }
+    }
+
+    if (targetColumnId === null || card.column_id === targetColumnId) return;
+
+    // Optimistically move card to new column during drag
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === cardId ? { ...c, column_id: targetColumnId } : c
+      )
+    );
+  }
+
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveCard(null);
@@ -165,13 +203,12 @@ export default function KanbanBoard({
     const card = cards.find((c) => c.id === cardId);
     if (!card) return;
 
-    // Determine target column: over could be a card or a column
+    // Determine target column
     let targetColumnId: number;
     const overCard = cards.find((c) => c.id === over.id);
     if (overCard) {
       targetColumnId = overCard.column_id;
     } else {
-      // over.id might be a column droppable id like "column-5"
       const colIdStr = String(over.id);
       if (colIdStr.startsWith("column-")) {
         targetColumnId = parseInt(colIdStr.replace("column-", ""), 10);
@@ -180,19 +217,47 @@ export default function KanbanBoard({
       }
     }
 
-    if (card.column_id === targetColumnId && !overCard) return;
+    // Get cards in target column (card should already be there from dragOver)
+    const columnCards = cards
+      .filter((c) => c.column_id === targetColumnId)
+      .sort((a, b) => a.position - b.position);
 
-    // Optimistic update
-    setCards((prev) =>
-      prev.map((c) =>
-        c.id === cardId ? { ...c, column_id: targetColumnId } : c
-      )
-    );
+    const oldIndex = columnCards.findIndex((c) => c.id === cardId);
+    const newIndex = overCard ? columnCards.findIndex((c) => c.id === overCard.id) : columnCards.length - 1;
+
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      // Reorder within column
+      const reordered = arrayMove(columnCards, oldIndex, newIndex);
+      // Optimistic update with new positions
+      setCards((prev) => {
+        const otherCards = prev.filter((c) => c.column_id !== targetColumnId);
+        const updated = reordered.map((c, i) => ({ ...c, position: i }));
+        return [...otherCards, ...updated];
+      });
+    }
+
+    // Persist: move card to target column at the right position
+    const finalColumnCards = (() => {
+      const cc = cards.filter((c) => c.column_id === targetColumnId).sort((a, b) => a.position - b.position);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        return arrayMove(cc, oldIndex, newIndex);
+      }
+      return cc;
+    })();
+    const finalPosition = finalColumnCards.findIndex((c) => c.id === cardId);
 
     await fetch(`/api/cards/${cardId}/move`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ column_id: targetColumnId }),
+      body: JSON.stringify({ column_id: targetColumnId, position: finalPosition >= 0 ? finalPosition : 0 }),
+    });
+
+    // Reorder all cards in target column to fix positions
+    const idsInOrder = finalColumnCards.map((c) => c.id);
+    await fetch("/api/cards/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: idsInOrder }),
     });
 
     loadCards();
@@ -348,6 +413,7 @@ export default function KanbanBoard({
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 h-full">
@@ -396,11 +462,10 @@ export default function KanbanBoard({
                   </div>
 
                   {/* Cards */}
-                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  <DroppableColumn columnId={column.id}>
                     <SortableContext
                       items={colCards.map((c) => c.id)}
                       strategy={verticalListSortingStrategy}
-                      id={`column-${column.id}`}
                     >
                       {colCards.map((card) => (
                         <SortableCard
@@ -413,10 +478,7 @@ export default function KanbanBoard({
 
                     {/* Droppable area for empty columns */}
                     {colCards.length === 0 && (
-                      <div
-                        data-droppable-id={`column-${column.id}`}
-                        className="h-16 rounded-lg border-2 border-dashed border-surface-600 flex items-center justify-center text-xs text-gray-600"
-                      >
+                      <div className="h-16 rounded-lg border-2 border-dashed border-surface-600 flex items-center justify-center text-xs text-gray-600">
                         Drop cards here
                       </div>
                     )}
@@ -452,7 +514,7 @@ export default function KanbanBoard({
                         </div>
                       </div>
                     )}
-                  </div>
+                  </DroppableColumn>
                 </div>
               );
             })}
