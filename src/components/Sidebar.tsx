@@ -409,7 +409,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     return (
       <div className="w-12 bg-surface-800 border-r border-surface-600 flex flex-col items-center py-3 sidebar-transition shrink-0">
         <button onClick={onToggle} className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-80 transition-opacity" title="Expand sidebar">
-          <img src="/icon.svg" alt="AgentBoard" className="w-full h-full" />
+          <img src="/icon-192.png" alt="AgentBoard" className="w-full h-full" />
         </button>
         <div className="flex-1" />
         <button onClick={handleLogout} className="w-8 h-8 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Logout">
@@ -424,7 +424,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg overflow-hidden"><img src="/icon.svg" alt="AgentBoard" className="w-full h-full" /></div>
+          <div className="w-7 h-7 rounded-lg overflow-hidden"><img src="/icon-192.png" alt="AgentBoard" className="w-full h-full" /></div>
           <span className="font-semibold text-white text-sm">AgentBoard</span>
         </div>
         <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
