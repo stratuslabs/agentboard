@@ -43,6 +43,8 @@ export default function Sidebar({
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: "org" | "product"; id: number; orgId?: number } | null>(null);
+  const [emojiPickerProductId, setEmojiPickerProductId] = useState<number | null>(null);
+  const [emojiPickerOrgId, setEmojiPickerOrgId] = useState<number | null>(null);
 
   useEffect(() => {
     loadOrgs();
@@ -165,6 +167,23 @@ export default function Sidebar({
         setProductsByOrg((prev) => ({ ...prev, [orgId]: products }));
       }
     }
+  }
+
+  async function handleChangeEmoji(productId: number, orgId: number, emoji: string) {
+    const res = await fetch(`/api/products/${productId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emoji }),
+    });
+    if (res.ok) {
+      const pRes = await fetch(`/api/products?org_id=${orgId}`);
+      if (pRes.ok) {
+        const products = await pRes.json();
+        setProductsByOrg((prev) => ({ ...prev, [orgId]: products }));
+      }
+    }
+    setEmojiPickerProductId(null);
+    setEmojiPickerOrgId(null);
   }
 
   function handleContextMenu(e: React.MouseEvent, type: "org" | "product", id: number, orgId?: number) {
@@ -307,22 +326,54 @@ export default function Sidebar({
                       />
                     </div>
                   ) : (
-                  <button
-                    key={product.id}
-                    onClick={() => onSelectProduct(product, org)}
-                    onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
-                    className={`flex items-center gap-2 w-full px-4 py-1.5 text-sm rounded-md mx-1 transition-colors ${
-                      selectedProductId === product.id
-                        ? "bg-accent/20 text-white"
-                        : "text-gray-300 hover:bg-surface-700 hover:text-white"
-                    }`}
-                    style={{ width: "calc(100% - 8px)" }}
-                  >
-                    <span className="text-base leading-none">
+                  <div key={product.id} className="relative flex items-center mx-1" style={{ width: "calc(100% - 8px)" }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEmojiPickerProductId(emojiPickerProductId === product.id ? null : product.id); setEmojiPickerOrgId(org.id); }}
+                      className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base leading-none"
+                      title="Change emoji"
+                    >
                       {product.emoji}
-                    </span>
-                    <span className="truncate">{product.name}</span>
-                  </button>
+                    </button>
+                    <button
+                      onClick={() => onSelectProduct(product, org)}
+                      onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
+                      className={`flex-1 text-left px-2 py-1.5 text-sm rounded-md transition-colors truncate ${
+                        selectedProductId === product.id
+                          ? "bg-accent/20 text-white"
+                          : "text-gray-300 hover:bg-surface-700 hover:text-white"
+                      }`}
+                    >
+                      {product.name}
+                    </button>
+                    {emojiPickerProductId === product.id && (
+                      <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-2 w-[200px]">
+                        <input
+                          type="text"
+                          placeholder="Paste emoji..."
+                          className="w-full px-2 py-1 mb-2 text-sm bg-surface-600 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") { setEmojiPickerProductId(null); }
+                          }}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            if (val) { handleChangeEmoji(product.id, org.id, val); }
+                          }}
+                        />
+                        <div className="grid grid-cols-6 gap-1">
+                          {["📦","🧶","🌙","⭐","🎨","📋","🚀","💡","🔧","📊","🎯","🛡️","💬","📝","🔥","🌐","💰","📱"].map((em) => (
+                            <button
+                              key={em}
+                              onClick={() => handleChangeEmoji(product.id, org.id, em)}
+                              className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base"
+                            >
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   )
                 ))}
 
