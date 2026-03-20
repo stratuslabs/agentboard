@@ -89,6 +89,11 @@ export default function KanbanBoard({
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterLabel, setFilterLabel] = useState("");
+  const [addingBoard, setAddingBoard] = useState(false);
+  const [newBoardName, setNewBoardName] = useState("");
+  const [boardContextMenu, setBoardContextMenu] = useState<{ boardId: number; x: number; y: number } | null>(null);
+  const [renamingBoardId, setRenamingBoardId] = useState<number | null>(null);
+  const [renameBoardName, setRenameBoardName] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -306,6 +311,79 @@ export default function KanbanBoard({
     setModalCard(null);
   }
 
+  async function handleAddBoard() {
+    if (!newBoardName.trim()) return;
+    const res = await fetch("/api/boards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId, name: newBoardName.trim() }),
+    });
+    if (res.ok) {
+      const board = await res.json();
+      setNewBoardName("");
+      setAddingBoard(false);
+      await loadBoards();
+      setActiveBoardId(board.id);
+    }
+  }
+
+  async function handleRenameBoard(boardId: number) {
+    if (!renameBoardName.trim()) return;
+    const res = await fetch(`/api/boards/${boardId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: renameBoardName.trim() }),
+    });
+    if (res.ok) {
+      setRenamingBoardId(null);
+      setRenameBoardName("");
+      loadBoards();
+    }
+  }
+
+  async function handleDeleteBoard(boardId: number) {
+    if (!confirm("Delete this board and all its columns/cards?")) return;
+    await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
+    const remaining = boards.filter((b) => b.id !== boardId);
+    setBoards(remaining);
+    if (activeBoardId === boardId) {
+      setActiveBoardId(remaining.length > 0 ? remaining[0].id : null);
+    }
+    loadBoards();
+  }
+
+  async function handleMoveBoardLeft(boardId: number) {
+    const idx = boards.findIndex((b) => b.id === boardId);
+    if (idx <= 0) return;
+    const reordered = arrayMove(boards, idx, idx - 1);
+    setBoards(reordered);
+    await fetch("/api/boards/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered.map((b) => b.id) }),
+    });
+  }
+
+  async function handleMoveBoardRight(boardId: number) {
+    const idx = boards.findIndex((b) => b.id === boardId);
+    if (idx < 0 || idx >= boards.length - 1) return;
+    const reordered = arrayMove(boards, idx, idx + 1);
+    setBoards(reordered);
+    await fetch("/api/boards/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered.map((b) => b.id) }),
+    });
+  }
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!boardContextMenu) return;
+    const handler = () => setBoardContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [boardContextMenu]);
+
   const hasFilters = filterAssignee || filterPriority || filterLabel;
 
   const assignees = Array.from(
@@ -343,20 +421,131 @@ export default function KanbanBoard({
           </button>
         </div>
 
-        <div className="flex gap-1">
+        <div className="flex gap-1 items-end relative">
           {boards.map((board) => (
-            <button
-              key={board.id}
-              onClick={() => setActiveBoardId(board.id)}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeBoardId === board.id
-                  ? "bg-surface-700 text-white border-t border-x border-surface-500"
-                  : "text-gray-400 hover:text-gray-300 hover:bg-surface-800"
-              }`}
-            >
-              {board.name}
-            </button>
+            <div key={board.id} className="relative">
+              {renamingBoardId === board.id ? (
+                <input
+                  type="text"
+                  value={renameBoardName}
+                  onChange={(e) => setRenameBoardName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameBoard(board.id);
+                    if (e.key === "Escape") { setRenamingBoardId(null); setRenameBoardName(""); }
+                  }}
+                  onBlur={() => { setRenamingBoardId(null); setRenameBoardName(""); }}
+                  className="px-4 py-2 text-sm font-medium rounded-t-lg bg-surface-700 text-white border-t border-x border-surface-500 focus:outline-none focus:ring-1 focus:ring-accent w-32"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => setActiveBoardId(board.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                    activeBoardId === board.id
+                      ? "bg-surface-700 text-white border-t border-x border-surface-500"
+                      : "text-gray-400 hover:text-gray-300 hover:bg-surface-800"
+                  }`}
+                >
+                  {board.name}
+                </button>
+              )}
+            </div>
           ))}
+
+          {/* Add board button / inline input */}
+          {addingBoard ? (
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={newBoardName}
+                onChange={(e) => setNewBoardName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddBoard();
+                  if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); }
+                }}
+                className="px-3 py-1.5 text-sm bg-surface-700 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent w-32"
+                placeholder="Board name"
+                autoFocus
+              />
+              <button
+                onClick={handleAddBoard}
+                className="px-2 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => { setAddingBoard(false); setNewBoardName(""); }}
+                className="px-2 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAddingBoard(true)}
+              className="px-2 py-2 text-sm text-gray-500 hover:text-gray-300 hover:bg-surface-800 rounded-t-lg transition-colors"
+              title="Add board"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+
+          {/* Board context menu */}
+          {boardContextMenu && (
+            <div
+              className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]"
+              style={{ left: boardContextMenu.x, top: boardContextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  const board = boards.find((b) => b.id === boardContextMenu.boardId);
+                  if (board) {
+                    setRenamingBoardId(board.id);
+                    setRenameBoardName(board.name);
+                  }
+                  setBoardContextMenu(null);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  handleMoveBoardLeft(boardContextMenu.boardId);
+                  setBoardContextMenu(null);
+                }}
+              >
+                Move left
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  handleMoveBoardRight(boardContextMenu.boardId);
+                  setBoardContextMenu(null);
+                }}
+              >
+                Move right
+              </button>
+              <div className="border-t border-surface-500 my-1" />
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  handleDeleteBoard(boardContextMenu.boardId);
+                  setBoardContextMenu(null);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -349,6 +349,26 @@ function getRemoteBackend(baseUrl, password) {
       return req("GET", `/api/cards/${cardId}/attachments`);
     },
 
+    // -- boards --
+    async boardList(productSlug) {
+      const productId = await resolveProductId(productSlug);
+      return req("GET", `/api/boards?product_id=${productId}`);
+    },
+    async boardAdd(productSlug, name) {
+      const productId = await resolveProductId(productSlug);
+      return req("POST", "/api/boards", { product_id: productId, name });
+    },
+    async boardRename(boardId, name) {
+      return req("PATCH", `/api/boards/${boardId}`, { name });
+    },
+    async boardRemove(boardId) {
+      return req("DELETE", `/api/boards/${boardId}`);
+    },
+    async boardReorder(productSlug, ids) {
+      // ids is already an array of board IDs
+      return req("PATCH", "/api/boards/reorder", { ids });
+    },
+
     // -- views --
     async boardView(opts) {
       const productId = await resolveProductId(opts.product);
@@ -410,6 +430,13 @@ Tasks (Cards):
 
   task attach <card-id> --file <path> Attach a file
   task attachments <card-id>          List attachments
+
+Boards:
+  board list --product <slug>                List boards for a product
+  board add --product <slug> <name>          Create a board
+  board rename <board-id> --name <new-name>  Rename a board
+  board remove <board-id>                    Delete a board
+  board reorder --product <slug> --ids <1,2,3>  Reorder boards
 
 Views:
   board --product <slug> --board <slug>   Show board overview
@@ -580,44 +607,73 @@ async function main() {
       }
     }
 
-    // ---- board view ----
+    // ---- board management & view ----
     else if (cmd === "board") {
-      if (!flags.product || !flags.board) {
-        die("--product and --board are required");
-      }
-      const data = await backend.boardView({
-        product: flags.product,
-        board: flags.board,
-      });
-      if (flags.json) {
-        process.stdout.write(JSON.stringify(data, null, 2) + "\n");
-      } else if (flags.quiet) {
-        for (const col of data) {
-          for (const card of col.cards) {
-            process.stdout.write(String(card.id) + "\n");
-          }
-        }
+      if (sub === "list") {
+        if (!flags.product) die("--product is required");
+        const data = await backend.boardList(flags.product);
+        output(data, flags);
+      } else if (sub === "add") {
+        if (!flags.product) die("--product is required");
+        const name = positional[2];
+        if (!name) die("Usage: agentboard board add --product <slug> <name>");
+        const data = await backend.boardAdd(flags.product, name);
+        output(data, flags);
+      } else if (sub === "rename") {
+        const boardId = positional[2];
+        if (!boardId || !flags.name) die("Usage: agentboard board rename <board-id> --name <new-name>");
+        const data = await backend.boardRename(boardId, flags.name);
+        output(data, flags);
+      } else if (sub === "remove") {
+        const boardId = positional[2];
+        if (!boardId) die("Usage: agentboard board remove <board-id>");
+        const data = await backend.boardRemove(boardId);
+        output(data, flags);
+      } else if (sub === "reorder") {
+        if (!flags.product) die("--product is required");
+        if (!flags.ids) die("--ids is required (comma-separated board IDs)");
+        const ids = String(flags.ids).split(",").map((s) => parseInt(s.trim(), 10));
+        const data = await backend.boardReorder(flags.product, ids);
+        output(data, flags);
       } else {
-        for (const col of data) {
-          process.stdout.write(
-            `\n=== ${col.column} (${col.cards.length}) ===\n`
-          );
-          if (col.cards.length === 0) {
-            process.stdout.write("  (empty)\n");
-          } else {
-            const columns = [
-              { key: "id", label: "id" },
-              { key: "title", label: "title" },
-              { key: "assignee", label: "assignee" },
-              { key: "priority", label: "priority" },
-              { key: "labels", label: "labels" },
-            ];
+        // Legacy board view: board --product X --board Y
+        if (!flags.product || !flags.board) {
+          die("Usage: board list|add|rename|remove|reorder, or board --product <slug> --board <slug> for view");
+        }
+        const data = await backend.boardView({
+          product: flags.product,
+          board: flags.board,
+        });
+        if (flags.json) {
+          process.stdout.write(JSON.stringify(data, null, 2) + "\n");
+        } else if (flags.quiet) {
+          for (const col of data) {
+            for (const card of col.cards) {
+              process.stdout.write(String(card.id) + "\n");
+            }
+          }
+        } else {
+          for (const col of data) {
             process.stdout.write(
-              formatTable(col.cards, columns)
-                .split("\n")
-                .map((l) => "  " + l)
-                .join("\n") + "\n"
+              `\n=== ${col.column} (${col.cards.length}) ===\n`
             );
+            if (col.cards.length === 0) {
+              process.stdout.write("  (empty)\n");
+            } else {
+              const columns = [
+                { key: "id", label: "id" },
+                { key: "title", label: "title" },
+                { key: "assignee", label: "assignee" },
+                { key: "priority", label: "priority" },
+                { key: "labels", label: "labels" },
+              ];
+              process.stdout.write(
+                formatTable(col.cards, columns)
+                  .split("\n")
+                  .map((l) => "  " + l)
+                  .join("\n") + "\n"
+              );
+            }
           }
         }
       }

@@ -414,7 +414,9 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   if (collapsed) {
     return (
       <div className="w-12 bg-surface-800 border-r border-surface-600 flex flex-col items-center py-3 sidebar-transition shrink-0">
-        <button onClick={onToggle} className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white font-bold text-sm hover:bg-accent-hover transition-colors" title="Expand sidebar">A</button>
+        <button onClick={onToggle} className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-80 transition-opacity" title="Expand sidebar">
+          <img src="/icon.svg" alt="AgentBoard" className="w-full h-full" />
+        </button>
         <div className="flex-1" />
         <button onClick={handleLogout} className="w-8 h-8 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Logout">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
@@ -428,7 +430,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center text-white font-bold text-sm">A</div>
+          <div className="w-7 h-7 rounded-lg overflow-hidden"><img src="/icon.svg" alt="AgentBoard" className="w-full h-full" /></div>
           <span className="font-semibold text-white text-sm">AgentBoard</span>
         </div>
         <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
