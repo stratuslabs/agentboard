@@ -1,6 +1,26 @@
-import { initDb } from "@/lib/db";
+import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  await initDb();
+  const { id } = await params;
+  const { name } = await request.json();
+  if (!name) {
+    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  }
+  const slug = slugify(name);
+  const { rows } = await sql`
+    UPDATE organizations SET name = ${name}, slug = ${slug} WHERE id = ${parseInt(id, 10)} RETURNING *
+  `;
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json(rows[0]);
+}
 
 export async function DELETE(
   _request: NextRequest,

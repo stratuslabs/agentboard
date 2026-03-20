@@ -38,6 +38,11 @@ export default function Sidebar({
   const [showAddOrg, setShowAddOrg] = useState(false);
   const [addingProductOrg, setAddingProductOrg] = useState<number | null>(null);
   const [addingProductName, setAddingProductName] = useState("");
+  const [editingOrgId, setEditingOrgId] = useState<number | null>(null);
+  const [editingOrgName, setEditingOrgName] = useState("");
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [editingProductName, setEditingProductName] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: "org" | "product"; id: number; orgId?: number } | null>(null);
 
   useEffect(() => {
     loadOrgs();
@@ -111,6 +116,71 @@ export default function Sidebar({
     window.location.href = "/login";
   }
 
+  async function handleRenameOrg(orgId: number) {
+    if (!editingOrgName.trim()) { setEditingOrgId(null); return; }
+    const res = await fetch(`/api/orgs/${orgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editingOrgName.trim() }),
+    });
+    if (res.ok) {
+      setEditingOrgId(null);
+      setEditingOrgName("");
+      loadOrgs();
+    }
+  }
+
+  async function handleDeleteOrg(orgId: number) {
+    if (!confirm("Delete this organization and all its products?")) return;
+    const res = await fetch(`/api/orgs/${orgId}`, { method: "DELETE" });
+    if (res.ok) loadOrgs();
+  }
+
+  async function handleRenameProduct(productId: number, orgId: number) {
+    if (!editingProductName.trim()) { setEditingProductId(null); return; }
+    const res = await fetch(`/api/products/${productId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editingProductName.trim() }),
+    });
+    if (res.ok) {
+      setEditingProductId(null);
+      setEditingProductName("");
+      const pRes = await fetch(`/api/products?org_id=${orgId}`);
+      if (pRes.ok) {
+        setProductsByOrg((prev) => ({ ...prev, [orgId]: [] }));
+        const products = await pRes.json();
+        setProductsByOrg((prev) => ({ ...prev, [orgId]: products }));
+      }
+    }
+  }
+
+  async function handleDeleteProduct(productId: number, orgId: number) {
+    if (!confirm("Delete this product and all its boards/cards?")) return;
+    const res = await fetch(`/api/products/${productId}`, { method: "DELETE" });
+    if (res.ok) {
+      const pRes = await fetch(`/api/products?org_id=${orgId}`);
+      if (pRes.ok) {
+        const products = await pRes.json();
+        setProductsByOrg((prev) => ({ ...prev, [orgId]: products }));
+      }
+    }
+  }
+
+  function handleContextMenu(e: React.MouseEvent, type: "org" | "product", id: number, orgId?: number) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, type, id, orgId });
+  }
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    function handleClick() { setContextMenu(null); }
+    if (contextMenu) {
+      window.addEventListener("click", handleClick);
+      return () => window.removeEventListener("click", handleClick);
+    }
+  }, [contextMenu]);
+
   if (collapsed) {
     return (
       <div className="w-12 bg-surface-800 border-r border-surface-600 flex flex-col items-center py-3 sidebar-transition shrink-0">
@@ -180,8 +250,25 @@ export default function Sidebar({
       <div className="flex-1 overflow-y-auto py-2">
         {orgs.map((org) => (
           <div key={org.id} className="mb-1">
+            {editingOrgId === org.id ? (
+              <div className="px-3 py-1">
+                <input
+                  type="text"
+                  value={editingOrgName}
+                  onChange={(e) => setEditingOrgName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameOrg(org.id);
+                    if (e.key === "Escape") { setEditingOrgId(null); setEditingOrgName(""); }
+                  }}
+                  onBlur={() => handleRenameOrg(org.id)}
+                  className="w-full px-2 py-1 text-xs font-semibold bg-surface-700 border border-surface-500 rounded text-white uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-accent"
+                  autoFocus
+                />
+              </div>
+            ) : (
             <button
               onClick={() => toggleOrg(org.id)}
+              onContextMenu={(e) => handleContextMenu(e, "org", org.id)}
               className="flex items-center gap-2 w-full px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors"
             >
               <svg
@@ -199,13 +286,31 @@ export default function Sidebar({
               </svg>
               {org.name}
             </button>
+            )}
 
             {expandedOrgs.has(org.id) && (
               <div className="ml-2">
                 {(productsByOrg[org.id] || []).map((product) => (
+                  editingProductId === product.id ? (
+                    <div key={product.id} className="px-4 py-1 mx-1" style={{ width: "calc(100% - 8px)" }}>
+                      <input
+                        type="text"
+                        value={editingProductName}
+                        onChange={(e) => setEditingProductName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameProduct(product.id, org.id);
+                          if (e.key === "Escape") { setEditingProductId(null); setEditingProductName(""); }
+                        }}
+                        onBlur={() => handleRenameProduct(product.id, org.id)}
+                        className="w-full px-2 py-1 text-sm bg-surface-700 border border-surface-500 rounded text-white focus:outline-none focus:ring-1 focus:ring-accent"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
                   <button
                     key={product.id}
                     onClick={() => onSelectProduct(product, org)}
+                    onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
                     className={`flex items-center gap-2 w-full px-4 py-1.5 text-sm rounded-md mx-1 transition-colors ${
                       selectedProductId === product.id
                         ? "bg-accent/20 text-white"
@@ -218,6 +323,7 @@ export default function Sidebar({
                     </span>
                     <span className="truncate">{product.name}</span>
                   </button>
+                  )
                 ))}
 
                 {addingProductOrg === org.id ? (
@@ -337,6 +443,52 @@ export default function Sidebar({
           Logout
         </button>
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => {
+              if (contextMenu.type === "org") {
+                const org = orgs.find((o) => o.id === contextMenu.id);
+                setEditingOrgId(contextMenu.id);
+                setEditingOrgName(org?.name || "");
+              } else {
+                const products = Object.values(productsByOrg).flat();
+                const product = products.find((p) => p.id === contextMenu.id);
+                setEditingProductId(contextMenu.id);
+                setEditingProductName(product?.name || "");
+              }
+              setContextMenu(null);
+            }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Rename
+          </button>
+          <button
+            onClick={() => {
+              if (contextMenu.type === "org") {
+                handleDeleteOrg(contextMenu.id);
+              } else {
+                handleDeleteProduct(contextMenu.id, contextMenu.orgId!);
+              }
+              setContextMenu(null);
+            }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-400 hover:bg-red-400/10 hover:text-red-300 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
