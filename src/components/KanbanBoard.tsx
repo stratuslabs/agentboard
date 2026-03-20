@@ -566,8 +566,10 @@ export default function KanbanBoard({
               <button
                 className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-600 transition-colors"
                 onClick={() => {
-                  handleDeleteBoard(boardContextMenu.boardId);
+                  const boardId = boardContextMenu.boardId;
                   setBoardContextMenu(null);
+                  // Timeout to let context menu close before confirm dialog
+                  setTimeout(() => handleDeleteBoard(boardId), 50);
                 }}
               >
                 Delete

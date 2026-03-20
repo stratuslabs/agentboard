@@ -76,6 +76,29 @@ export async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
+    INSERT INTO settings (key, value)
+    VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
+    ON CONFLICT DO NOTHING
+  `;
+  await sql`
+    INSERT INTO settings (key, value)
+    VALUES ('default_columns', ${JSON.stringify([
+      { name: "Backlog", color: "#6B7280" },
+      { name: "Todo", color: "#3B82F6" },
+      { name: "In Progress", color: "#F59E0B" },
+      { name: "In Review", color: "#8B5CF6" },
+      { name: "Done", color: "#10B981" },
+    ])})
+    ON CONFLICT DO NOTHING
+  `;
 }
 
 export function slugify(text: string): string {
@@ -85,8 +108,8 @@ export function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
-const DEFAULT_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const DEFAULT_COLUMNS = [
+const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
+const FALLBACK_COLUMNS = [
   { name: "Backlog", color: "#6B7280" },
   { name: "Todo", color: "#3B82F6" },
   { name: "In Progress", color: "#F59E0B" },
@@ -95,8 +118,16 @@ const DEFAULT_COLUMNS = [
 ];
 
 export async function createDefaultBoards(productId: number) {
-  for (let i = 0; i < DEFAULT_BOARDS.length; i++) {
-    const boardName = DEFAULT_BOARDS[i];
+  // Read default boards from settings
+  const { rows: boardSettings } = await sql`SELECT value FROM settings WHERE key = 'default_boards'`;
+  const boardNames: string[] = boardSettings.length > 0 ? JSON.parse(boardSettings[0].value) : FALLBACK_BOARDS;
+
+  // Read default columns from settings
+  const { rows: colSettings } = await sql`SELECT value FROM settings WHERE key = 'default_columns'`;
+  const columns: { name: string; color: string }[] = colSettings.length > 0 ? JSON.parse(colSettings[0].value) : FALLBACK_COLUMNS;
+
+  for (let i = 0; i < boardNames.length; i++) {
+    const boardName = boardNames[i];
     const boardSlug = slugify(boardName);
     const { rows } = await sql`
       INSERT INTO boards (product_id, name, slug, position)
@@ -105,8 +136,8 @@ export async function createDefaultBoards(productId: number) {
     `;
     const boardId = rows[0].id;
 
-    for (let j = 0; j < DEFAULT_COLUMNS.length; j++) {
-      const col = DEFAULT_COLUMNS[j];
+    for (let j = 0; j < columns.length; j++) {
+      const col = columns[j];
       const colSlug = slugify(col.name);
       await sql`
         INSERT INTO columns (board_id, name, slug, position, color)
