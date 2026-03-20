@@ -67,12 +67,9 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="group/org flex items-center">
-      <button {...attributes} {...listeners} className="w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 ml-1" title="Drag to reorder">
-        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
-      </button>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/org flex items-center cursor-default">
       <button onClick={onToggle} onContextMenu={onContextMenu}
-        className="flex items-center gap-2 flex-1 px-1 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors">
+        className="flex items-center gap-2 flex-1 px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors">
         <svg className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`} fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
         </svg>
@@ -120,11 +117,8 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="group/product relative flex items-center mx-1">
-      <button {...attributes} {...listeners} className="w-4 h-6 flex items-center justify-center text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0" title="Drag to reorder">
-        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 10.001 4.001A2 2 0 007 2zm0 6a2 2 0 10.001 4.001A2 2 0 007 8zm0 6a2 2 0 10.001 4.001A2 2 0 007 14zm6-8a2 2 0 10-.001-4.001A2 2 0 0013 6zm0 2a2 2 0 10.001 4.001A2 2 0 0013 8zm0 6a2 2 0 10.001 4.001A2 2 0 0013 14z" /></svg>
-      </button>
-      <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }} className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base leading-none" title="Change emoji">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/product relative flex items-center mx-1 cursor-default">
+      <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }} className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base leading-none ml-1" title="Change emoji">
         {product.emoji}
       </button>
       <button onClick={onSelect} onContextMenu={onContextMenu}
@@ -179,7 +173,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     try { const saved = localStorage.getItem("agentboard-starred-orgs"); return saved ? JSON.parse(saved) : {}; } catch { return {}; }
   });
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
 
   useEffect(() => { loadOrgs(); }, []);
 
