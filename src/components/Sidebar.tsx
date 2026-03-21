@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -571,7 +572,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       {browsingOrgId !== null && (() => {
         const org = orgs.find((o) => o.id === browsingOrgId);
         const allProducts = productsByOrg[browsingOrgId] || [];
-        return (
+        return createPortal(
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBrowsingOrgId(null)}>
             <div className="bg-surface-800 border border-surface-600 rounded-xl shadow-2xl w-80 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
@@ -603,7 +604,8 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                 <p className="text-[11px] text-gray-500">Star products to pin them in the sidebar</p>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
