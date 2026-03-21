@@ -14,6 +14,7 @@ interface Card {
   labels: string;
   github_issue_url: string | null;
   github_pr_url: string | null;
+  due_date: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -31,6 +32,21 @@ interface KanbanCardProps {
   onClick: () => void;
 }
 
+function formatDueDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function getDueDateStatus(dateStr: string): "overdue" | "today" | "future" {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dateStr + "T00:00:00");
+  due.setHours(0, 0, 0, 0);
+  if (due.getTime() < today.getTime()) return "overdue";
+  if (due.getTime() === today.getTime()) return "today";
+  return "future";
+}
+
 export default function KanbanCard({ card, onClick }: KanbanCardProps) {
   const labelList = card.labels
     ? card.labels
@@ -42,6 +58,9 @@ export default function KanbanCard({ card, onClick }: KanbanCardProps) {
   const displayName = card.assignee_name || card.assignee;
   const displayColor = card.assignee_color || null;
   const isAgent = card.assignee_type === "agent";
+
+  const dueDateStatus = card.due_date ? getDueDateStatus(card.due_date) : null;
+  const dueDateColor = dueDateStatus === "overdue" ? "text-red-400" : dueDateStatus === "today" ? "text-yellow-400" : "text-gray-500";
 
   return (
     <div
@@ -100,10 +119,20 @@ export default function KanbanCard({ card, onClick }: KanbanCardProps) {
         ) : (
           <div />
         )}
-        <div
-          className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium}`}
-          title={card.priority}
-        />
+        <div className="flex items-center gap-2">
+          {card.due_date && (
+            <span className={`flex items-center gap-1 text-[11px] ${dueDateColor}`} title={`Due: ${card.due_date}`}>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {formatDueDate(card.due_date)}
+            </span>
+          )}
+          <div
+            className={`w-2 h-2 rounded-full ${PRIORITY_COLORS[card.priority] || PRIORITY_COLORS.medium}`}
+            title={card.priority}
+          />
+        </div>
       </div>
     </div>
   );

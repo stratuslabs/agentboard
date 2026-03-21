@@ -58,7 +58,7 @@ export async function PATCH(
 
   const allowedFields = [
     "title", "description", "assignee", "assignee_id", "priority", "labels",
-    "github_issue_url", "github_pr_url", "column_id", "position"
+    "github_issue_url", "github_pr_url", "column_id", "position", "due_date"
   ];
 
   const sets: string[] = [];

@@ -43,11 +43,15 @@ interface Product {
   position: number;
 }
 
+type ViewType = "today" | "assigned";
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   selectedProductId: number | null;
   onSelectProduct: (product: Product, org: Org) => void;
+  onSelectView: (view: ViewType) => void;
+  selectedView: ViewType | null;
 }
 
 // --- Sortable Org Header ---
@@ -137,7 +141,7 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, onSelectView, selectedView }: SidebarProps) {
   const router = useRouter();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct, isStarred, setShowAllOrg } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -414,6 +418,28 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         </div>
         <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+        </button>
+      </div>
+
+      {/* Quick views */}
+      <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
+        <button
+          onClick={() => onSelectView("today")}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
+            selectedView === "today" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
+          }`}
+        >
+          <span className="text-base leading-none">{"\u{1F4C5}"}</span>
+          Today
+        </button>
+        <button
+          onClick={() => onSelectView("assigned")}
+          className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
+            selectedView === "assigned" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
+          }`}
+        >
+          <span className="text-base leading-none">{"\u{1F464}"}</span>
+          Assigned to me
         </button>
       </div>
 

@@ -83,6 +83,12 @@ export async function ensureTables() {
   } catch {
     // Column may already exist
   }
+  // Migration: add due_date to cards if not present
+  try {
+    await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`;
+  } catch {
+    // Column may already exist
+  }
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,

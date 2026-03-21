@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
+import ListView from "@/components/ListView";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
 const KanbanBoard = dynamic(() => import("@/components/KanbanBoard"), {
@@ -28,18 +29,85 @@ interface Product {
   emoji: string;
 }
 
+type ViewType = "today" | "assigned";
+
+interface ViewCard {
+  id: number;
+  column_id: number;
+  title: string;
+  description: string;
+  assignee: string | null;
+  assignee_id: number | null;
+  assignee_name: string | null;
+  assignee_type: string | null;
+  assignee_color: string | null;
+  priority: string;
+  labels: string;
+  github_issue_url: string | null;
+  github_pr_url: string | null;
+  due_date: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  org_name: string;
+  product_name: string;
+  product_emoji: string;
+  board_name: string;
+  column_name: string;
+  column_color: string;
+}
+
 export default function HomePage() {
   const { prefs, setSelectedProduct } = usePreferences();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedProduct, setSelectedProductLocal] = useState<Product | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
   const [isRestoring, setIsRestoring] = useState(() => !!prefs.selectedProduct);
+  const [activeView, setActiveView] = useState<ViewType | null>(null);
+  const [viewCards, setViewCards] = useState<ViewCard[]>([]);
+  const [currentMemberId, setCurrentMemberId] = useState<number | null>(null);
+
+  // Fetch first human member for "assigned to me"
+  useEffect(() => {
+    fetch("/api/members")
+      .then((r) => r.json())
+      .then((members: { id: number; type: string }[]) => {
+        const human = members.find((m) => m.type === "human");
+        if (human) setCurrentMemberId(human.id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadViewCards = useCallback(async (view: ViewType) => {
+    let url = `/api/cards/views?view=${view}`;
+    if (view === "assigned" && currentMemberId) {
+      url += `&member_id=${currentMemberId}`;
+    }
+    const res = await fetch(url);
+    if (res.ok) {
+      setViewCards(await res.json());
+    }
+  }, [currentMemberId]);
+
+  useEffect(() => {
+    if (activeView) {
+      loadViewCards(activeView);
+    }
+  }, [activeView, loadViewCards]);
 
   function handleSelectProduct(product: Product, org: Org) {
     setSelectedProductLocal(product);
     setSelectedOrg(org);
     setIsRestoring(false);
+    setActiveView(null);
     setSelectedProduct(product.id, org.id);
+  }
+
+  function handleSelectView(view: ViewType) {
+    setActiveView(view);
+    setSelectedProductLocal(null);
+    setSelectedOrg(null);
+    setIsRestoring(false);
   }
 
   return (
@@ -47,11 +115,21 @@ export default function HomePage() {
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        selectedProductId={selectedProduct?.id ?? null}
+        selectedProductId={activeView ? null : (selectedProduct?.id ?? null)}
         onSelectProduct={handleSelectProduct}
+        onSelectView={handleSelectView}
+        selectedView={activeView}
       />
 
-      {selectedProduct && selectedOrg ? (
+      {activeView ? (
+        <ListView
+          key={activeView}
+          cards={viewCards}
+          title={activeView === "today" ? "Today" : "Assigned to me"}
+          icon={activeView === "today" ? "\u{1F4C5}" : "\u{1F464}"}
+          onRefresh={() => loadViewCards(activeView)}
+        />
+      ) : selectedProduct && selectedOrg ? (
         <KanbanBoard
           key={selectedProduct.id}
           productId={selectedProduct.id}

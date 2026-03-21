@@ -71,6 +71,7 @@ interface Card {
   labels: string;
   github_issue_url: string | null;
   github_pr_url: string | null;
+  due_date: string | null;
   position: number;
   created_at: string;
   updated_at: string;

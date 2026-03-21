@@ -17,6 +17,7 @@ interface Card {
   labels: string;
   github_issue_url: string | null;
   github_pr_url: string | null;
+  due_date: string | null;
   position: number;
   created_at: string;
   updated_at: string;
@@ -54,6 +55,7 @@ export default function CardModal({
   const [description, setDescription] = useState(card.description || "");
   const [assigneeId, setAssigneeId] = useState<number | null>(card.assignee_id || null);
   const [priority, setPriority] = useState(card.priority);
+  const [dueDate, setDueDate] = useState(card.due_date || "");
   const [labels, setLabels] = useState(card.labels || "");
   const [githubIssueUrl, setGithubIssueUrl] = useState(
     card.github_issue_url || ""
@@ -106,6 +108,7 @@ export default function CardModal({
           assignee_id: assigneeId,
           assignee: assigneeId ? null : null,
           priority,
+          due_date: dueDate || null,
           labels,
           github_issue_url: githubIssueUrl || null,
           github_pr_url: githubPrUrl || null,
@@ -263,6 +266,19 @@ export default function CardModal({
                 <option value="urgent">Urgent</option>
               </select>
             </div>
+          </div>
+
+          {/* Due Date */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Due Date
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent [color-scheme:dark]"
+            />
           </div>
 
           {/* Labels */}

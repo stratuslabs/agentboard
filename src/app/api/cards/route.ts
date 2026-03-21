@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   await initDb();
   const body = await request.json();
-  const { column_id, title, description, assignee, priority, labels, github_issue_url, github_pr_url } = body;
+  const { column_id, title, description, assignee, priority, labels, github_issue_url, github_pr_url, due_date } = body;
   let { assignee_id } = body;
 
   if (!column_id || !title) {
@@ -96,8 +96,8 @@ export async function POST(request: NextRequest) {
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;
 
   const { rows } = await sql`
-    INSERT INTO cards (column_id, title, description, assignee, assignee_id, priority, labels, github_issue_url, github_pr_url, position)
-    VALUES (${column_id}, ${title}, ${description || ""}, ${assignee || null}, ${assignee_id || null}, ${priority || "medium"}, ${labels || ""}, ${github_issue_url || null}, ${github_pr_url || null}, ${maxRows[0].max + 1})
+    INSERT INTO cards (column_id, title, description, assignee, assignee_id, priority, labels, github_issue_url, github_pr_url, due_date, position)
+    VALUES (${column_id}, ${title}, ${description || ""}, ${assignee || null}, ${assignee_id || null}, ${priority || "medium"}, ${labels || ""}, ${github_issue_url || null}, ${github_pr_url || null}, ${due_date || null}, ${maxRows[0].max + 1})
     RETURNING *
   `;
 
