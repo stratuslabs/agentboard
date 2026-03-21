@@ -106,6 +106,7 @@ interface KanbanBoardProps {
   orgName: string;
   productName: string;
   productEmoji: string;
+  onBack?: () => void;
 }
 
 export default function KanbanBoard({
@@ -113,6 +114,7 @@ export default function KanbanBoard({
   orgName,
   productName,
   productEmoji,
+  onBack,
 }: KanbanBoardProps) {
   const { isStarred: isStarredFn, toggleStarredProduct } = usePreferences();
   const isStarred = isStarredFn(productId);
@@ -443,6 +445,11 @@ export default function KanbanBoard({
       {/* Breadcrumb + Board tabs */}
       <div className="border-b border-surface-600 px-6 pt-4 pb-0">
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+          {onBack && (
+            <button onClick={onBack} className="w-7 h-7 -ml-1 mr-1 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 hover:text-white transition-colors shrink-0" title="Back">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+          )}
           <span>{orgName}</span>
           <svg
             className="w-3 h-3"

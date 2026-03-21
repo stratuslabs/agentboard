@@ -53,6 +53,7 @@ interface SidebarProps {
   onSelectProduct: (product: Product, org: Org) => void;
   onSelectView: (view: ViewType) => void;
   selectedView: ViewType | null;
+  isMobile?: boolean;
 }
 
 // --- Sortable Org Header ---
@@ -142,7 +143,7 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, onSelectView, selectedView }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, onSelectView, selectedView, isMobile }: SidebarProps) {
   const router = useRouter();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct, isStarred, setShowAllOrg } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -392,7 +393,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     }
   }
 
-  if (collapsed) {
+  if (collapsed && !isMobile) {
     return (
       <div className="w-12 bg-surface-800 border-r border-surface-600 flex flex-col items-center py-3 sidebar-transition shrink-0">
         <button onClick={onToggle} className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-80 transition-opacity" title="Expand sidebar">
@@ -410,16 +411,18 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   }
 
   return (
-    <div className="w-64 bg-surface-800 border-r border-surface-600 flex flex-col sidebar-transition shrink-0">
+    <div className={`${isMobile ? "w-full" : "w-64"} bg-surface-800 ${isMobile ? "" : "border-r border-surface-600"} flex flex-col sidebar-transition shrink-0`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg overflow-hidden"><img src="/icon-192.png" alt="AgentBoard" className="w-full h-full" /></div>
           <span className="font-semibold text-white text-sm">AgentBoard</span>
         </div>
-        <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-        </button>
+        {!isMobile && (
+          <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+          </button>
+        )}
       </div>
 
       {/* Quick views */}
