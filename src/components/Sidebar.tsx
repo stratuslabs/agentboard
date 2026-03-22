@@ -339,6 +339,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
   const [orgMenuPos, setOrgMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
   const [members, setMembers] = useState<{ id: number; name: string; type: string; color: string }[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
 
   const expandedOrgs = new Set(prefs.expandedOrgs);
   const starredProducts = new Set(prefs.starredProducts);
@@ -351,6 +352,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
   async function loadMembers() {
     const res = await fetch("/api/members");
     if (res.ok) setMembers(await res.json());
+    setMembersLoaded(true);
   }
 
   async function loadOrgs() {
@@ -597,20 +599,22 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
         )}
       </div>
 
-      {/* Getting Started — shows until first agent is connected */}
-      <GetStartedCard
-        orgs={orgs}
-        productsByOrg={productsByOrg}
-        members={members}
-        onAddOrg={() => setShowAddOrg(true)}
-        onAddProduct={(orgId) => {
-          setAddingProductOrg(orgId);
-          setAddingProductName("");
-          if (!expandedOrgs.has(orgId)) {
-            setExpandedOrgs([...prefs.expandedOrgs, orgId]);
-          }
-        }}
-      />
+      {/* Getting Started — shows until first agent is connected, waits for data to avoid flash */}
+      {membersLoaded && (
+        <GetStartedCard
+          orgs={orgs}
+          productsByOrg={productsByOrg}
+          members={members}
+          onAddOrg={() => setShowAddOrg(true)}
+          onAddProduct={(orgId) => {
+            setAddingProductOrg(orgId);
+            setAddingProductName("");
+            if (!expandedOrgs.has(orgId)) {
+              setExpandedOrgs([...prefs.expandedOrgs, orgId]);
+            }
+          }}
+        />
+      )}
 
       {/* Quick views */}
       <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
