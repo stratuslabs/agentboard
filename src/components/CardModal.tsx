@@ -55,7 +55,7 @@ export default function CardModal({
   const [description, setDescription] = useState(card.description || "");
   const [assigneeId, setAssigneeId] = useState<number | null>(card.assignee_id || null);
   const [priority, setPriority] = useState(card.priority);
-  const [dueDate, setDueDate] = useState(card.due_date || "");
+  const [dueDate, setDueDate] = useState(card.due_date ? card.due_date.slice(0, 10) : "");
   const [labels, setLabels] = useState(card.labels || "");
   const [githubIssueUrl, setGithubIssueUrl] = useState(
     card.github_issue_url || ""

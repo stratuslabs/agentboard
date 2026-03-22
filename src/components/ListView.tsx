@@ -39,15 +39,20 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-priority-low",
 };
 
+function parseDateStr(dateStr: string): Date {
+  const dateOnly = dateStr.slice(0, 10);
+  return new Date(dateOnly + "T00:00:00");
+}
+
 function formatDueDate(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = parseDateStr(dateStr);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function getDueDateStatus(dateStr: string): "overdue" | "today" | "future" {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr + "T00:00:00");
+  const due = parseDateStr(dateStr);
   due.setHours(0, 0, 0, 0);
   if (due.getTime() < today.getTime()) return "overdue";
   if (due.getTime() === today.getTime()) return "today";
