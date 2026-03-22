@@ -73,7 +73,10 @@ function useIsMobile() {
 export default function HomePage() {
   const { prefs, setSelectedProduct } = usePreferences();
   const isMobile = useIsMobile();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem("agentboard-sidebar-collapsed") === "true"; } catch { return false; }
+  });
   const [selectedProduct, setSelectedProductLocal] = useState<Product | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Org | null>(null);
   const [isRestoring, setIsRestoring] = useState(() => !!prefs.selectedProduct);
@@ -152,7 +155,11 @@ export default function HomePage() {
       {showSidebar && (
         <Sidebar
           collapsed={isMobile ? false : sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onToggle={() => {
+            const next = !sidebarCollapsed;
+            setSidebarCollapsed(next);
+            try { localStorage.setItem("agentboard-sidebar-collapsed", String(next)); } catch {}
+          }}
           selectedProductId={activeView ? null : (selectedProduct?.id ?? null)}
           onSelectProduct={handleSelectProduct}
           onSelectView={handleSelectView}
