@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import {
   DndContext,
   closestCenter,
@@ -44,15 +45,9 @@ interface Product {
   position: number;
 }
 
-type ViewType = "today" | "assigned";
-
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
-  selectedProductId: number | null;
-  onSelectProduct: (product: Product, org: Org) => void;
-  onSelectView: (view: ViewType) => void;
-  selectedView: ViewType | null;
   isMobile?: boolean;
 }
 
@@ -106,8 +101,8 @@ function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children
 }
 
 // --- Sortable Product Item ---
-function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange, isStarred, onToggleStar }: {
-  product: Product; isSelected: boolean; onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void;
+function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange, isStarred, onToggleStar }: {
+  product: Product; isSelected: boolean; href: string; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
   isStarred: boolean; onToggleStar: () => void;
@@ -131,10 +126,10 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
       <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }} className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base leading-none ml-1" title="Change emoji">
         {product.emoji}
       </button>
-      <button onClick={onSelect} onContextMenu={onContextMenu}
+      <Link href={href} onContextMenu={onContextMenu}
         className={`flex-1 text-left px-2 py-1.5 text-sm rounded-md transition-colors truncate ${isSelected ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"}`}>
         {product.name}
-      </button>
+      </Link>
       {emojiPickerOpen && (
         <EmojiPicker onSelect={(emoji) => onEmojiChange(emoji)} onClose={onEmojiToggle} />
       )}
@@ -321,8 +316,9 @@ Now do Step 1 — register yourself. Then check if you have any tasks assigned.`
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, onSelectView, selectedView, isMobile }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct, isStarred, setShowAllOrg } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [productsByOrg, setProductsByOrg] = useState<Record<number, Product[]>>({});
@@ -372,14 +368,6 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
       setExpandedOrgs(data.map((o) => o.id));
     }
     setProductsByOrg(prodMap);
-
-    // Restore last selected product from context (skip on mobile — show sidebar first)
-    if (prefs.selectedProduct && !isMobile) {
-      const { productId, orgId } = prefs.selectedProduct;
-      const org = data.find((o: Org) => o.id === orgId);
-      const product = (prodMap[orgId] || []).find((p: Product) => p.id === productId);
-      if (org && product) onSelectProduct(product, org);
-    }
   }
 
   function toggleOrg(orgId: number) {
@@ -626,24 +614,24 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
 
       {/* Quick views */}
       <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
-        <button
-          onClick={() => onSelectView("today")}
+        <Link
+          href="/today"
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
-            selectedView === "today" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
+            pathname === "/today" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
           }`}
         >
           <span className="text-base leading-none">{"\u{1F4C5}"}</span>
           Today
-        </button>
-        <button
-          onClick={() => onSelectView("assigned")}
+        </Link>
+        <Link
+          href="/assigned"
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
-            selectedView === "assigned" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
+            pathname === "/assigned" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
           }`}
         >
           <span className="text-base leading-none">{"\u{1F464}"}</span>
           Assigned to me
-        </button>
+        </Link>
       </div>
 
       {/* Org/Product tree */}
@@ -670,8 +658,8 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
 
                     <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
                       {visibleProducts.map((product) => (
-                        <SortableProductItem key={product.id} product={product} isSelected={selectedProductId === product.id}
-                          onSelect={() => onSelectProduct(product, org)}
+                        <SortableProductItem key={product.id} product={product} isSelected={pathname === `/${org.slug}/${product.slug}`}
+                          href={`/${org.slug}/${product.slug}`}
                           onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
                           isEditing={editingProductId === product.id} editingName={editingProductName} onEditChange={setEditingProductName}
                           onEditSubmit={() => handleRenameProduct(product.id, org.id)} onEditCancel={() => { setEditingProductId(null); setEditingProductName(""); }}
@@ -789,10 +777,10 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
                 )}
                 {allProducts.map((product) => (
                   <div key={product.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-700 transition-colors">
-                    <button onClick={() => { onSelectProduct(product, org!); setBrowsingOrgId(null); }} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <Link href={`/${org!.slug}/${product.slug}`} onClick={() => setBrowsingOrgId(null)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                       <span className="text-base shrink-0">{product.emoji}</span>
                       <span className="text-sm text-gray-200 truncate hover:text-white">{product.name}</span>
-                    </button>
+                    </Link>
                     <button onClick={() => toggleStarredProduct(product.id)}
                       className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${starredProducts.has(product.id) ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}>
                       <svg className="w-4 h-4" viewBox="0 0 20 20" fill={starredProducts.has(product.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={starredProducts.has(product.id) ? 0 : 1.5}>
