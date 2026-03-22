@@ -999,9 +999,18 @@ export default function KanbanBoard({
       {modalCard && (
         <CardModal
           card={modalCard}
+          columns={columns}
           onClose={() => setModalCard(null)}
           onUpdate={handleCardUpdate}
           onDelete={handleCardDelete}
+          onMove={(cardId, newColumnId) => {
+            setCards((prev) =>
+              prev.map((c) =>
+                c.id === cardId ? { ...c, column_id: newColumnId } : c
+              )
+            );
+            loadCards();
+          }}
         />
       )}
 

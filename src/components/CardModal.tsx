@@ -38,18 +38,31 @@ interface Attachment {
   created_at: string;
 }
 
+interface Column {
+  id: number;
+  board_id: number;
+  name: string;
+  slug: string;
+  position: number;
+  color: string;
+}
+
 interface CardModalProps {
   card: Card;
+  columns?: Column[];
   onClose: () => void;
   onUpdate: (card: Card) => void;
   onDelete: (cardId: number) => void;
+  onMove?: (cardId: number, columnId: number) => void;
 }
 
 export default function CardModal({
   card,
+  columns,
   onClose,
   onUpdate,
   onDelete,
+  onMove,
 }: CardModalProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description || "");
@@ -60,6 +73,7 @@ export default function CardModal({
   const [githubIssueUrl, setGithubIssueUrl] = useState(
     card.github_issue_url || ""
   );
+  const [columnId, setColumnId] = useState<number>(card.column_id);
   const [githubPrUrl, setGithubPrUrl] = useState(card.github_pr_url || "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [newAttachmentName, setNewAttachmentName] = useState("");
@@ -95,6 +109,28 @@ export default function CardModal({
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
+
+  async function handleColumnChange(newColumnId: number) {
+    if (newColumnId === card.column_id) {
+      setColumnId(newColumnId);
+      return;
+    }
+    setColumnId(newColumnId);
+    try {
+      const res = await fetch(`/api/cards/${card.id}/move`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column_id: newColumnId }),
+      });
+      if (res.ok) {
+        const moved = await res.json();
+        onUpdate({ ...moved, assignee_name: card.assignee_name, assignee_type: card.assignee_type, assignee_color: card.assignee_color });
+        if (onMove) onMove(card.id, newColumnId);
+      }
+    } catch {
+      setColumnId(card.column_id);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -215,8 +251,44 @@ export default function CardModal({
             />
           </div>
 
-          {/* Row: Assignee + Priority */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Row: Column + Assignee + Priority */}
+          <div className="grid grid-cols-3 gap-4">
+            {/* Column (Status) */}
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Column
+              </label>
+              {columns && columns.length > 0 ? (
+                <>
+                  <select
+                    value={columnId}
+                    onChange={(e) => handleColumnChange(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    {columns.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.name}
+                      </option>
+                    ))}
+                  </select>
+                  {columns.find((c) => c.id === columnId) && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: columns.find((c) => c.id === columnId)?.color }}
+                      />
+                      <span className="text-xs text-gray-400">
+                        {columns.find((c) => c.id === columnId)?.name}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-gray-500">
+                  —
+                </div>
+              )}
+            </div>
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
                 Assignee
