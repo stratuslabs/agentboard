@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import ListView from "@/components/ListView";
+import ProfileSetup from "@/components/ProfileSetup";
 import { usePreferences } from "@/contexts/PreferencesContext";
 
 const KanbanBoard = dynamic(() => import("@/components/KanbanBoard"), {
@@ -147,6 +148,7 @@ export default function HomePage() {
 
   return (
     <div className="h-screen flex overflow-hidden bg-surface-900">
+      <ProfileSetup />
       {showSidebar && (
         <Sidebar
           collapsed={isMobile ? false : sidebarCollapsed}

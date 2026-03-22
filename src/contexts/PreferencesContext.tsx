@@ -7,6 +7,7 @@ interface Preferences {
   starredProducts: number[];
   showAllOrgs: Record<number, boolean>;
   selectedProduct: { productId: number; orgId: number } | null;
+  profileMemberId: number | null;
 }
 
 interface PreferencesContextType {
@@ -17,6 +18,7 @@ interface PreferencesContextType {
   isStarred: (productId: number) => boolean;
   setSelectedProduct: (productId: number, orgId: number) => void;
   setShowAllOrg: (orgId: number, showAll: boolean) => void;
+  setProfileMemberId: (id: number) => void;
   isLoaded: boolean;
 }
 
@@ -25,6 +27,7 @@ const DEFAULT_PREFS: Preferences = {
   starredProducts: [],
   showAllOrgs: {},
   selectedProduct: null,
+  profileMemberId: null,
 };
 
 const LS_KEYS = {
@@ -32,6 +35,7 @@ const LS_KEYS = {
   starredProducts: 'agentboard-starred-products',
   showAllOrgs: 'agentboard-show-all-orgs',
   selectedProduct: 'agentboard-selected',
+  profileMemberId: 'agentboard-profile-member-id',
 } as const;
 
 const SERVER_KEYS = LS_KEYS; // Same keys used on server
@@ -61,6 +65,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     starredProducts: readLS(LS_KEYS.starredProducts, []),
     showAllOrgs: readLS(LS_KEYS.showAllOrgs, {}),
     selectedProduct: readLS(LS_KEYS.selectedProduct, null),
+    profileMemberId: readLS(LS_KEYS.profileMemberId, null),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,6 +115,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           if (serverPrefs[SERVER_KEYS.selectedProduct] !== undefined) {
             merged.selectedProduct = serverPrefs[SERVER_KEYS.selectedProduct] as { productId: number; orgId: number } | null;
             writeLS(LS_KEYS.selectedProduct, merged.selectedProduct);
+          }
+          if (serverPrefs[SERVER_KEYS.profileMemberId] !== undefined) {
+            merged.profileMemberId = serverPrefs[SERVER_KEYS.profileMemberId] as number | null;
+            writeLS(LS_KEYS.profileMemberId, merged.profileMemberId);
           }
 
           return merged;
@@ -171,6 +180,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     });
   }, [queuePatch]);
 
+  const setProfileMemberId = useCallback((id: number) => {
+    updatePref('profileMemberId', id);
+  }, [updatePref]);
+
   return (
     <PreferencesContext.Provider value={{
       prefs,
@@ -180,6 +193,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       isStarred,
       setSelectedProduct,
       setShowAllOrg,
+      setProfileMemberId,
       isLoaded,
     }}>
       {children}
