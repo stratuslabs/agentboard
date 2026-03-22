@@ -428,20 +428,22 @@ export default function CardModal({
             >
               Delete card
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-1.5 bg-surface-600 hover:bg-surface-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
-            <button
-              onClick={async () => { await handleSave(); onClose(); }}
-              disabled={saving}
-              className="px-4 py-1.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save + Close"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-1.5 bg-surface-600 hover:bg-surface-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={async () => { await handleSave(); onClose(); }}
+                disabled={saving}
+                className="px-4 py-1.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save + Close"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
