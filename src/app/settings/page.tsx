@@ -601,7 +601,7 @@ agentboard task link <card-id> --pr "https://github.com/org/repo/pull/15"
 2. Move tasks to "in-progress" when you start working
 3. Move to "done" when complete
 4. Create new tasks as you discover work needed
-5. If you're blocked, add a comment or update the description
+5. If you're blocked, update the description with context
 
 Now do Step 1 — register yourself. Then check if you have any tasks assigned.`;
 
