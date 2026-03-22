@@ -139,6 +139,9 @@ export default function KanbanBoard({
   const [renamingBoardId, setRenamingBoardId] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [renameBoardName, setRenameBoardName] = useState("");
+  const [columnContextMenu, setColumnContextMenu] = useState<{ columnId: number; x: number; y: number } | null>(null);
+  const [renamingColumnId, setRenamingColumnId] = useState<number | null>(null);
+  const [renameColumnName, setRenameColumnName] = useState("");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -428,13 +431,74 @@ export default function KanbanBoard({
     });
   }
 
-  // Close context menu on outside click
+  async function handleRenameColumn(columnId: number) {
+    if (!renameColumnName.trim()) return;
+    const res = await fetch(`/api/columns/${columnId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: renameColumnName.trim() }),
+    });
+    if (res.ok) {
+      setRenamingColumnId(null);
+      setRenameColumnName("");
+      loadColumns();
+    }
+  }
+
+  async function handleMoveColumnLeft(columnId: number) {
+    const idx = columns.findIndex((c) => c.id === columnId);
+    if (idx <= 0) return;
+    const reordered = arrayMove(columns, idx, idx - 1);
+    setColumns(reordered);
+    // Update positions via individual PATCH calls
+    for (let i = 0; i < reordered.length; i++) {
+      await fetch(`/api/columns/${reordered[i].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: i }),
+      });
+    }
+  }
+
+  async function handleMoveColumnRight(columnId: number) {
+    const idx = columns.findIndex((c) => c.id === columnId);
+    if (idx < 0 || idx >= columns.length - 1) return;
+    const reordered = arrayMove(columns, idx, idx + 1);
+    setColumns(reordered);
+    for (let i = 0; i < reordered.length; i++) {
+      await fetch(`/api/columns/${reordered[i].id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: i }),
+      });
+    }
+  }
+
+  function handleDeleteColumn(columnId: number) {
+    const column = columns.find((c) => c.id === columnId);
+    const cardCount = cards.filter((c) => c.column_id === columnId).length;
+    setConfirmAction({
+      title: "Delete Column",
+      message: `This will delete "${column?.name || "this column"}"${cardCount > 0 ? ` and its ${cardCount} card${cardCount === 1 ? "" : "s"}` : ""}.`,
+      action: async () => {
+        await fetch(`/api/columns/${columnId}`, { method: "DELETE" });
+        setColumns((prev) => prev.filter((c) => c.id !== columnId));
+        setCards((prev) => prev.filter((c) => c.column_id !== columnId));
+        setConfirmAction(null);
+      },
+    });
+  }
+
+  // Close context menus on outside click
   useEffect(() => {
-    if (!boardContextMenu) return;
-    const handler = () => setBoardContextMenu(null);
+    if (!boardContextMenu && !columnContextMenu) return;
+    const handler = () => {
+      setBoardContextMenu(null);
+      setColumnContextMenu(null);
+    };
     window.addEventListener("click", handler);
     return () => window.removeEventListener("click", handler);
-  }, [boardContextMenu]);
+  }, [boardContextMenu, columnContextMenu]);
 
   const hasFilters = filterAssignee || filterPriority || filterLabel;
 
@@ -549,6 +613,60 @@ export default function KanbanBoard({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             </button>
+          )}
+
+          {/* Column context menu */}
+          {columnContextMenu && (
+            <div
+              className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]"
+              style={{ left: columnContextMenu.x, top: columnContextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  const col = columns.find((c) => c.id === columnContextMenu.columnId);
+                  if (col) {
+                    setRenamingColumnId(col.id);
+                    setRenameColumnName(col.name);
+                  }
+                  setColumnContextMenu(null);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={columns.findIndex((c) => c.id === columnContextMenu.columnId) === 0}
+                onClick={() => {
+                  handleMoveColumnLeft(columnContextMenu.columnId);
+                  setColumnContextMenu(null);
+                }}
+              >
+                Move left
+              </button>
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={columns.findIndex((c) => c.id === columnContextMenu.columnId) === columns.length - 1}
+                onClick={() => {
+                  handleMoveColumnRight(columnContextMenu.columnId);
+                  setColumnContextMenu(null);
+                }}
+              >
+                Move right
+              </button>
+              <div className="border-t border-surface-500 my-1" />
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-600 transition-colors"
+                onClick={() => {
+                  const columnId = columnContextMenu.columnId;
+                  setColumnContextMenu(null);
+                  handleDeleteColumn(columnId);
+                }}
+              >
+                Delete column
+              </button>
+            </div>
           )}
 
           {/* Board context menu */}
@@ -672,39 +790,70 @@ export default function KanbanBoard({
                 >
                   {/* Column header */}
                   <div className="flex items-center justify-between px-3 py-2.5 border-b border-surface-600">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <div
-                        className="w-2.5 h-2.5 rounded-full"
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: column.color }}
                       />
-                      <span className="text-sm font-medium text-gray-200">
-                        {column.name}
-                      </span>
-                      <span className="text-xs text-gray-500 bg-surface-700 px-1.5 py-0.5 rounded-full">
+                      {renamingColumnId === column.id ? (
+                        <input
+                          type="text"
+                          value={renameColumnName}
+                          onChange={(e) => setRenameColumnName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameColumn(column.id);
+                            if (e.key === "Escape") { setRenamingColumnId(null); setRenameColumnName(""); }
+                          }}
+                          onBlur={() => { setRenamingColumnId(null); setRenameColumnName(""); }}
+                          className="text-sm font-medium bg-surface-700 text-white border border-surface-500 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-accent w-full"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="text-sm font-medium text-gray-200 truncate">
+                          {column.name}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-500 bg-surface-700 px-1.5 py-0.5 rounded-full shrink-0">
                         {colCards.length}
                       </span>
                     </div>
-                    <button
-                      onClick={() => {
-                        setAddingCardColId(column.id);
-                        setNewCardTitle("");
-                      }}
-                      className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setColumnContextMenu({ columnId: column.id, x: rect.left, y: rect.bottom + 4 });
+                        }}
+                        className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
+                        title="Column options"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                    </button>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAddingCardColId(column.id);
+                          setNewCardTitle("");
+                        }}
+                        className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
+                        title="Add card"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 4v16m8-8H4"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Cards */}
