@@ -529,45 +529,81 @@ export default function SettingsPage() {
 }
 
 function AgentOnboardingPrompt({ members }: { members: Member[] }) {
-  const [agentName, setAgentName] = useState("");
   const [copied, setCopied] = useState(false);
 
   const boardUrl = typeof window !== "undefined" ? window.location.origin : "https://your-agentboard-url.com";
 
-  const prompt = `You now have access to AgentBoard for task management.
+  const prompt = `You're being connected to AgentBoard — a kanban-style project management tool your team uses to track work. Your job is to set yourself up.
 
-## Setup
-Install the CLI and set these environment variables:
+## Step 1: Register yourself
+
+Make this API call to register as a team member:
+
+\`\`\`bash
+curl -X POST ${boardUrl}/api/members \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer $AGENTBOARD_PASSWORD" \\
+  -d '{"name": "YOUR_NAME", "type": "agent", "color": "#3B82F6"}'
+\`\`\`
+
+Replace YOUR_NAME with your actual name. Pick a color you like from: #EF4444 (red), #F97316 (orange), #EAB308 (yellow), #22C55E (green), #06B6D4 (cyan), #3B82F6 (blue), #8B5CF6 (purple), #EC4899 (pink).
+
+## Step 2: Install the CLI
+
 \`\`\`bash
 npm install -g agentboard
-export AGENTBOARD_URL="${boardUrl}"
-export AGENTBOARD_PASSWORD="<ask your admin for the password>"
-export AGENTBOARD_AGENT_NAME="${agentName || "YourAgentName"}"
 \`\`\`
 
-## Quick Commands
-\`\`\`bash
-# See your tasks
-agentboard my-tasks --assignee "${agentName || "YourAgentName"}"
+## Step 3: Set your environment variables
 
-# Pick up a task
+Add these to your shell config or agent environment:
+
+\`\`\`bash
+export AGENTBOARD_URL="${boardUrl}"
+export AGENTBOARD_PASSWORD="<ask your human for the password if you don't have it>"
+\`\`\`
+
+## Step 4: Check what's on your plate
+
+\`\`\`bash
+agentboard my-tasks --assignee "YOUR_NAME"
+\`\`\`
+
+## How to use AgentBoard
+
+\`\`\`bash
+# See your assigned tasks
+agentboard my-tasks --assignee "YOUR_NAME"
+
+# View a product board
+agentboard board --product <slug> --board dev
+
+# Pick up a task (move to in-progress)
 agentboard task move <card-id> --column in-progress
 
-# Mark done
+# Mark a task done
 agentboard task done <card-id>
 
-# Create a task
-agentboard task add --product <slug> --board <board> "Title" --assignee "${agentName || "YourAgentName"}" --priority medium
+# Create a new task
+agentboard task add --product <slug> --board <board> "Title" \\
+  --assignee "YOUR_NAME" --priority medium --description "Details"
 
-# View a board
-agentboard board --product <slug> --board dev
+# Update a task
+agentboard task update <card-id> --priority high --description "New info"
+
+# Link GitHub issues/PRs
+agentboard task link <card-id> --issue "https://github.com/org/repo/issues/42"
+agentboard task link <card-id> --pr "https://github.com/org/repo/pull/15"
 \`\`\`
 
-## Workflow
+## Your workflow
 1. Check your tasks at the start of each session
-2. Move tasks to "In Progress" when you start working
-3. Move to "In Review" or "Done" when complete
-4. Add new tasks as you discover work needed`;
+2. Move tasks to "in-progress" when you start working
+3. Move to "done" when complete
+4. Create new tasks as you discover work needed
+5. If you're blocked, add a comment or update the description
+
+Now do Step 1 — register yourself. Then check if you have any tasks assigned.`;
 
   function handleCopy() {
     navigator.clipboard.writeText(prompt);
@@ -577,18 +613,20 @@ agentboard board --product <slug> --board dev
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={agentName}
-          onChange={(e) => setAgentName(e.target.value)}
-          className="flex-1 px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
-          placeholder="Agent name (e.g. Kai, Claudia, Friday)"
-        />
+      <div className="bg-surface-700/50 border border-surface-600 rounded-lg px-4 py-3">
+        <p className="text-xs text-gray-300 mb-1">
+          <strong>How it works:</strong> Copy the prompt below and paste it to your agent. The agent will:
+        </p>
+        <ol className="text-xs text-gray-400 list-decimal list-inside space-y-0.5">
+          <li>Register itself as a team member</li>
+          <li>Set up the CLI</li>
+          <li>Check for assigned tasks</li>
+          <li>Start working</li>
+        </ol>
       </div>
 
       <div className="relative">
-        <pre className="bg-surface-900 border border-surface-600 rounded-xl p-4 text-xs text-gray-300 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap font-mono">
+        <pre className="bg-surface-900 border border-surface-600 rounded-xl p-4 text-xs text-gray-300 overflow-x-auto max-h-72 overflow-y-auto whitespace-pre-wrap font-mono">
           {prompt}
         </pre>
         <button
@@ -605,7 +643,7 @@ agentboard board --product <slug> --board dev
 
       {members.filter((m) => m.type === "agent").length > 0 && (
         <p className="text-xs text-gray-500">
-          Current agents: {members.filter((m) => m.type === "agent").map((m) => m.name).join(", ")}
+          Connected agents: {members.filter((m) => m.type === "agent").map((m) => m.name).join(", ")}
         </p>
       )}
     </div>
