@@ -425,6 +425,27 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         )}
       </div>
 
+      {/* Getting Started */}
+      {orgs.length === 0 && (
+        <div className="px-3 py-3 border-b border-surface-600">
+          <div className="bg-accent/10 border border-accent/20 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-base">🚀</span>
+              <span className="text-sm font-semibold text-white">Get Started</span>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">
+              Add an organization, create a product, then connect your AI agents.
+            </p>
+            <button
+              onClick={() => setShowAddOrg(true)}
+              className="w-full px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded transition-colors"
+            >
+              Add your first organization
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Quick views */}
       <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
         <button

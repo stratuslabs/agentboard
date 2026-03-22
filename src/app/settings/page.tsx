@@ -329,6 +329,15 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        {/* Connect an Agent */}
+        <section className="mb-10">
+          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Connect an Agent</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Copy this prompt and paste it to any AI agent to connect it to AgentBoard. It will auto-register as a member and can manage tasks via CLI.
+          </p>
+          <AgentOnboardingPrompt members={members} />
+        </section>
+
         {/* Default Boards */}
         <section className="mb-10">
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">Default Boards</h2>
@@ -514,6 +523,90 @@ export default function SettingsPage() {
           onConfirm={handleDeleteMember}
           onCancel={() => setDeletingMember(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function AgentOnboardingPrompt({ members }: { members: Member[] }) {
+  const [agentName, setAgentName] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const boardUrl = typeof window !== "undefined" ? window.location.origin : "https://your-agentboard-url.com";
+
+  const prompt = `You now have access to AgentBoard for task management.
+
+## Setup
+Install the CLI and set these environment variables:
+\`\`\`bash
+npm install -g agentboard
+export AGENTBOARD_URL="${boardUrl}"
+export AGENTBOARD_PASSWORD="<ask your admin for the password>"
+export AGENTBOARD_AGENT_NAME="${agentName || "YourAgentName"}"
+\`\`\`
+
+## Quick Commands
+\`\`\`bash
+# See your tasks
+agentboard my-tasks --assignee "${agentName || "YourAgentName"}"
+
+# Pick up a task
+agentboard task move <card-id> --column in-progress
+
+# Mark done
+agentboard task done <card-id>
+
+# Create a task
+agentboard task add --product <slug> --board <board> "Title" --assignee "${agentName || "YourAgentName"}" --priority medium
+
+# View a board
+agentboard board --product <slug> --board dev
+\`\`\`
+
+## Workflow
+1. Check your tasks at the start of each session
+2. Move tasks to "In Progress" when you start working
+3. Move to "In Review" or "Done" when complete
+4. Add new tasks as you discover work needed`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={agentName}
+          onChange={(e) => setAgentName(e.target.value)}
+          className="flex-1 px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+          placeholder="Agent name (e.g. Kai, Claudia, Friday)"
+        />
+      </div>
+
+      <div className="relative">
+        <pre className="bg-surface-900 border border-surface-600 rounded-xl p-4 text-xs text-gray-300 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap font-mono">
+          {prompt}
+        </pre>
+        <button
+          onClick={handleCopy}
+          className={`absolute top-2 right-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            copied
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : "bg-surface-700 text-gray-300 border border-surface-500 hover:bg-surface-600 hover:text-white"
+          }`}
+        >
+          {copied ? "Copied!" : "Copy prompt"}
+        </button>
+      </div>
+
+      {members.filter((m) => m.type === "agent").length > 0 && (
+        <p className="text-xs text-gray-500">
+          Current agents: {members.filter((m) => m.type === "agent").map((m) => m.name).join(", ")}
+        </p>
       )}
     </div>
   );
