@@ -190,6 +190,18 @@ export default function KanbanBoard({
     }
   }, [activeBoardId, loadColumns, loadCards]);
 
+  // Live polling — refresh cards & columns every 3s when not dragging
+  useEffect(() => {
+    if (!activeBoardId) return;
+    const interval = setInterval(() => {
+      if (!activeCard) {
+        loadCards();
+        loadColumns();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [activeBoardId, activeCard, loadCards, loadColumns]);
+
   const getFilteredCards = useCallback(
     (columnId: number) => {
       return cards
