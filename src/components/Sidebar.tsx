@@ -142,6 +142,184 @@ function SortableProductItem({ product, isSelected, onSelect, onContextMenu, isE
   );
 }
 
+// --- Getting Started Card ---
+function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }: {
+  orgs: Org[];
+  productsByOrg: Record<number, Product[]>;
+  members: { id: number; name: string; type: string; color: string }[];
+  onAddOrg: () => void;
+  onAddProduct: (orgId: number) => void;
+}) {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const hasOrg = orgs.length > 0;
+  const hasProduct = Object.values(productsByOrg).flat().length > 0;
+  const hasAgent = members.some((m) => m.type === "agent");
+
+  // Hide entirely once an agent is connected
+  if (hasAgent) return null;
+
+  const boardUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+  const prompt = `You're being connected to AgentBoard — a kanban-style project management tool your team uses to track work. Your job is to set yourself up.
+
+## Step 1: Register yourself
+
+Make this API call to register as a team member:
+
+\`\`\`bash
+curl -X POST ${boardUrl}/api/members \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer $AGENTBOARD_PASSWORD" \\
+  -d '{"name": "YOUR_NAME", "type": "agent", "color": "#3B82F6"}'
+\`\`\`
+
+Replace YOUR_NAME with your actual name. Pick a color you like from: #EF4444 (red), #F97316 (orange), #EAB308 (yellow), #22C55E (green), #06B6D4 (cyan), #3B82F6 (blue), #8B5CF6 (purple), #EC4899 (pink).
+
+## Step 2: Install the CLI
+
+\`\`\`bash
+npm install -g agentboard
+\`\`\`
+
+## Step 3: Set your environment variables
+
+Add these to your shell config or agent environment:
+
+\`\`\`bash
+export AGENTBOARD_URL="${boardUrl}"
+export AGENTBOARD_PASSWORD="<ask your human for the password if you don't have it>"
+\`\`\`
+
+## Step 4: Check what's on your plate
+
+\`\`\`bash
+agentboard my-tasks --assignee "YOUR_NAME"
+\`\`\`
+
+## How to use AgentBoard
+
+\`\`\`bash
+# See your assigned tasks
+agentboard my-tasks --assignee "YOUR_NAME"
+
+# View a product board
+agentboard board --product <slug> --board dev
+
+# Pick up a task (move to in-progress)
+agentboard task move <card-id> --column in-progress
+
+# Mark a task done
+agentboard task done <card-id>
+
+# Create a new task
+agentboard task add --product <slug> --board <board> "Title" \\
+  --assignee "YOUR_NAME" --priority medium --description "Details"
+
+# Link GitHub issues/PRs
+agentboard task link <card-id> --issue "https://github.com/org/repo/issues/42"
+agentboard task link <card-id> --pr "https://github.com/org/repo/pull/15"
+\`\`\`
+
+## Your workflow
+1. Check your tasks at the start of each session
+2. Move tasks to "in-progress" when you start working
+3. Move to "done" when complete
+4. Create new tasks as you discover work needed
+
+Now do Step 1 — register yourself. Then check if you have any tasks assigned.`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="px-3 py-3 border-b border-surface-600">
+      <div className="bg-accent/10 border border-accent/20 rounded-lg p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-base">🚀</span>
+          <span className="text-sm font-semibold text-white">Get Started</span>
+        </div>
+
+        <div className="space-y-2">
+          {/* Step 1: Add org */}
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${hasOrg ? "bg-green-500/20 text-green-400" : "bg-surface-600 text-gray-500"}`}>
+              {hasOrg ? "✓" : "1"}
+            </div>
+            {hasOrg ? (
+              <span className="text-xs text-gray-500 line-through">Add an organization</span>
+            ) : (
+              <button onClick={onAddOrg} className="text-xs text-accent hover:text-white transition-colors text-left">
+                Add an organization
+              </button>
+            )}
+          </div>
+
+          {/* Step 2: Add product */}
+          <div className="flex items-center gap-2">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${hasProduct ? "bg-green-500/20 text-green-400" : "bg-surface-600 text-gray-500"}`}>
+              {hasProduct ? "✓" : "2"}
+            </div>
+            {hasProduct ? (
+              <span className="text-xs text-gray-500 line-through">Add a product</span>
+            ) : hasOrg ? (
+              <button onClick={() => onAddProduct(orgs[0].id)} className="text-xs text-accent hover:text-white transition-colors text-left">
+                Add a product
+              </button>
+            ) : (
+              <span className="text-xs text-gray-600">Add a product</span>
+            )}
+          </div>
+
+          {/* Step 3: Connect agent */}
+          <div className="flex items-start gap-2">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 bg-surface-600 text-gray-500">
+              3
+            </div>
+            <div className="flex-1 min-w-0">
+              {hasProduct ? (
+                <button onClick={() => setShowPrompt(!showPrompt)} className="text-xs text-accent hover:text-white transition-colors text-left">
+                  Connect your first agent {showPrompt ? "▴" : "▾"}
+                </button>
+              ) : (
+                <span className="text-xs text-gray-600">Connect your first agent</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Expandable agent prompt */}
+        {showPrompt && (
+          <div className="mt-3 pt-3 border-t border-accent/20">
+            <p className="text-[11px] text-gray-400 mb-2">
+              Copy this and paste it to your agent. It&apos;ll handle the rest.
+            </p>
+            <div className="relative">
+              <pre className="bg-surface-900 border border-surface-600 rounded-lg p-2.5 text-[10px] text-gray-400 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                {prompt.slice(0, 300)}...
+              </pre>
+              <button
+                onClick={handleCopy}
+                className={`mt-2 w-full px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                  copied
+                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                    : "bg-accent hover:bg-accent-hover text-white"
+                }`}
+              >
+                {copied ? "✓ Copied to clipboard!" : "Copy full prompt"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Main Sidebar ---
 export default function Sidebar({ collapsed, onToggle, selectedProductId, onSelectProduct, onSelectView, selectedView, isMobile }: SidebarProps) {
   const router = useRouter();
@@ -164,6 +342,7 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
   const [orgMenuId, setOrgMenuId] = useState<number | null>(null);
   const [orgMenuPos, setOrgMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
+  const [members, setMembers] = useState<{ id: number; name: string; type: string; color: string }[]>([]);
 
   const expandedOrgs = new Set(prefs.expandedOrgs);
   const starredProducts = new Set(prefs.starredProducts);
@@ -171,7 +350,12 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
 
-  useEffect(() => { loadOrgs(); }, []);
+  useEffect(() => { loadOrgs(); loadMembers(); }, []);
+
+  async function loadMembers() {
+    const res = await fetch("/api/members");
+    if (res.ok) setMembers(await res.json());
+  }
 
   async function loadOrgs() {
     const res = await fetch("/api/orgs");
@@ -425,26 +609,20 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
         )}
       </div>
 
-      {/* Getting Started */}
-      {orgs.length === 0 && (
-        <div className="px-3 py-3 border-b border-surface-600">
-          <div className="bg-accent/10 border border-accent/20 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-base">🚀</span>
-              <span className="text-sm font-semibold text-white">Get Started</span>
-            </div>
-            <p className="text-xs text-gray-400 mb-3">
-              Add an organization, create a product, then connect your AI agents.
-            </p>
-            <button
-              onClick={() => setShowAddOrg(true)}
-              className="w-full px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded transition-colors"
-            >
-              Add your first organization
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Getting Started — shows until first agent is connected */}
+      <GetStartedCard
+        orgs={orgs}
+        productsByOrg={productsByOrg}
+        members={members}
+        onAddOrg={() => setShowAddOrg(true)}
+        onAddProduct={(orgId) => {
+          setAddingProductOrg(orgId);
+          setAddingProductName("");
+          if (!expandedOrgs.has(orgId)) {
+            setExpandedOrgs([...prefs.expandedOrgs, orgId]);
+          }
+        }}
+      />
 
       {/* Quick views */}
       <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
