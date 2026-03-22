@@ -189,8 +189,8 @@ export default function Sidebar({ collapsed, onToggle, selectedProductId, onSele
     }
     setProductsByOrg(prodMap);
 
-    // Restore last selected product from context
-    if (prefs.selectedProduct) {
+    // Restore last selected product from context (skip on mobile — show sidebar first)
+    if (prefs.selectedProduct && !isMobile) {
       const { productId, orgId } = prefs.selectedProduct;
       const org = data.find((o: Org) => o.id === orgId);
       const product = (prodMap[orgId] || []).find((p: Product) => p.id === productId);
