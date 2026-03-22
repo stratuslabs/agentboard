@@ -93,6 +93,14 @@ export async function POST(request: NextRequest) {
     assignee_id = await resolveAgentMember(agentName);
   }
 
+  // Resolve text assignee name to member ID if no assignee_id provided
+  if (!assignee_id && assignee) {
+    const { rows: memberMatch } = await sql`SELECT id FROM members WHERE LOWER(name) = LOWER(${assignee}) LIMIT 1`;
+    if (memberMatch.length > 0) {
+      assignee_id = memberMatch[0].id;
+    }
+  }
+
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;
 
   const { rows } = await sql`

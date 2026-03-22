@@ -56,6 +56,14 @@ export async function PATCH(
     body.assignee_id = await resolveAgentMember(agentName);
   }
 
+  // Resolve text assignee name to member ID if no assignee_id provided
+  if (body.assignee && body.assignee_id === undefined) {
+    const { rows: memberMatch } = await sql`SELECT id FROM members WHERE LOWER(name) = LOWER(${body.assignee}) LIMIT 1`;
+    if (memberMatch.length > 0) {
+      body.assignee_id = memberMatch[0].id;
+    }
+  }
+
   const allowedFields = [
     "title", "description", "assignee", "assignee_id", "priority", "labels",
     "github_issue_url", "github_pr_url", "column_id", "position", "due_date"
