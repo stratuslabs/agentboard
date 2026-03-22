@@ -74,6 +74,7 @@ export default function CardModal({
     card.github_issue_url || ""
   );
   const [columnId, setColumnId] = useState<number>(card.column_id);
+  const [fetchedColumns, setFetchedColumns] = useState<Column[]>([]);
   const [githubPrUrl, setGithubPrUrl] = useState(card.github_pr_url || "");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [newAttachmentName, setNewAttachmentName] = useState("");
@@ -101,6 +102,15 @@ export default function CardModal({
       .then(setMembers)
       .catch(() => {});
   }, []);
+
+  // Auto-fetch columns when not provided (e.g. from ListView/Today/Assigned)
+  useEffect(() => {
+    if (columns && columns.length > 0) return;
+    fetch(`/api/columns/by-card/${card.id}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((cols) => { if (Array.isArray(cols)) setFetchedColumns(cols); })
+      .catch(() => {});
+  }, [columns, card.id]);
 
   useEffect(() => {
     function handleEsc(e: KeyboardEvent) {
@@ -197,6 +207,7 @@ export default function CardModal({
     if (e.target === overlayRef.current) onClose();
   }
 
+  const resolvedColumns = (columns && columns.length > 0) ? columns : fetchedColumns;
   const selectedMember = members.find((m) => m.id === assigneeId);
   const fallbackAssignee = !assigneeId && card.assignee ? card.assignee : null;
 
@@ -258,27 +269,27 @@ export default function CardModal({
               <label className="block text-xs font-medium text-gray-400 mb-1">
                 Column
               </label>
-              {columns && columns.length > 0 ? (
+              {resolvedColumns && resolvedColumns.length > 0 ? (
                 <>
                   <select
                     value={columnId}
                     onChange={(e) => handleColumnChange(Number(e.target.value))}
                     className="w-full px-3 py-2 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   >
-                    {columns.map((col) => (
+                    {resolvedColumns.map((col) => (
                       <option key={col.id} value={col.id}>
                         {col.name}
                       </option>
                     ))}
                   </select>
-                  {columns.find((c) => c.id === columnId) && (
+                  {resolvedColumns.find((c) => c.id === columnId) && (
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <div
                         className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: columns.find((c) => c.id === columnId)?.color }}
+                        style={{ backgroundColor: resolvedColumns.find((c) => c.id === columnId)?.color }}
                       />
                       <span className="text-xs text-gray-400">
-                        {columns.find((c) => c.id === columnId)?.name}
+                        {resolvedColumns.find((c) => c.id === columnId)?.name}
                       </span>
                     </div>
                   )}
