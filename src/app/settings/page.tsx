@@ -566,44 +566,41 @@ export AGENTBOARD_PASSWORD="<ask your human for the password if you don't have i
 ## Step 4: Check what's on your plate
 
 \`\`\`bash
-agentboard my-tasks --assignee "YOUR_NAME"
+agentboard list
 \`\`\`
 
 ## How to use AgentBoard
 
 \`\`\`bash
-# See your assigned tasks
-agentboard my-tasks --assignee "YOUR_NAME"
+# List all tasks
+agentboard list
 
-# View a product board
-agentboard board --product <slug> --board dev
-
-# Pick up a task (move to in-progress)
-agentboard task move <card-id> --column in-progress
-
-# Mark a task done
-agentboard task done <card-id>
+# List including done tasks
+agentboard list --include-done
 
 # Create a new task
-agentboard task add --product <slug> --board <board> "Title" \\
-  --assignee "YOUR_NAME" --priority medium --description "Details"
+agentboard new "Task title"
 
-# Update a task
-agentboard task update <card-id> --priority high --description "New info"
+# Update task status (todo, doing, done, blocked)
+agentboard status <id> doing
 
-# Link GitHub issues/PRs
-agentboard task link <card-id> --issue "https://github.com/org/repo/issues/42"
-agentboard task link <card-id> --pr "https://github.com/org/repo/pull/15"
+# Rename a task
+agentboard rename <id> "New title"
+
+# View task details
+agentboard show <id>
+
+# Add/edit notes on a task
+agentboard notes <id> --append "Note text here"
 \`\`\`
 
 ## Your workflow
-1. Check your tasks at the start of each session
-2. Move tasks to "in-progress" when you start working
-3. Move to "done" when complete
-4. Create new tasks as you discover work needed
-5. If you're blocked, update the description with context
+1. Check your tasks at the start of each session: \`agentboard list\`
+2. Move tasks to doing when you start: \`agentboard status <id> doing\`
+3. Mark done when complete: \`agentboard status <id> done\`
+4. Create new tasks as you discover work: \`agentboard new "Title"\`
 
-Now do Step 1 — register yourself. Then check if you have any tasks assigned.`;
+Now do Step 1 — register yourself. Then check if you have any tasks.`;
 
   function handleCopy() {
     navigator.clipboard.writeText(prompt);
