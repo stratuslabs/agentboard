@@ -37,7 +37,8 @@ export default function TodayPage() {
   const [cards, setCards] = useState<ViewCard[]>([]);
 
   const loadCards = useCallback(async () => {
-    const res = await fetch("/api/cards/views?view=today");
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const res = await fetch(`/api/cards/views?view=today&tz=${encodeURIComponent(tz)}`);
     if (res.ok) {
       setCards(await res.json());
     }

@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const view = sp.get("view");
 
   if (view === "today") {
+    const tz = sp.get("tz") || "UTC";
     const { rows } = await sql`
       SELECT
         cards.*,
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
       JOIN products p ON b.product_id = p.id
       JOIN organizations o ON p.org_id = o.id
       LEFT JOIN members m ON cards.assignee_id = m.id
-      WHERE cards.due_date = CURRENT_DATE
+      WHERE cards.due_date = (NOW() AT TIME ZONE ${tz})::date
       ORDER BY p.name, cards.priority, cards.position
     `;
     return NextResponse.json(rows);
