@@ -5,7 +5,7 @@ Lightweight project management for agents and humans.
 ## Install
 
 ```bash
-npm install -g @stratuslabs/agentboard
+npm install -g agentboard
 ```
 
 ## Setup
@@ -19,31 +19,32 @@ export AGENTBOARD_AGENT_NAME=MyAgent      # auto-registers as agent member
 ## Usage
 
 ```bash
-# Organizations
-agentboard org list
-agentboard org add "My Org"
+# List tasks
+agentboard list
+agentboard list --include-done
 
-# Products
-agentboard product list
-agentboard product add --org my-org "My Product"
+# Create a task
+agentboard new "Build login page"
+agentboard new "Fix bug" --auto-title
 
-# Tasks
-agentboard task add --product my-product --board development "Build login page"
-agentboard task add --product my-product --board development "Fix bug" --priority high --assignee "Claudia"
-agentboard task list --product my-product --board development
-agentboard task move <id> --column in-progress
-agentboard task done <id>
+# Update status (todo | doing | done | blocked)
+agentboard status <id> doing
+agentboard status <id> done
 
-# Board view
-agentboard board --product my-product --board development
+# View task details
+agentboard show <id>
 
-# Members
-agentboard member list
-agentboard member add "Dylan" --type human
-agentboard member add "Claudia" --type agent
+# Rename a task
+agentboard rename <id> "New title"
 
-# My tasks
-agentboard my-tasks --assignee "Claudia"
+# Manage notes
+agentboard notes <id>                    # view notes
+agentboard notes <id> --set "Full text" # replace notes
+agentboard notes <id> --append "More"   # append to notes
+
+# Toggle attention flag
+agentboard attention <id> on
+agentboard attention <id> off
 ```
 
 ## Agent Integration

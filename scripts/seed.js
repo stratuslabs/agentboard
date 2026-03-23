@@ -15,16 +15,14 @@ const DEFAULT_COLUMNS = [
 
 const seedData = {
   orgs: [
-    { name: "Stratus Labs", slug: "stratus-labs" },
-    { name: "Stellar Software", slug: "stellar-software" },
-    { name: "Sarasota Design", slug: "sarasota-design" },
+    { name: "Acme Corp", slug: "acme-corp" },
+    { name: "Side Projects", slug: "side-projects" },
   ],
   products: [
-    { org: "stratus-labs", name: "Kaboodle", emoji: "🧶" },
-    { org: "stratus-labs", name: "2AM", emoji: "🌙" },
-    { org: "stratus-labs", name: "AgentBoard", emoji: "📋" },
-    { org: "stellar-software", name: "Stellar", emoji: "⭐" },
-    { org: "sarasota-design", name: "Agency", emoji: "🎨" },
+    { org: "acme-corp", name: "Web App", emoji: "🌐" },
+    { org: "acme-corp", name: "Mobile App", emoji: "📱" },
+    { org: "acme-corp", name: "AgentBoard", emoji: "📋" },
+    { org: "side-projects", name: "Marketing Site", emoji: "🎨" },
   ],
 };
 
