@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "description": "Lightweight kanban project management for AI agents and humans. Self-hostable, API-first.",
     "author": "Stratus Labs",
-    "license": "MIT",
+    "license": "SEE LICENSE IN LICENSE",
     "homepage": "https://agentboard.to",
     "repository": {
         "type": "git",
