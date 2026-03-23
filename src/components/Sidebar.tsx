@@ -352,13 +352,14 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
   async function loadPastDueCount() {
     try {
-      const settingsRes = await fetch("/api/settings");
-      if (!settingsRes.ok) return;
-      const settings = await settingsRes.json();
-      const memberId = settings.member_id;
-      if (!memberId) return;
+      // Find the first human member (same approach as Assigned page)
+      const membersRes = await fetch("/api/members");
+      if (!membersRes.ok) return;
+      const allMembers: { id: number; type: string }[] = await membersRes.json();
+      const human = allMembers.find((m) => m.type === "human");
+      if (!human) return;
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${memberId}&tz=${encodeURIComponent(tz)}`);
+      const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${human.id}&tz=${encodeURIComponent(tz)}`);
       if (res.ok) {
         const data = await res.json();
         setPastDueCount(data.count || 0);

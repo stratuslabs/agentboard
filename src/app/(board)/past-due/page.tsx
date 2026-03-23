@@ -35,25 +35,33 @@ export default function PastDuePage() {
   const router = useRouter();
   const { isMobile } = useSidebar();
   const [cards, setCards] = useState<ViewCard[]>([]);
+  const [currentMemberId, setCurrentMemberId] = useState<number | null>(null);
+
+  // Find the first human member (same approach as Assigned page)
+  useEffect(() => {
+    fetch("/api/members")
+      .then((r) => r.json())
+      .then((members: { id: number; type: string }[]) => {
+        const human = members.find((m) => m.type === "human");
+        if (human) setCurrentMemberId(human.id);
+      })
+      .catch(() => {});
+  }, []);
 
   const loadCards = useCallback(async () => {
-    // Get current member ID from settings
-    const settingsRes = await fetch("/api/settings");
-    if (!settingsRes.ok) return;
-    const settings = await settingsRes.json();
-    const memberId = settings.member_id;
-    if (!memberId) return;
-
+    if (!currentMemberId) return;
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const res = await fetch(`/api/cards/views?view=past-due&member_id=${memberId}&tz=${encodeURIComponent(tz)}`);
+    const res = await fetch(`/api/cards/views?view=past-due&member_id=${currentMemberId}&tz=${encodeURIComponent(tz)}`);
     if (res.ok) {
       setCards(await res.json());
     }
-  }, []);
+  }, [currentMemberId]);
 
   useEffect(() => {
-    loadCards();
-  }, [loadCards]);
+    if (currentMemberId !== null) {
+      loadCards();
+    }
+  }, [currentMemberId, loadCards]);
 
   return (
     <ListView
