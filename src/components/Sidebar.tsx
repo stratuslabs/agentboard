@@ -340,6 +340,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
   const [browsingOrgId, setBrowsingOrgId] = useState<number | null>(null);
   const [members, setMembers] = useState<{ id: number; name: string; type: string; color: string }[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
+  const [pastDueCount, setPastDueCount] = useState(0);
 
   const expandedOrgs = new Set(prefs.expandedOrgs);
   const starredProducts = new Set(prefs.starredProducts);
@@ -347,7 +348,25 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
 
-  useEffect(() => { loadOrgs(); loadMembers(); }, []);
+  useEffect(() => { loadOrgs(); loadMembers(); loadPastDueCount(); }, []);
+
+  async function loadPastDueCount() {
+    try {
+      const settingsRes = await fetch("/api/settings");
+      if (!settingsRes.ok) return;
+      const settings = await settingsRes.json();
+      const memberId = settings.member_id;
+      if (!memberId) return;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${memberId}&tz=${encodeURIComponent(tz)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPastDueCount(data.count || 0);
+      }
+    } catch {
+      // silently fail
+    }
+  }
 
   async function loadMembers() {
     const res = await fetch("/api/members");
@@ -618,6 +637,22 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
       {/* Quick views */}
       <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
+        {pastDueCount > 0 && (
+          <Link
+            href="/past-due"
+            className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
+              pathname === "/past-due" ? "bg-red-500/20 text-red-400" : "text-red-400 hover:bg-red-500/10"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base leading-none">🔴</span>
+              Past Due
+            </span>
+            <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full font-medium">
+              {pastDueCount}
+            </span>
+          </Link>
+        )}
         <Link
           href="/today"
           className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${

@@ -7,6 +7,55 @@ export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const view = sp.get("view");
 
+  if (view === "past-due") {
+    const tz = sp.get("tz") || "UTC";
+    const memberId = sp.get("member_id");
+    if (!memberId) {
+      return NextResponse.json({ error: "member_id is required for past-due view" }, { status: 400 });
+    }
+    const { rows } = await sql`
+      SELECT
+        cards.*,
+        m.name AS assignee_name,
+        m.type AS assignee_type,
+        m.color AS assignee_color,
+        o.name AS org_name,
+        p.name AS product_name,
+        p.emoji AS product_emoji,
+        b.name AS board_name,
+        col.name AS column_name,
+        col.color AS column_color
+      FROM cards
+      JOIN columns col ON cards.column_id = col.id
+      JOIN boards b ON col.board_id = b.id
+      JOIN products p ON b.product_id = p.id
+      JOIN organizations o ON p.org_id = o.id
+      LEFT JOIN members m ON cards.assignee_id = m.id
+      WHERE cards.assignee_id = ${memberId}
+        AND cards.due_date < (NOW() AT TIME ZONE ${tz})::date
+        AND LOWER(col.name) != 'done'
+      ORDER BY cards.due_date ASC, cards.priority, cards.position
+    `;
+    return NextResponse.json(rows);
+  }
+
+  if (view === "past-due-count") {
+    const tz = sp.get("tz") || "UTC";
+    const memberId = sp.get("member_id");
+    if (!memberId) {
+      return NextResponse.json({ error: "member_id is required" }, { status: 400 });
+    }
+    const { rows } = await sql`
+      SELECT COUNT(*)::int AS count
+      FROM cards
+      JOIN columns col ON cards.column_id = col.id
+      WHERE cards.assignee_id = ${memberId}
+        AND cards.due_date < (NOW() AT TIME ZONE ${tz})::date
+        AND LOWER(col.name) != 'done'
+    `;
+    return NextResponse.json({ count: rows[0].count });
+  }
+
   if (view === "today") {
     const tz = sp.get("tz") || "UTC";
     const { rows } = await sql`
