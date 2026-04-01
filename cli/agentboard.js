@@ -149,7 +149,8 @@ function makeReq(baseUrl, password, agentName) {
     const url = `${base}${urlPath}`;
     const headers = { "Content-Type": "application/json" };
     if (password) headers.Authorization = `Bearer ${password}`;
-    if (agentName) headers["X-Agent-Name"] = agentName;
+    // Only send agent name on POST (card creation) to avoid silent reassignment on updates
+    if (agentName && method === "POST") headers["X-Agent-Name"] = agentName;
 
     const opts = { method, headers, redirect: "manual" };
     if (body !== undefined) opts.body = JSON.stringify(body);
