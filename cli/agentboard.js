@@ -166,7 +166,7 @@ function makeReq(baseUrl, password, agentName) {
       if (!location) break;
       const nextUrl = location.startsWith("http") ? location : `${base}${location}`;
       const redirectOpts = { method, headers, redirect: "manual" };
-      if (body !== undefined && (res.status === 307 || res.status === 308)) {
+      if (body !== undefined) {
         redirectOpts.body = JSON.stringify(body);
       }
       res = await fetch(nextUrl, redirectOpts);
@@ -497,18 +497,32 @@ async function main() {
       const assignee = flags.assignee || agentName;
       if (!assignee) die("Set AGENTBOARD_AGENT_NAME or pass --assignee <name>");
 
-      // Resolve member id
+      // Resolve member id (optional — member may not exist yet for legacy cards)
       const members = await req("GET", "/api/members");
       const member = members.find(
         (m) => m.name === assignee || String(m.id) === String(assignee)
       );
-      if (!member) die(`Member not found: ${assignee}`);
 
-      const data = await req(
+      // Fetch from views endpoint (assignee_id based) if member exists
+      let cards = [];
+      if (member) {
+        cards = await req(
+          "GET",
+          `/api/cards/views?view=assigned&member_id=${member.id}`
+        );
+      }
+
+      // Also fetch legacy text-assignee cards and merge (avoids missing pre-migration cards)
+      const legacyCards = await req(
         "GET",
-        `/api/cards/views?view=assigned&member_id=${member.id}`
+        `/api/cards?assignee=${encodeURIComponent(assignee)}`
       );
-      output(data, flags);
+      const existingIds = new Set(cards.map((c) => c.id));
+      for (const card of legacyCards) {
+        if (!existingIds.has(card.id)) cards.push(card);
+      }
+
+      output(cards, flags);
     }
 
     // ---- today ----
