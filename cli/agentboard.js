@@ -12,14 +12,9 @@
 const fs = require("fs");
 const path = require("path");
 
-// ---- Helpers --------------------------------------------------------------
+const VERSION = require("./package.json").version;
 
-function slugify(text) {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+// ---- Helpers --------------------------------------------------------------
 
 function die(msg, code = 1) {
   process.stderr.write(`Error: ${msg}\n`);
@@ -49,7 +44,8 @@ function parseArgs(argv) {
         key === "json" ||
         key === "quiet" ||
         key === "include-done" ||
-        key === "help"
+        key === "help" ||
+        key === "version"
       ) {
         flags[key] = true;
         i++;
@@ -147,7 +143,9 @@ function makeReq(baseUrl, password, agentName) {
 
   async function req(method, urlPath, body) {
     const url = `${base}${urlPath}`;
-    const headers = { "Content-Type": "application/json" };
+    const headers = {};
+    // Only set Content-Type on requests with a body
+    if (body !== undefined) headers["Content-Type"] = "application/json";
     if (password) headers.Authorization = `Bearer ${password}`;
     // Only send agent name on POST (card creation) to avoid silent reassignment on updates
     if (agentName && method === "POST") headers["X-Agent-Name"] = agentName;
@@ -238,21 +236,6 @@ function makeResolvers(req) {
     return cols[0].id;
   }
 
-  async function findBoardIdForCard(cardId) {
-    const cols = await req("GET", `/api/columns/by-card/${cardId}`);
-    if (!cols || cols.length === 0) die("Could not determine board for card");
-    return cols[0].board_id;
-  }
-
-  async function resolveMemberId(name) {
-    const members = await req("GET", "/api/members");
-    const m = members.find(
-      (x) => x.name === name || String(x.id) === String(name)
-    );
-    if (!m) die(`Member not found: ${name}`);
-    return m.id;
-  }
-
   return {
     resolveOrgId,
     resolveProductId,
@@ -260,8 +243,6 @@ function makeResolvers(req) {
     resolveColumnId,
     resolveProductAndBoard,
     findFirstColumnId,
-    findBoardIdForCard,
-    resolveMemberId,
   };
 }
 
@@ -317,6 +298,11 @@ Environment:
 
 async function main() {
   const { positional, flags } = parseArgs(process.argv);
+
+  if (flags.version) {
+    process.stdout.write(`agentboard ${VERSION}\n`);
+    process.exit(0);
+  }
 
   if (positional.length === 0 || flags.help || positional[0] === "help") {
     printUsage();
@@ -501,7 +487,7 @@ async function main() {
       // Resolve member id (optional — member may not exist yet for legacy cards)
       const members = await req("GET", "/api/members");
       const member = members.find(
-        (m) => m.name === assignee || String(m.id) === String(assignee)
+        (m) => m.name.toLowerCase() === assignee.toLowerCase() || String(m.id) === String(assignee)
       );
 
       // Fetch from views endpoint (assignee_id based) if member exists
@@ -528,7 +514,8 @@ async function main() {
 
     // ---- today ----
     else if (cmd === "today") {
-      const data = await req("GET", "/api/cards/views?view=today");
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const data = await req("GET", `/api/cards/views?view=today&tz=${encodeURIComponent(tz)}`);
       output(data, flags);
     }
 
@@ -539,13 +526,14 @@ async function main() {
 
       const members = await req("GET", "/api/members");
       const member = members.find(
-        (m) => m.name === assignee || String(m.id) === String(assignee)
+        (m) => m.name.toLowerCase() === assignee.toLowerCase() || String(m.id) === String(assignee)
       );
       if (!member) die(`Member not found: ${assignee}`);
 
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const data = await req(
         "GET",
-        `/api/cards/views?view=past-due&member_id=${member.id}`
+        `/api/cards/views?view=past-due&member_id=${member.id}&tz=${encodeURIComponent(tz)}`
       );
       output(data, flags);
     }
