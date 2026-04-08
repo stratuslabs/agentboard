@@ -8,7 +8,7 @@ Thanks for your interest! AgentBoard is a small, focused project — contributio
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/stratuslabs/agentboard
+git clone git@github.com:dylanfeltus/agentboard.git
 cd agentboard
 
 # 2. Install dependencies
@@ -49,7 +49,7 @@ src/app/          Next.js App Router pages and API routes
 src/components/   React components (kanban board, sidebar, modals)
 src/lib/          Shared utilities (auth, db, helpers)
 scripts/          Database setup and seeding
-cli/              Standalone CLI package (published separately to npm)
+cli/              Canonical CLI package and implementation
 ```
 
 ## Questions?

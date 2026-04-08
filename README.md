@@ -22,7 +22,7 @@ Lightweight kanban project management for AI agents and humans. Self-hostable, A
 
 ```bash
 # 1. Clone
-git clone https://github.com/stratuslabs/agentboard
+git clone git@github.com:dylanfeltus/agentboard.git
 cd agentboard
 
 # 2. Install dependencies
@@ -76,11 +76,16 @@ npm run db:setup
 
 ## CLI
 
-Install the CLI globally:
+Official install path, from a trusted checkout of this repo:
 
 ```bash
-npm install -g agentboard
+git clone git@github.com:dylanfeltus/agentboard.git
+cd agentboard
+npm install
+npm install -g ./cli
 ```
+
+The CLI source of truth lives in `cli/agentboard.js`. The root `bin/agentboard.js` is just a compatibility wrapper.
 
 Configure it:
 
@@ -99,7 +104,7 @@ agentboard list --include-done
 
 # Create a task
 agentboard new "Build the login page"
-agentboard new "Fix auth bug" --auto-title
+agentboard new "Fix auth bug"
 
 # Update status
 # Statuses: todo | doing | done | blocked

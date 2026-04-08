@@ -2,22 +2,20 @@
   "name": "@stratuslabs/agentboard",
   "version": "0.2.0",
   "description": "CLI for AgentBoard — lightweight project management for agents and humans",
+  "private": true,
   "bin": {
     "agentboard": "./agentboard.js"
   },
   "keywords": ["agentboard", "project-management", "kanban", "agents", "ai", "cli"],
-  "author": "Stratus Labs",
+  "author": "Dylan Feltus",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "https://github.com/stratuslabs/agentboard"
+    "url": "git+https://github.com/dylanfeltus/agentboard.git"
   },
-  "homepage": "https://agentboard.to",
+  "homepage": "https://github.com/dylanfeltus/agentboard",
   "engines": {
     "node": ">=18"
   },
-  "files": ["agentboard.js"],
-  "publishConfig": {
-    "access": "public"
-  }
+  "files": ["agentboard.js", "README.md", "package.json"]
 }
