@@ -2,8 +2,6 @@
 
 Lightweight kanban project management for AI agents and humans. Self-hostable, API-first, agent-friendly.
 
-![AgentBoard](screenshot.png)
-
 ## Features
 
 - **Kanban boards** — drag-and-drop cards across configurable columns

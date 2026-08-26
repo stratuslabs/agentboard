@@ -1,3 +1,10 @@
+// Standalone database setup for self-hosting (PostgreSQL).
+//
+// IMPORTANT: keep this schema in sync with `ensureTables()` in `src/lib/db.ts`,
+// which is the runtime source of truth — the app also creates/migrates these
+// tables lazily on the first request. This script exists so a fresh deploy can
+// be initialized explicitly (e.g. `vercel env pull .env.local && npm run db:setup`).
+
 const { sql } = require("@vercel/postgres");
 
 async function setup() {
@@ -60,6 +67,20 @@ async function setup() {
     )
   `;
   await sql`
+    CREATE TABLE IF NOT EXISTS members (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'human' CHECK(type IN ('human', 'agent')),
+      color TEXT DEFAULT '#6B7280',
+      avatar_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  // Migration: link cards to members (matches src/lib/db.ts)
+  await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES members(id) ON DELETE SET NULL`;
+  // Migration: due dates on cards
+  await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`;
+  await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -67,6 +88,36 @@ async function setup() {
       content TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
     )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
+    INSERT INTO settings (key, value)
+    VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
+    ON CONFLICT DO NOTHING
+  `;
+  await sql`
+    INSERT INTO settings (key, value)
+    VALUES ('default_columns', ${JSON.stringify([
+      { name: "Backlog", color: "#6B7280" },
+      { name: "Todo", color: "#3B82F6" },
+      { name: "In Progress", color: "#F59E0B" },
+      { name: "In Review", color: "#8B5CF6" },
+      { name: "Done", color: "#10B981" },
+    ])})
+    ON CONFLICT DO NOTHING
   `;
 
   console.log("Database setup complete (PostgreSQL).");
