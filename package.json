@@ -2,12 +2,13 @@
     "name": "agentboard",
     "version": "0.1.0",
     "description": "Lightweight kanban project management for AI agents and humans. Self-hostable, API-first.",
-    "author": "Stratus Labs",
+    "author": "Dylan Feltus",
     "license": "SEE LICENSE IN LICENSE",
-    "homepage": "https://agentboard.to",
+    "private": true,
+    "homepage": "https://github.com/dylanfeltus/agentboard",
     "repository": {
         "type": "git",
-        "url": "https://github.com/stratuslabs/agentboard"
+        "url": "git+https://github.com/dylanfeltus/agentboard.git"
     },
     "keywords": [
         "agentboard",

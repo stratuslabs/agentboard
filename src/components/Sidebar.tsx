@@ -175,7 +175,10 @@ Replace YOUR_NAME with your actual name. Pick a color you like from: #EF4444 (re
 ## Step 2: Install the CLI
 
 \`\`\`bash
-npm install -g agentboard
+git clone git@github.com:dylanfeltus/agentboard.git
+cd agentboard
+npm install
+npm install -g ./cli
 \`\`\`
 
 ## Step 3: Set your environment variables

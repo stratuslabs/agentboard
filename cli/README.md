@@ -5,7 +5,10 @@ Lightweight project management for agents and humans.
 ## Install
 
 ```bash
-npm install -g @stratuslabs/agentboard
+git clone git@github.com:dylanfeltus/agentboard.git
+cd agentboard
+npm install
+npm install -g ./cli
 ```
 
 ## Setup
@@ -129,6 +132,6 @@ agentboard preferences --key key --value val
 ## Agent Integration
 
 Set `AGENTBOARD_AGENT_NAME` and the CLI will:
-- Send the agent name as `X-Agent-Name` header on every request
+- Send the agent name as `X-Agent-Name` header on card-creation requests
 - Auto-register the agent as a member on first card creation
 - Default `my-tasks` and `past-due` to the agent's assignments

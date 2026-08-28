@@ -963,7 +963,17 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`${err.message || err}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`${err.message || err}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  main,
+  parseArgs,
+  formatTable,
+  output,
+  printUsage,
+};
