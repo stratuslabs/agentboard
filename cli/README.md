@@ -5,7 +5,7 @@ Lightweight project management for agents and humans.
 ## Install
 
 ```bash
-git clone git@github.com:dylanfeltus/agentboard.git
+git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
 npm install
 npm install -g ./cli

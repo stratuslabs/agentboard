@@ -4,18 +4,18 @@ Thanks for your interest! AgentBoard is a small, focused project — contributio
 
 ## Dev Environment
 
-**Prerequisites:** Node.js 18+, Docker (for local Postgres)
+**Prerequisites:** Node.js 20+, Docker (for local Postgres)
 
 ```bash
 # 1. Clone the repo
-git clone git@github.com:dylanfeltus/agentboard.git
+git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
 
 # 2. Install dependencies
 npm install
 
 # 3. Start Postgres
-docker-compose up -d
+docker compose up -d
 
 # 4. Copy env vars and configure
 cp .env.example .env.local

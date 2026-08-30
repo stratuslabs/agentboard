@@ -551,7 +551,7 @@ Replace YOUR_NAME with your actual name. Pick a color you like from: #EF4444 (re
 ## Step 2: Install the CLI
 
 \`\`\`bash
-git clone git@github.com:dylanfeltus/agentboard.git
+git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
 npm install
 npm install -g ./cli

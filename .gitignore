@@ -15,9 +15,10 @@
 # production
 /build
 
-# env files
+# env files (keep .env.example tracked)
 .env
-.env*.local
+.env.*
+!.env.example
 
 # database (legacy SQLite)
 *.db

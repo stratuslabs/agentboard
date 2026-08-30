@@ -5,10 +5,10 @@
     "author": "Dylan Feltus",
     "license": "SEE LICENSE IN LICENSE",
     "private": true,
-    "homepage": "https://github.com/dylanfeltus/agentboard",
+    "homepage": "https://github.com/stratuslabs/agentboard",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/dylanfeltus/agentboard.git"
+        "url": "git+https://github.com/stratuslabs/agentboard.git"
     },
     "keywords": [
         "agentboard",
