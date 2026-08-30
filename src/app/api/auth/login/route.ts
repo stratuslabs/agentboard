@@ -1,38 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deriveSessionToken, getSessionCookieName, verifyPassword } from "@/lib/auth";
+import { clientKey, FailureThrottle } from "@/lib/rate-limit";
 
-// Best-effort brute-force throttle. This is per-instance state, so on
-// serverless platforms it only bounds a single warm instance rather than the
-// whole deployment — enough to blunt naive password guessing, not a substitute
-// for a shared rate limiter or a high-entropy APP_PASSWORD.
+// The middleware keeps its own counter for Bearer/cookie guesses at the auth
+// boundary. Route handlers run in a different runtime than Edge middleware and
+// cannot share memory with it, so this is a second instance of the same policy
+// covering the login form.
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 10 * 60 * 1000;
-const attempts = new Map<string, { count: number; resetAt: number }>();
-
-function clientKey(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  return forwarded?.split(",")[0].trim() || request.headers.get("x-real-ip") || "unknown";
-}
-
-function isThrottled(key: string): boolean {
-  const entry = attempts.get(key);
-  if (!entry) return false;
-  if (Date.now() > entry.resetAt) {
-    attempts.delete(key);
-    return false;
-  }
-  return entry.count >= MAX_ATTEMPTS;
-}
-
-function recordFailure(key: string): void {
-  const now = Date.now();
-  const entry = attempts.get(key);
-  if (!entry || now > entry.resetAt) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return;
-  }
-  entry.count++;
-}
+const throttle = new FailureThrottle(MAX_ATTEMPTS, WINDOW_MS);
 
 export async function POST(request: NextRequest) {
   const appPassword = process.env.APP_PASSWORD;
@@ -42,8 +18,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  const key = clientKey(request);
-  if (isThrottled(key)) {
+  const key = clientKey(request.headers);
+  if (throttle.isThrottled(key)) {
     return NextResponse.json(
       { error: "Too many attempts. Try again later." },
       { status: 429 }
@@ -58,11 +34,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (typeof password !== "string" || !(await verifyPassword(password))) {
-    recordFailure(key);
+    throttle.recordFailure(key);
     return NextResponse.json({ error: "Invalid password" }, { status: 401 });
   }
 
-  attempts.delete(key);
+  throttle.reset(key);
 
   const response = NextResponse.json({ success: true });
   // Store a derived token, never the password itself.

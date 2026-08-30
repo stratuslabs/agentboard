@@ -21,6 +21,24 @@ We aim to acknowledge within 5 business days and to ship a fix or a plan within
 30 days. We will credit you in the advisory unless you would rather stay
 anonymous.
 
+## Running Behind a Reverse Proxy
+
+Two protections depend on headers your proxy sets, so configure it to send them:
+
+- `X-Forwarded-Host` (or a preserved `Host`) — used to validate the `Origin` of
+  state-changing requests. nginx's `proxy_pass` rewrites `Host` to the upstream
+  address by default; without one of these headers every write is rejected with
+  403. In nginx: `proxy_set_header X-Forwarded-Host $host;` or
+  `proxy_set_header Host $host;`.
+- `X-Real-IP` (or `X-Forwarded-For`) — used to identify a client for login
+  throttling. In nginx: `proxy_set_header X-Real-IP $remote_addr;`.
+
+Your proxy must **set** these rather than pass through what the client sent.
+`X-Forwarded-For` is client-appendable, so AgentBoard reads its last entry (the
+one nearest to us) and prefers `X-Real-IP` where present. A deployment exposed
+directly to the internet with no proxy has no trustworthy client address, and
+throttling degrades to a single shared bucket.
+
 ## Deployment Expectations
 
 Some things are by design, not vulnerabilities:
@@ -34,6 +52,10 @@ Some things are by design, not vulnerabilities:
   existing session and every configured CLI at once.
 - **Attachments are stored inline in Postgres**, capped at 1 MiB each. There is
   no virus scanning or content inspection.
+- **Login throttling is per-runtime-instance.** Failed attempts are counted in
+  memory, so a serverless deployment bounds each warm instance rather than the
+  whole deployment. Treat it as friction against naive guessing, not as a
+  guarantee — the real defence is a long, random `APP_PASSWORD`.
 
 Reports about these behaviours are welcome as feature requests, but they are
 documented trade-offs rather than defects.

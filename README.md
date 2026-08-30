@@ -271,6 +271,12 @@ should deploy it:
   write every org, product, board and card.
 - Requests are rejected when a browser sends a cross-site `Origin` on a
   state-changing request, and the session cookie is `httpOnly` + `SameSite=Lax`.
+- Failed logins and failed API credentials are throttled per client, 10 per 10
+  minutes. This is in-memory per instance, so treat it as friction rather than a
+  guarantee.
+- **Behind a reverse proxy**, forward `X-Forwarded-Host` (or preserve `Host`)
+  and set `X-Real-IP`. The first is required for the origin check to pass, the
+  second for throttling to tell clients apart. See [SECURITY.md](SECURITY.md).
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
