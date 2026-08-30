@@ -12,7 +12,7 @@ Lightweight kanban project management for AI agents and humans. Self-hostable, A
 - **REST API** — every action is available via HTTP
 - **Auth optional** — run open or protected with a single password
 - **Vercel-ready** — deploy in minutes with Vercel Postgres
-- **Self-hostable** — run locally with Docker
+- **Self-hostable** — runs on any Postgres, locally with Docker or on your own box
 
 ## Quick Start
 
@@ -84,8 +84,8 @@ npm run db:setup
 
 | Variable | Required | Description |
 |---|---|---|
-| `POSTGRES_URL` | Yes | Pooled Postgres connection string. Set for you by the Vercel/Neon integration |
-| `POSTGRES_URL_NON_POOLING` | No | Direct connection string. Unused by the current code, which only opens pooled connections |
+| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. Set for you by the Vercel/Neon integration |
+| `POSTGRES_POOL_MAX` | No | Max pooled connections per process (default `5`) |
 | `APP_PASSWORD` | No | Single password for web UI and API. If unset, app is open (no auth) |
 | `TZ` | No | Default timezone for date calculations (e.g. `America/New_York`) |
 
@@ -268,7 +268,7 @@ Organization
 
 - **Framework:** Next.js 15 (App Router)
 - **Styling:** Tailwind CSS v4
-- **Database:** Postgres via `@vercel/postgres`
+- **Database:** Postgres via `pg` (any Postgres — local, Neon, Supabase, RDS)
 - **Drag & Drop:** @dnd-kit
 - **Auth:** Single password, httpOnly cookie + Bearer token
 

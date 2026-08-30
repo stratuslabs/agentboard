@@ -39,6 +39,21 @@ one nearest to us) and prefers `X-Real-IP` where present. A deployment exposed
 directly to the internet with no proxy has no trustworthy client address, and
 throttling degrades to a single shared bucket.
 
+## Database Connections
+
+Connections are opened with `pg` over the Postgres wire protocol. TLS is decided
+explicitly rather than left to the connection string:
+
+- `sslmode=disable`, or no `sslmode` on a loopback host — plaintext, for local
+  development.
+- `sslmode=no-verify` — TLS without certificate verification.
+- Anything else, **including a remote host whose URL omits `sslmode`** — TLS with
+  certificate verification.
+
+That last case is the point: `pg` on its own enables TLS only when the URL asks
+for it, so a remote database reached by a URL missing `sslmode` would otherwise
+be queried in plaintext.
+
 ## Deployment Expectations
 
 Some things are by design, not vulnerabilities:

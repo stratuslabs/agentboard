@@ -1,6 +1,6 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "@/lib/sql";
 
 // Attachment bodies are stored inline in Postgres, so cap them to keep a single
 // request from bloating the database.

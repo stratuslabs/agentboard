@@ -1,6 +1,6 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db as pool } from "@vercel/postgres";
+import { sql, db as pool } from "@/lib/sql";
 
 export async function PATCH(
   request: NextRequest,

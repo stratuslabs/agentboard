@@ -1,6 +1,6 @@
 import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "@/lib/sql";
 
 const DEFAULT_COLUMNS = [
   { name: "Backlog", color: "#6B7280" },

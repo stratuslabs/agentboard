@@ -1,6 +1,6 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "@/lib/sql";
 
 export async function DELETE(
   _request: NextRequest,

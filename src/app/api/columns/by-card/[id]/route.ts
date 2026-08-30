@@ -1,6 +1,6 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@vercel/postgres";
+import { sql } from "@/lib/sql";
 
 // GET /api/columns/by-card/:cardId
 // Returns all columns for the board that contains the given card
