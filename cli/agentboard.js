@@ -155,7 +155,11 @@ function makeReq(baseUrl, password, agentName) {
 
     let res = await fetch(url, opts);
 
-    // Follow redirects manually to preserve auth headers
+    // Follow redirects manually so the auth header survives them — but only
+    // while we stay on the origin the user configured. Forwarding the Bearer
+    // token to whatever host a redirect names would hand the password to
+    // anyone able to inject a Location response.
+    const origin = new URL(base).origin;
     let redirects = 0;
     while (
       (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) &&
@@ -163,7 +167,10 @@ function makeReq(baseUrl, password, agentName) {
     ) {
       const location = res.headers.get("location");
       if (!location) break;
-      const nextUrl = location.startsWith("http") ? location : `${base}${location}`;
+      const nextUrl = new URL(location, url);
+      if (nextUrl.origin !== origin) {
+        die(`Refusing to follow cross-origin redirect to ${nextUrl.origin}`);
+      }
       const redirectOpts = { method, headers, redirect: "manual" };
       if (body !== undefined) {
         redirectOpts.body = JSON.stringify(body);

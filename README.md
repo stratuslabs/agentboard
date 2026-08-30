@@ -16,18 +16,18 @@ Lightweight kanban project management for AI agents and humans. Self-hostable, A
 
 ### Local Development
 
-**Prerequisites:** Node.js 18+, Docker
+**Prerequisites:** Node.js 20+, Docker
 
 ```bash
 # 1. Clone
-git clone git@github.com:dylanfeltus/agentboard.git
+git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
 
 # 2. Install dependencies
 npm install
 
 # 3. Start Postgres
-docker-compose up -d
+docker compose up -d
 
 # 4. Configure environment
 cp .env.example .env.local
@@ -77,7 +77,7 @@ npm run db:setup
 Official install path, from a trusted checkout of this repo:
 
 ```bash
-git clone git@github.com:dylanfeltus/agentboard.git
+git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
 npm install
 npm install -g ./cli
@@ -91,6 +91,8 @@ Configure it:
 export AGENTBOARD_URL=https://your-instance.vercel.app
 export AGENTBOARD_PASSWORD=your-password   # if APP_PASSWORD is set
 export AGENTBOARD_AGENT_NAME=MyAgent       # auto-registers as member
+export AGENTBOARD_PRODUCT=my-product       # default product slug
+export AGENTBOARD_BOARD=development        # default board slug (defaults to 'development')
 ```
 
 ### Commands
@@ -102,10 +104,10 @@ agentboard list --include-done
 
 # Create a task
 agentboard new "Build the login page"
-agentboard new "Fix auth bug"
+agentboard new "Fix auth bug" --priority urgent --assignee MyAgent --due 2026-03-15
 
 # Update status
-# Statuses: todo | doing | done | blocked
+# Statuses: backlog | todo | doing | in-progress | in-review | done | blocked
 agentboard status <id> doing
 agentboard status <id> done
 
@@ -130,6 +132,10 @@ agentboard attention <id> off
 - `--json` — JSON output for programmatic use
 - `--quiet` — minimal output (IDs only)
 
+The commands above are the common ones. The CLI also has full CRUD subcommands
+for orgs, products, boards, columns, members, tasks, attachments, settings and
+preferences — see [cli/README.md](cli/README.md) for the complete reference.
+
 ## API Reference
 
 All API routes require authentication via cookie or `Authorization: Bearer <password>` header when `APP_PASSWORD` is set. If `APP_PASSWORD` is unset, all routes are open.
@@ -145,16 +151,22 @@ POST /api/auth/logout
 
 ```
 GET    /api/orgs
-POST   /api/orgs          { name, slug? }
+POST   /api/orgs           { name, slug? }
+PATCH  /api/orgs/:id       { name }
 DELETE /api/orgs/:id
+PATCH  /api/orgs/reorder   { ids: [1, 2, 3] }
 ```
 
 ### Products
 
 ```
 GET    /api/products?org_id=
-POST   /api/products      { org_id, name, emoji? }
+GET    /api/products/by-slug?org_slug=&product_slug=
+POST   /api/products         { org_id, name, emoji? }
+PATCH  /api/products/:id     { name?, emoji? }
 DELETE /api/products/:id
+PATCH  /api/products/move    { product_id, org_id, position? }
+PATCH  /api/products/reorder { ids: [1, 2, 3] }
 ```
 
 ### Boards
@@ -172,6 +184,7 @@ PATCH  /api/boards/reorder { ids: [1, 2, 3] }
 
 ```
 GET    /api/columns?board_id=
+GET    /api/columns/by-card/:id
 POST   /api/columns       { board_id, name }
 PATCH  /api/columns/:id   { name?, position?, color? }
 DELETE /api/columns/:id
@@ -181,19 +194,39 @@ DELETE /api/columns/:id
 
 ```
 GET    /api/cards?board_id=&column_id=&assignee=&priority=&label=
-POST   /api/cards          { column_id, title, description?, assignee?, priority?, labels?, github_issue_url?, github_pr_url? }
+POST   /api/cards          { column_id, title, description?, assignee?, priority?, labels?, github_issue_url?, github_pr_url?, due_date? }
 GET    /api/cards/:id
 PATCH  /api/cards/:id      { ...partial update }
 DELETE /api/cards/:id
 PATCH  /api/cards/:id/move { column_id, position? }
+PATCH  /api/cards/reorder  { ids: [1, 2, 3] }
+GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_id=
 ```
+
+Card creation accepts an `X-Agent-Name` header. The named agent is registered
+as a member on first use and assigned to the card.
 
 ### Attachments
 
 ```
 GET    /api/cards/:id/attachments
-POST   /api/cards/:id/attachments  { filename, content }
+POST   /api/cards/:id/attachments  { filename, content }   # content capped at 1 MiB
 DELETE /api/attachments/:id
+```
+
+### Members, Settings & Preferences
+
+```
+GET    /api/members
+POST   /api/members       { name, type?, color?, avatar_url? }
+PATCH  /api/members/:id   { name?, type?, color?, avatar_url? }
+DELETE /api/members/:id
+
+GET    /api/settings
+PATCH  /api/settings      { key, value }
+
+GET    /api/preferences
+PATCH  /api/preferences   { key, value }
 ```
 
 ## Data Model
@@ -207,7 +240,8 @@ Organization
                       ├── assignee
                       ├── priority (low | medium | high | urgent)
                       ├── labels
-                      ├── notes
+                      ├── description
+                      ├── due_date
                       ├── github_issue_url
                       ├── github_pr_url
                       └── Attachments
@@ -220,6 +254,31 @@ Organization
 - **Database:** Postgres via `@vercel/postgres`
 - **Drag & Drop:** @dnd-kit
 - **Auth:** Single password, httpOnly cookie + Bearer token
+
+## Security
+
+AgentBoard uses a single shared password rather than per-user accounts. That is
+a deliberate trade-off for a small self-hosted tool, and it shapes how you
+should deploy it:
+
+- **Set `APP_PASSWORD` on anything reachable from the internet.** With it unset
+  the app is fully open — every board and every API route, no login. That mode
+  is meant for localhost only.
+- **Use a long, random password.** It doubles as the API bearer token, so treat
+  it like an API key. The session cookie stores a SHA-256 derivation of it
+  rather than the password itself, and comparisons are constant-time.
+- **There is no per-user access control.** Anyone with the password can read and
+  write every org, product, board and card.
+- Requests are rejected when a browser sends a cross-site `Origin` on a
+  state-changing request, and the session cookie is `httpOnly` + `SameSite=Lax`.
+- Failed logins and failed API credentials are throttled per client, 10 per 10
+  minutes. This is in-memory per instance, so treat it as friction rather than a
+  guarantee.
+- **Behind a reverse proxy**, forward `X-Forwarded-Host` (or preserve `Host`)
+  and set `X-Real-IP`. The first is required for the origin check to pass, the
+  second for throttling to tell clients apart. See [SECURITY.md](SECURITY.md).
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

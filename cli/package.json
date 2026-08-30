@@ -11,9 +11,9 @@
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dylanfeltus/agentboard.git"
+    "url": "git+https://github.com/stratuslabs/agentboard.git"
   },
-  "homepage": "https://github.com/dylanfeltus/agentboard",
+  "homepage": "https://github.com/stratuslabs/agentboard",
   "engines": {
     "node": ">=18"
   },
