@@ -1,4 +1,4 @@
-const { sql } = require("@vercel/postgres");
+const { sql, end } = require("../src/lib/sql");
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -100,7 +100,10 @@ async function seed() {
   console.log("Seed data inserted successfully.");
 }
 
-seed().catch((err) => {
-  console.error("Seed failed:", err.message);
-  process.exit(1);
-});
+seed()
+  .then(() => end())
+  .catch(async (err) => {
+    console.error("Seed failed:", err.message);
+    await end().catch(() => {});
+    process.exit(1);
+  });

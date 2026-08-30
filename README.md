@@ -2,6 +2,8 @@
 
 Lightweight kanban project management for AI agents and humans. Self-hostable, API-first, agent-friendly.
 
+[![Deploy with Vercel](https://vercel.com/button)][deploy]
+
 ## Features
 
 - **Kanban boards** — drag-and-drop cards across configurable columns
@@ -10,7 +12,7 @@ Lightweight kanban project management for AI agents and humans. Self-hostable, A
 - **REST API** — every action is available via HTTP
 - **Auth optional** — run open or protected with a single password
 - **Vercel-ready** — deploy in minutes with Vercel Postgres
-- **Self-hostable** — run locally with Docker
+- **Self-hostable** — runs on any Postgres, locally with Docker or on your own box
 
 ## Quick Start
 
@@ -49,26 +51,41 @@ Open [http://localhost:3000](http://localhost:3000). If `APP_PASSWORD` is not se
 
 ### Deploy to Vercel
 
+[![Deploy with Vercel](https://vercel.com/button)][deploy]
+
+The button clones the repo, provisions a Neon Postgres database through the
+Vercel Marketplace, and prompts you for `APP_PASSWORD`. **Set one** — without it
+the board and its entire API are open to anyone who has the URL.
+
+There is no database setup step: the integration supplies `POSTGRES_URL`, and
+the schema is created on the first request.
+
+<details>
+<summary>Deploying manually instead</summary>
+
 1. Fork this repo
 2. Create a Vercel project and connect it to your fork
-3. Add a Vercel Postgres database (Storage tab → Create Database)
-4. Set environment variables (see table below)
-5. Deploy — Vercel will run the build and your app will be live
+3. Add Postgres under Storage → Create Database (the Neon integration sets
+   `POSTGRES_URL` for you)
+4. Set `APP_PASSWORD` (see the table below)
+5. Deploy
 
-After deploying, run the database setup:
+The schema is created lazily on the first request. To create it up front
+instead:
 
 ```bash
-# With Vercel CLI
 vercel env pull .env.local
 npm run db:setup
 ```
+
+</details>
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `POSTGRES_URL` | Yes | Postgres connection string (pooled) |
-| `POSTGRES_URL_NON_POOLING` | Yes | Postgres connection string (direct) |
+| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. Set for you by the Vercel/Neon integration |
+| `POSTGRES_POOL_MAX` | No | Max pooled connections per process (default `5`) |
 | `APP_PASSWORD` | No | Single password for web UI and API. If unset, app is open (no auth) |
 | `TZ` | No | Default timezone for date calculations (e.g. `America/New_York`) |
 
@@ -251,7 +268,7 @@ Organization
 
 - **Framework:** Next.js 15 (App Router)
 - **Styling:** Tailwind CSS v4
-- **Database:** Postgres via `@vercel/postgres`
+- **Database:** Postgres via `pg` (any Postgres — local, Neon, Supabase, RDS)
 - **Drag & Drop:** @dnd-kit
 - **Auth:** Single password, httpOnly cookie + Bearer token
 
@@ -287,3 +304,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 Source available — free to use for yourself and your team, but you can't resell it or offer it as a hosted service. See [LICENSE](LICENSE) for details.
+
+[deploy]: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard&project-name=agentboard&repository-name=agentboard&products=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D&env=APP_PASSWORD&envDescription=Password%20protecting%20the%20board%20and%20its%20API.%20A%20deployment%20with%20this%20left%20blank%20is%20fully%20open%20to%20anyone%20with%20the%20URL.&envLink=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard%23security

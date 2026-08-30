@@ -17,6 +17,15 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // src/lib/sql.js is deliberately CommonJS: the Next app and the plain-node
+    // scripts in scripts/ both consume it, so there is one implementation of
+    // the connection and TLS handling rather than two that can drift.
+    files: ["src/lib/sql.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

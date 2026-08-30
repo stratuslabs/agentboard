@@ -5,7 +5,7 @@
 // tables lazily on the first request. This script exists so a fresh deploy can
 // be initialized explicitly (e.g. `vercel env pull .env.local && npm run db:setup`).
 
-const { sql } = require("@vercel/postgres");
+const { sql, end } = require("../src/lib/sql");
 
 async function setup() {
   await sql`
@@ -123,7 +123,10 @@ async function setup() {
   console.log("Database setup complete (PostgreSQL).");
 }
 
-setup().catch((err) => {
-  console.error("Setup failed:", err.message);
-  process.exit(1);
-});
+setup()
+  .then(() => end())
+  .catch(async (err) => {
+    console.error("Setup failed:", err.message);
+    await end().catch(() => {});
+    process.exit(1);
+  });
