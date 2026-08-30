@@ -60,6 +60,10 @@ the board and its entire API are open to anyone who has the URL.
 There is no database setup step: the integration supplies `POSTGRES_URL`, and
 the schema is created on the first request.
 
+If the flow does not offer to create a database, add one afterwards from the
+project's **Storage** tab and redeploy — any Postgres works, and the schema is
+still created on the first request.
+
 <details>
 <summary>Deploying manually instead</summary>
 
@@ -305,4 +309,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Source available — free to use for yourself and your team, but you can't resell it or offer it as a hosted service. See [LICENSE](LICENSE) for details.
 
-[deploy]: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard&project-name=agentboard&repository-name=agentboard&products=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D&env=APP_PASSWORD&envDescription=Password%20protecting%20the%20board%20and%20its%20API.%20A%20deployment%20with%20this%20left%20blank%20is%20fully%20open%20to%20anyone%20with%20the%20URL.&envLink=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard%23security
+[deploy]: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard&project-name=agentboard&repository-name=agentboard&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D&env=APP_PASSWORD&envDescription=Password%20protecting%20the%20board%20and%20its%20API.%20A%20deployment%20with%20this%20left%20blank%20is%20fully%20open%20to%20anyone%20with%20the%20URL.&envLink=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard%23security
