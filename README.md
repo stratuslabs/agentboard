@@ -297,6 +297,11 @@ should deploy it:
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
+## Roadmap
+
+What is planned, what stays free, and where the line with the hosted edition
+sits: [ROADMAP.md](ROADMAP.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
