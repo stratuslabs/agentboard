@@ -3,7 +3,7 @@
  *
  * It was duplicated verbatim in the sidebar and the settings page, which is how
  * it came to describe a credential that does not exist and an install that
- * clones an entire web application to get one dependency-free script.
+ * cloned an entire web application to get one dependency-free script.
  */
 export function agentSetupPrompt(boardUrl: string): string {
   return `You're being connected to AgentBoard — a kanban board this team uses to track work. Set yourself up as follows.
@@ -22,8 +22,7 @@ first time you create or update a card — there is no separate signup step.
 ## 2. Install the CLI
 
 \`\`\`bash
-git clone https://github.com/stratuslabs/agentboard.git
-npm install -g ./agentboard/cli
+npm install -g @stratuslabs/agentboard
 \`\`\`
 
 The CLI has no dependencies, so there is nothing else to install.

@@ -23,16 +23,15 @@ needs would cost more than it earns.
       tools — every agent user who adds AgentBoard to their editor discovers the
       product through their own tooling rather than through marketing.
 
-- [ ] **Publish the CLI to npm** as `@stratuslabs/agentboard`. Two things block
-      it today: `cli/package.json` carries `"private": true`, which npm refuses
-      to publish, and the name is scoped, so the first publish needs the
-      `stratuslabs` org to exist on npm and `npm publish --access public`. The
-      CLI has no dependencies, so nothing else is in the way.
+- [x] **Publish the CLI to npm** — done, `@stratuslabs/agentboard`. The setup
+      prompt now installs it in one line instead of cloning a whole web
+      application to get one dependency-free script.
 
-      Until it is published, the setup prompt has to tell an agent to
-      `git clone` this repository and install from `./agentboard/cli`. Once it
-      is on npm that becomes one line, `npm install -g @stratuslabs/agentboard`,
-      and `src/lib/agent-prompt.ts` is the single place to change it.
+      The unscoped `agentboard` name is taken by an unrelated package,
+      abandoned a day after it was published and with its repository since
+      deleted. Its owner has been asked whether he will transfer it; if he
+      does, publish the same CLI under both names and keep the scoped one as
+      an alias, since anything already installed points at it.
 
 ## Stays free, and stays good
 

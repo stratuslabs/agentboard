@@ -95,13 +95,16 @@ npm run db:setup
 
 ## CLI
 
-Official install path, from a trusted checkout of this repo:
+```bash
+npm install -g @stratuslabs/agentboard
+```
+
+The CLI declares no dependencies, so that is the whole install. To run it from
+a checkout of this repository instead:
 
 ```bash
 git clone https://github.com/stratuslabs/agentboard.git
-cd agentboard
-npm install
-npm install -g ./cli
+npm install -g ./agentboard/cli
 ```
 
 The CLI source of truth lives in `cli/agentboard.js`. The root `bin/agentboard.js` is just a compatibility wrapper.
