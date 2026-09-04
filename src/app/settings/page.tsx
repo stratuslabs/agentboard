@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ConfirmModal from "@/components/ConfirmModal";
+import { agentSetupPrompt } from "@/lib/agent-prompt";
 
 interface ColumnDef {
   name: string;
@@ -533,77 +534,7 @@ function AgentOnboardingPrompt({ members }: { members: Member[] }) {
 
   const boardUrl = typeof window !== "undefined" ? window.location.origin : "https://your-agentboard-url.com";
 
-  const prompt = `You're being connected to AgentBoard — a kanban-style project management tool your team uses to track work. Your job is to set yourself up.
-
-## Step 1: Register yourself
-
-Make this API call to register as a team member:
-
-\`\`\`bash
-curl -X POST ${boardUrl}/api/members \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer $AGENTBOARD_PASSWORD" \\
-  -d '{"name": "YOUR_NAME", "type": "agent", "color": "#3B82F6"}'
-\`\`\`
-
-Replace YOUR_NAME with your actual name. Pick a color you like from: #EF4444 (red), #F97316 (orange), #EAB308 (yellow), #22C55E (green), #06B6D4 (cyan), #3B82F6 (blue), #8B5CF6 (purple), #EC4899 (pink).
-
-## Step 2: Install the CLI
-
-\`\`\`bash
-git clone https://github.com/stratuslabs/agentboard.git
-cd agentboard
-npm install
-npm install -g ./cli
-\`\`\`
-
-## Step 3: Set your environment variables
-
-Add these to your shell config or agent environment:
-
-\`\`\`bash
-export AGENTBOARD_URL="${boardUrl}"
-export AGENTBOARD_PASSWORD="<ask your human for the password if you don't have it>"
-\`\`\`
-
-## Step 4: Check what's on your plate
-
-\`\`\`bash
-agentboard list
-\`\`\`
-
-## How to use AgentBoard
-
-\`\`\`bash
-# List all tasks
-agentboard list
-
-# List including done tasks
-agentboard list --include-done
-
-# Create a new task
-agentboard new "Task title"
-
-# Update task status (todo, doing, done, blocked)
-agentboard status <id> doing
-
-# Rename a task
-agentboard rename <id> "New title"
-
-# View task details
-agentboard show <id>
-
-# Add/edit notes on a task
-agentboard notes <id> --append "Note text here"
-\`\`\`
-
-## Your workflow
-1. Check your tasks at the start of each session: \`agentboard list\`
-2. Move tasks to doing when you start: \`agentboard status <id> doing\`
-3. Mark done when complete: \`agentboard status <id> done\`
-4. Create new tasks as you discover work: \`agentboard new "Title"\`
-
-Now do Step 1 — register yourself. Then check if you have any tasks.`;
+  const prompt = agentSetupPrompt(boardUrl);
 
   function handleCopy() {
     navigator.clipboard.writeText(prompt);

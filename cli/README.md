@@ -15,7 +15,7 @@ npm install -g ./cli
 
 ```bash
 export AGENTBOARD_URL=https://your-instance.vercel.app
-export AGENTBOARD_PASSWORD=your-password       # if auth is enabled
+export AGENTBOARD_TOKEN=your-api-key            # if auth is enabled
 export AGENTBOARD_AGENT_NAME=MyAgent           # auto-registers as agent member
 export AGENTBOARD_PRODUCT=my-product           # default product slug
 export AGENTBOARD_BOARD=development            # default board slug (optional, defaults to 'development')
