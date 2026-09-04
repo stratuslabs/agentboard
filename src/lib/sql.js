@@ -8,13 +8,37 @@
  * shape means call sites did not have to change when the driver did.
  *
  * `pg` speaks the Postgres wire protocol, so any Postgres works — a local
- * container, Neon, Supabase, RDS, or your own server.
+ * container, Neon, Supabase, RDS, or your own server. Kept deliberately in
+ * step with the same file in the hosted edition, so the two do not drift.
  */
 
 const { Pool } = require("pg");
 
 /** Hosts we are willing to talk to without TLS. */
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * Connection string variables, in the order they are tried.
+ *
+ * `POSTGRES_URL` is what .env.example documents. `DATABASE_URL` is what Neon's
+ * native Vercel integration sets, so a database provisioned through the
+ * marketplace — including by the one-click deploy button — works without
+ * anyone first noticing that the name does not match.
+ */
+const CONNECTION_STRING_VARS = ["POSTGRES_URL", "DATABASE_URL"];
+
+/**
+ * The first connection string that is set, or null when none is.
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {string | null}
+ */
+function connectionString(env = process.env) {
+  for (const name of CONNECTION_STRING_VARS) {
+    const value = env[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
 
 /** @type {import('pg').Pool | undefined} */
 let pool;
@@ -53,25 +77,29 @@ function sslConfig(connectionString) {
 }
 
 /**
- * Created lazily: importing this module must not throw when POSTGRES_URL is
- * absent, or `next build` would fail on any route that imports it.
+ * Created lazily: importing this module must not throw when no connection
+ * string is set, or `next build` would fail on any route that imports it.
  */
 function getPool() {
   if (pool) return pool;
 
-  const connectionString = process.env.POSTGRES_URL;
-  if (!connectionString) {
+  const url = connectionString();
+  if (!url) {
+    // Naming every variable that was tried turns "it is not set" into a
+    // question you can answer from the log line alone.
     throw new Error(
-      "POSTGRES_URL is not set. Copy .env.example to .env.local and set it, " +
-        "or run `vercel env pull .env.local`."
+      `No database connection string. Looked for ${CONNECTION_STRING_VARS.join(", ")}. ` +
+        "Copy .env.example to .env.local and set POSTGRES_URL, or run " +
+        "`vercel env pull .env.local`."
     );
   }
 
   pool = new Pool({
-    connectionString,
-    ssl: sslConfig(connectionString),
+    connectionString: url,
+    ssl: sslConfig(url),
     // One pool per process, and serverless runs many processes. Keep each
-    // one small and point POSTGRES_URL at a pooled endpoint in production.
+    // one small and point the connection string at a pooled endpoint in
+    // production.
     max: Number(process.env.POSTGRES_POOL_MAX || 5),
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,

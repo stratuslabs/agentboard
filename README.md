@@ -35,7 +35,6 @@ docker compose up -d
 cp .env.example .env.local
 # Edit .env.local and set:
 #   POSTGRES_URL=postgresql://agentboard:agentboard@localhost:5432/agentboard
-#   POSTGRES_URL_NON_POOLING=postgresql://agentboard:agentboard@localhost:5432/agentboard
 
 # 5. Set up the database schema
 npm run db:setup
@@ -57,8 +56,9 @@ The button clones the repo, provisions a Neon Postgres database through the
 Vercel Marketplace, and prompts you for `APP_PASSWORD`. **Set one** — without it
 the board and its entire API are open to anyone who has the URL.
 
-There is no database setup step: the integration supplies `POSTGRES_URL`, and
-the schema is created on the first request.
+There is no database setup step: the integration supplies the connection
+string — as `POSTGRES_URL` or as `DATABASE_URL`, depending on its version, and
+the app reads either — and the schema is created on the first request.
 
 If the flow does not offer to create a database, add one afterwards from the
 project's **Storage** tab and redeploy — any Postgres works, and the schema is
@@ -69,8 +69,8 @@ still created on the first request.
 
 1. Fork this repo
 2. Create a Vercel project and connect it to your fork
-3. Add Postgres under Storage → Create Database (the Neon integration sets
-   `POSTGRES_URL` for you)
+3. Add Postgres under Storage → Create Database (the Neon integration sets the
+   connection string for you, as `POSTGRES_URL` or `DATABASE_URL`)
 4. Set `APP_PASSWORD` (see the table below)
 5. Deploy
 
@@ -88,7 +88,7 @@ npm run db:setup
 
 | Variable | Required | Description |
 |---|---|---|
-| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. Set for you by the Vercel/Neon integration |
+| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. `DATABASE_URL` is accepted as a fallback, which is the name some versions of the Vercel/Neon integration set |
 | `POSTGRES_POOL_MAX` | No | Max pooled connections per process (default `5`) |
 | `APP_PASSWORD` | No | Single password for web UI and API. If unset, app is open (no auth) |
 | `TZ` | No | Default timezone for date calculations (e.g. `America/New_York`) |

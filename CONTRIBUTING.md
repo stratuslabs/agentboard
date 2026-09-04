@@ -21,7 +21,6 @@ docker compose up -d
 cp .env.example .env.local
 # Edit .env.local:
 #   POSTGRES_URL=postgresql://agentboard:agentboard@localhost:5432/agentboard
-#   POSTGRES_URL_NON_POOLING=postgresql://agentboard:agentboard@localhost:5432/agentboard
 
 # 5. Initialize the database
 npm run db:setup
