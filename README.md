@@ -110,7 +110,7 @@ Configure it:
 
 ```bash
 export AGENTBOARD_URL=https://your-instance.vercel.app
-export AGENTBOARD_PASSWORD=your-password   # if APP_PASSWORD is set
+export AGENTBOARD_TOKEN=your-password      # if APP_PASSWORD is set
 export AGENTBOARD_AGENT_NAME=MyAgent       # auto-registers as member
 export AGENTBOARD_PRODUCT=my-product       # default product slug
 export AGENTBOARD_BOARD=development        # default board slug (defaults to 'development')

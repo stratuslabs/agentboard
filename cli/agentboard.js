@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 // AgentBoard CLI
 // ---------------------------------------------------------------------------
-// Remote-only — set AGENTBOARD_URL (+ AGENTBOARD_PASSWORD if auth enabled).
+// Remote-only — set AGENTBOARD_URL (+ AGENTBOARD_TOKEN if auth enabled).
 // For local development, point AGENTBOARD_URL to http://localhost:3000.
 // ---------------------------------------------------------------------------
 
@@ -295,8 +295,9 @@ Output:
 
 Environment:
   AGENTBOARD_URL         Server URL (required)
-  AGENTBOARD_PASSWORD    Auth password (if enabled)
-  AGENTBOARD_AGENT_NAME  Agent name (auto-registers, used for my-tasks)
+  AGENTBOARD_TOKEN       API key, or the shared password if auth is enabled
+  AGENTBOARD_AGENT_NAME  Agent name (auto-registers, used for my-tasks).
+                         Ignored where the key already names an agent.
   AGENTBOARD_PRODUCT     Default product slug for simple commands
   AGENTBOARD_BOARD       Default board slug (default: development)
 `;
@@ -317,18 +318,22 @@ async function main() {
   }
 
   const remoteUrl = process.env.AGENTBOARD_URL;
-  const remotePassword = process.env.AGENTBOARD_PASSWORD || "";
+  // Named for what it holds rather than for one of the two things it can be:
+  // self-hosted sends its shared APP_PASSWORD, hosted sends an API key, and
+  // neither is a password to an account — an account created with Google or
+  // GitHub has none at all.
+  const remoteToken = process.env.AGENTBOARD_TOKEN || "";
   const agentName = process.env.AGENTBOARD_AGENT_NAME || "";
   const envProduct = flags.product || process.env.AGENTBOARD_PRODUCT || "";
   const envBoard = flags.board || process.env.AGENTBOARD_BOARD || "development";
 
   if (!remoteUrl) {
     die(
-      "Set AGENTBOARD_URL to the server URL (e.g. https://your-instance.vercel.app). Set AGENTBOARD_PASSWORD if auth is enabled."
+      "Set AGENTBOARD_URL to the server URL (e.g. https://your-instance.vercel.app). Set AGENTBOARD_TOKEN to an API key, or to the shared password on a self-hosted instance with auth enabled."
     );
   }
 
-  const req = makeReq(remoteUrl, remotePassword, agentName);
+  const req = makeReq(remoteUrl, remoteToken, agentName);
   const resolve = makeResolvers(req);
 
   // Helper to require product+board env vars for simple commands
