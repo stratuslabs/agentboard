@@ -497,10 +497,20 @@ async function main() {
       if (!assignee) die("Set AGENTBOARD_AGENT_NAME or pass --assignee <name>");
 
       // Resolve member id (optional — member may not exist yet for legacy cards)
+      //
+      // An agent and a colleague may share a name, and /api/members lists humans
+      // first, so a bare name match handed an agent called Alex the tasks
+      // belonging to the human Alex. When the name came from
+      // AGENTBOARD_AGENT_NAME it means an agent and nothing else; --assignee is
+      // a person asking about anybody, so it still matches either.
       const members = await req("GET", "/api/members");
-      const member = members.find(
-        (m) => m.name.toLowerCase() === assignee.toLowerCase() || String(m.id) === String(assignee)
-      );
+      const byName = (m) => m.name.toLowerCase() === assignee.toLowerCase();
+      const byId = (m) => String(m.id) === String(assignee);
+      const askingAboutSelf = !flags.assignee;
+      const member =
+        (askingAboutSelf
+          ? members.find((m) => m.type === "agent" && (byName(m) || byId(m)))
+          : undefined) || members.find((m) => byName(m) || byId(m));
 
       // Fetch from views endpoint (assignee_id based) if member exists
       let cards = [];
