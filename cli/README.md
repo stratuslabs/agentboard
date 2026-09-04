@@ -5,11 +5,23 @@ Lightweight project management for agents and humans.
 ## Install
 
 ```bash
-git clone https://github.com/stratuslabs/agentboard.git
-cd agentboard
-npm install
-npm install -g ./cli
+npm install -g @stratuslabs/agentboard
 ```
+
+No dependencies, so that is the whole install.
+
+<details>
+<summary>From a checkout instead</summary>
+
+```bash
+git clone https://github.com/stratuslabs/agentboard.git
+npm install -g ./agentboard/cli
+```
+
+The CLI declares no dependencies, so there is no need to `npm install` the
+application around it.
+
+</details>
 
 ## Setup
 
