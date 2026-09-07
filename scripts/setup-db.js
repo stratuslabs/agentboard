@@ -80,6 +80,9 @@ async function setup() {
   await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES members(id) ON DELETE SET NULL`;
   // Migration: due dates on cards
   await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`;
+  // Migration: stamp boards and columns so a client can fetch a delta
+  await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,

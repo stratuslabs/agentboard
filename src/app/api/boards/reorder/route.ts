@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { notifyBoards } from "@/lib/realtime/notify";
 
 export async function PATCH(request: NextRequest) {
   await initDb();
@@ -12,8 +13,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   for (let i = 0; i < ids.length; i++) {
-    await sql`UPDATE boards SET position = ${i} WHERE id = ${ids[i]}`;
+    await sql`UPDATE boards SET position = ${i}, updated_at = NOW() WHERE id = ${ids[i]}`;
   }
+
+  await notifyBoards(ids);
 
   return NextResponse.json({ ok: true });
 }

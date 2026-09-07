@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { boardIdForCard, boardIdForColumn, notifyBoards } from "@/lib/realtime/notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -25,10 +26,15 @@ export async function PATCH(
     newPosition = maxRows[0].max + 1;
   }
 
+  const boardBefore = await boardIdForCard(id);
+
   const { rows: updated } = await sql`
     UPDATE cards SET column_id = ${column_id}, position = ${newPosition}, updated_at = NOW()
     WHERE id = ${id}
     RETURNING *
   `;
+
+  await notifyBoards([boardBefore, await boardIdForColumn(column_id)]);
+
   return NextResponse.json(updated[0]);
 }

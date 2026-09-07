@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
 
 // Attachment bodies are stored inline in Postgres, so cap them to keep a single
 // request from bloating the database.
@@ -60,5 +61,9 @@ export async function POST(
     VALUES (${id}, ${filename}, ${content})
     RETURNING *
   `;
+
+  await sql`UPDATE cards SET updated_at = NOW() WHERE id = ${id}`;
+  await notifyBoard(await boardIdForCard(id));
+
   return NextResponse.json(rows[0], { status: 201 });
 }

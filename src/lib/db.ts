@@ -89,6 +89,12 @@ export async function ensureTables() {
   } catch {
     // Column may already exist
   }
+  // Migration: stamp boards and columns the way cards already are, so a client
+  // can ask for everything that changed since a timestamp instead of refetching
+  // the whole board every few seconds. `IF NOT EXISTS` is already idempotent,
+  // so this needs no guard.
+  await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,

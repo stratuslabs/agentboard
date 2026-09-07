@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useBoardStream } from "@/lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -284,6 +285,21 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
 
   useEffect(() => { loadOrgs(); loadMembers(); loadPastDueCount(); }, []);
+
+  // Keep the past-due badge live. It used to load once on mount and then sit
+  // there, so a card falling overdue — or being dealt with — was invisible
+  // until the next navigation.
+  //
+  // Debounced because one gesture is often several writes: a card drag lands a
+  // move and a reorder, and the badge does not need to be recounted twice.
+  const pastDueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useBoardStream(null, () => {
+    if (pastDueTimerRef.current) clearTimeout(pastDueTimerRef.current);
+    pastDueTimerRef.current = setTimeout(() => { loadPastDueCount(); }, 400);
+  });
+  useEffect(() => () => {
+    if (pastDueTimerRef.current) clearTimeout(pastDueTimerRef.current);
+  }, []);
 
   async function loadPastDueCount() {
     try {

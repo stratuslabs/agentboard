@@ -153,4 +153,4 @@ async function end() {
   }
 }
 
-module.exports = { sql, db, end };
+module.exports = { sql, db, end, sslConfig, connectionString, CONNECTION_STRING_VARS };
