@@ -20,15 +20,6 @@ type Subscriber = { boardId: number | null; fire: () => void };
 
 const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
-/**
- * Whether this page has ever had a live connection.
- *
- * The first one coincides with the mount fetches, so it needs no catch-up.
- * Every one after it is a reconnection, and reconnections are where updates go
- * missing. Never reset — a teardown and reopen is precisely the case that
- * needs collecting.
- */
-let everConnected = false;
 let closeTimer: ReturnType<typeof setTimeout> | null = null;
 let reopenTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -55,13 +46,13 @@ function open() {
   // up here rather than on any single path means no reconnection can be missed:
   // the stream carries no replay buffer, so a write committed while the
   // connection was down is otherwise lost until something else happens.
-  source.addEventListener("hello", () => {
-    if (!everConnected) {
-      everConnected = true;
-      return;
-    }
-    deliver(null);
-  });
+  //
+  // The first connection is included, not skipped. Mounting fetches the board
+  // and then subscribes, and the two are not coordinated — a write landing in
+  // between is missed by both, and in polling mode the server's opening stamp
+  // absorbs it as the baseline so it is never reported at all. The cost of
+  // covering that is one delta on load, which normally answers "nothing".
+  source.addEventListener("hello", () => deliver(null));
 
   source.addEventListener("change", (ev) => {
     try {

@@ -148,8 +148,16 @@ export default function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  // Lets loadColumns and loadCards keep stable identities while still reading
+  // the current board. Written in an effect rather than during render, which
+  // React forbids — under StrictMode's double render the second pass would see
+  // a ref already mutated by the first. Declared above the effect that calls
+  // those two, since effects commit in declaration order and they would
+  // otherwise fetch against the previous board on a switch.
   const activeBoardIdRef = useRef(activeBoardId);
-  activeBoardIdRef.current = activeBoardId;
+  useEffect(() => {
+    activeBoardIdRef.current = activeBoardId;
+  }, [activeBoardId]);
 
   // Mirrored for `refreshBoard`, which merges a delta against the cards it
   // already has and must not read them through a stale closure.
@@ -165,6 +173,17 @@ export default function KanbanBoard({
   const cursorRef = useRef<string | null>(null);
 
   /**
+   * Which refresh is the current one.
+   *
+   * Change events, mutation handlers and the end of a drag can all call
+   * `refreshBoard` at once — a drag alone emits a move and a reorder and then
+   * reloads. Responses can come back out of order, and an older snapshot
+   * applied after a newer one leaves the board wrong, with an older cursor to
+   * match. Only the newest request is allowed to write.
+   */
+  const refreshSeqRef = useRef(0);
+
+  /**
    * One request for the whole screen: boards, columns and cards together.
    *
    * Boards and columns always come back whole because they are small. Cards
@@ -175,6 +194,7 @@ export default function KanbanBoard({
    */
   const refreshBoard = useCallback(
     async (opts?: { full?: boolean }) => {
+      const seq = ++refreshSeqRef.current;
       const params = new URLSearchParams({ product_id: String(productId) });
       const requestedBoardId = activeBoardIdRef.current;
       if (requestedBoardId) params.set("board_id", String(requestedBoardId));
@@ -185,10 +205,12 @@ export default function KanbanBoard({
       if (!res.ok) return;
       const data = await res.json();
 
-      // Switching boards while this was in flight makes the answer worthless.
-      // Applying it anyway would replace the new board's cards with the old
-      // board's, and the reconciliation below would then decide the active
-      // board had changed and switch the user back to the one they just left.
+      // Superseded while in flight. Two ways that happens, and both make the
+      // answer worthless: the user switched boards — applying it would replace
+      // the new board's cards with the old board's and then switch them back —
+      // or a later refresh for this same board has already answered, in which
+      // case this is an older snapshot and an older cursor.
+      if (seq !== refreshSeqRef.current) return;
       if (activeBoardIdRef.current !== requestedBoardId) return;
 
       setBoards(data.boards);

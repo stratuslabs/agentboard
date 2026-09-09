@@ -137,6 +137,14 @@ export async function GET(request: NextRequest) {
       // fire `onopen` until something arrives. Announce the mode we ended up in
       // so a misconfigured listener is visible from the client, not just a log.
       const live = await ensureListening();
+
+      // The client can disconnect during that await — which the probe made a
+      // longer window, up to a few seconds. `shutdown` has already run by then,
+      // so anything registered below would never be torn down: the emitter
+      // subscription in particular would sit there for the life of the
+      // process, and it has no listener ceiling to warn about it.
+      if (closed) return;
+
       event("hello", { board_id: boardId, mode: live ? "listen" : "poll" });
 
       if (live) {
