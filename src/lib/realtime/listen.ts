@@ -15,6 +15,13 @@ import { REALTIME_CHANNEL, type BoardChange } from "./notify";
  * so the subscription is dropped on the floor. Production points POSTGRES_URL
  * at the pooler by design, so the listener needs the direct endpoint. When it
  * is unset we simply fall back: see `ensureListening`.
+ *
+ * A `LISTEN` that does not throw is not proof of anything. Some poolers accept
+ * the statement and then release the backend, so the query succeeds while no
+ * notification will ever arrive — and a caller that trusts the return value
+ * disables its own polling and goes quiet forever, which is worse than never
+ * having tried. So the subscription is proved before it is trusted: see
+ * `probe`.
  */
 
 const emitter = new EventEmitter();
@@ -23,6 +30,18 @@ emitter.setMaxListeners(0);
 
 const BOARD_CHANGE = "board-change";
 const MAX_RETRY_MS = 30_000;
+
+/**
+ * How long to wait for a notification we sent ourselves.
+ *
+ * Generous: this runs once per process against a database we are already
+ * connected to, and a false negative costs live updates for the life of the
+ * process, while a slow true positive costs one startup.
+ */
+const PROBE_TIMEOUT_MS = Number(process.env.SSE_PROBE_TIMEOUT_MS || 3_000);
+
+/** Resolves when the round-trip probe for this token comes back. */
+let pendingProbe: { token: string; seen: () => void } | null = null;
 
 let client: Client | null = null;
 let starting: Promise<boolean> | null = null;
@@ -65,7 +84,11 @@ async function start(): Promise<boolean> {
   next.on("notification", (msg) => {
     if (msg.channel !== REALTIME_CHANNEL || !msg.payload) return;
     try {
-      const parsed = JSON.parse(msg.payload) as BoardChange;
+      const parsed = JSON.parse(msg.payload) as BoardChange & { probe?: string };
+      if (parsed.probe !== undefined) {
+        if (pendingProbe && parsed.probe === pendingProbe.token) pendingProbe.seen();
+        return;
+      }
       if (typeof parsed.board_id === "number") {
         emitter.emit(BOARD_CHANGE, parsed.board_id);
       }
@@ -97,9 +120,65 @@ async function start(): Promise<boolean> {
     return false;
   }
 
+  // Prove it. A pooler that accepted the LISTEN but handed the backend to
+  // somebody else answers this by never delivering, which is exactly the
+  // silent failure the caller cannot otherwise detect.
+  if (!(await probe(next))) {
+    console.error(
+      "realtime: LISTEN was accepted but no notification arrived — the " +
+        "connection is probably pooled. Falling back to polling; set " +
+        "DIRECT_POSTGRES_URL to an unpooled endpoint for push updates.",
+    );
+    next.removeAllListeners();
+    await next.end().catch(() => {});
+    scheduleRetry();
+    return false;
+  }
+
   client = next;
   retryMs = 1_000;
   return true;
+}
+
+/**
+ * Send ourselves a notification and wait for it to come back.
+ *
+ * Sent down the same connection that is listening, so it tests the exact
+ * property every stream depends on. The payload carries no `board_id`, so even
+ * if it reached another process it would be ignored there rather than being
+ * mistaken for a board change.
+ */
+async function probe(candidate: Client): Promise<boolean> {
+  const token = `probe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const roundTrip = new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      pendingProbe = null;
+      resolve(false);
+    }, PROBE_TIMEOUT_MS);
+    timer.unref?.();
+
+    pendingProbe = {
+      token,
+      seen: () => {
+        clearTimeout(timer);
+        pendingProbe = null;
+        resolve(true);
+      },
+    };
+  });
+
+  try {
+    await candidate.query("SELECT pg_notify($1, $2)", [
+      REALTIME_CHANNEL,
+      JSON.stringify({ probe: token }),
+    ]);
+  } catch {
+    pendingProbe = null;
+    return false;
+  }
+
+  return roundTrip;
 }
 
 /**

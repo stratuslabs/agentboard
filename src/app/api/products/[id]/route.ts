@@ -1,6 +1,7 @@
 import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { boardIdsUnderProduct, notifyBoards } from "@/lib/realtime/notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -46,6 +47,11 @@ export async function DELETE(
   const { id } = await params;
   const numId = parseInt(id, 10);
 
+  // The delete cascades through boards, columns and cards without any of those
+  // routes running, so nothing else would announce it. Resolved while the rows
+  // still exist.
+  const boardIds = await boardIdsUnderProduct(id);
+
   let result;
   if (!isNaN(numId)) {
     result = await sql`DELETE FROM products WHERE id = ${numId} OR slug = ${id}`;
@@ -56,5 +62,8 @@ export async function DELETE(
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  await notifyBoards(boardIds);
+
   return NextResponse.json({ success: true });
 }

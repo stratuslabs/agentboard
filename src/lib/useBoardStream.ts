@@ -20,6 +20,15 @@ type Subscriber = { boardId: number | null; fire: () => void };
 
 const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
+/**
+ * Whether this page has ever had a live connection.
+ *
+ * The first one coincides with the mount fetches, so it needs no catch-up.
+ * Every one after it is a reconnection, and reconnections are where updates go
+ * missing. Never reset — a teardown and reopen is precisely the case that
+ * needs collecting.
+ */
+let everConnected = false;
 let closeTimer: ReturnType<typeof setTimeout> | null = null;
 let reopenTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -41,6 +50,19 @@ function open() {
   // board each of them cares about.
   source = new EventSource("/api/stream");
 
+  // The server announces every connection, including the ones it opens after
+  // hanging up on itself and the ones EventSource recovers on its own. Catching
+  // up here rather than on any single path means no reconnection can be missed:
+  // the stream carries no replay buffer, so a write committed while the
+  // connection was down is otherwise lost until something else happens.
+  source.addEventListener("hello", () => {
+    if (!everConnected) {
+      everConnected = true;
+      return;
+    }
+    deliver(null);
+  });
+
   source.addEventListener("change", (ev) => {
     try {
       const data = JSON.parse((ev as MessageEvent).data);
@@ -61,13 +83,14 @@ function open() {
   });
 
   source.onerror = () => {
+    // CONNECTING means EventSource is retrying on its own; reopening here as
+    // well would race it and leave two streams. Its recovery announces itself
+    // with a `hello` like any other connection, so the catch-up is handled.
     if (source?.readyState !== EventSource.CLOSED) return;
     close();
     reopenTimer = setTimeout(() => {
       if (subscribers.size === 0) return;
       open();
-      // Collect whatever happened while the connection was down.
-      deliver(null);
     }, 3000);
   };
 }

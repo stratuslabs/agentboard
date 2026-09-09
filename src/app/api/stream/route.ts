@@ -36,6 +36,21 @@ const HEARTBEAT_MS = 15_000;
 const POLL_MS = Number(process.env.SSE_POLL_MS || 2_000);
 
 /**
+ * How often to reconcile even when notifications are arriving.
+ *
+ * Every write path has to remember to announce itself, and the ones that forget
+ * fail silently — a member rename that leaves stale names on cards, a cascading
+ * delete that leaves rows on screen that no longer exist. Both of those were
+ * real, and both were previously hidden by the three-second poll this replaced.
+ *
+ * A slow sweep turns "every write path must notify" from a correctness
+ * requirement into a latency optimisation. At thirty seconds it costs a handful
+ * of aggregates per connection, against the forty requests a minute per tab
+ * that used to be normal. Set to 0 to switch it off.
+ */
+const RECONCILE_MS = Number(process.env.SSE_RECONCILE_MS ?? 30_000);
+
+/**
  * A cheap signature of everything the board screen renders.
  *
  * Only used in polling mode. Two details matter. The counts are load-bearing —
@@ -130,9 +145,13 @@ export async function GET(request: NextRequest) {
             event("change", { board_id: changed });
           }
         });
-      } else {
-        // No NOTIFY available. Poll the signature and emit the same event, so
-        // the client cannot tell the difference and needs no second code path.
+      }
+
+      // The signature sweep. It is the whole mechanism when there is no
+      // NOTIFY, and a slow safety net when there is — the same code either
+      // way, so the client cannot tell which is driving it.
+      const interval = live ? RECONCILE_MS : POLL_MS;
+      if (interval > 0) {
         let last: string | null = null;
         try {
           last = await stampFor(boardId);
@@ -148,9 +167,9 @@ export async function GET(request: NextRequest) {
           } catch (err) {
             console.error("realtime: poll failed", err);
           }
-          if (!closed) timers.push(setTimeout(tick, POLL_MS));
+          if (!closed) timers.push(setTimeout(tick, interval));
         };
-        timers.push(setTimeout(tick, POLL_MS));
+        timers.push(setTimeout(tick, interval));
       }
 
       const beat = () => {

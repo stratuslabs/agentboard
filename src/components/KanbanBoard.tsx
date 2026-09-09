@@ -176,14 +176,20 @@ export default function KanbanBoard({
   const refreshBoard = useCallback(
     async (opts?: { full?: boolean }) => {
       const params = new URLSearchParams({ product_id: String(productId) });
-      const boardId = activeBoardIdRef.current;
-      if (boardId) params.set("board_id", String(boardId));
+      const requestedBoardId = activeBoardIdRef.current;
+      if (requestedBoardId) params.set("board_id", String(requestedBoardId));
       const since = opts?.full ? null : cursorRef.current;
       if (since) params.set("updated_since", since);
 
       const res = await fetch(`/api/board?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
+
+      // Switching boards while this was in flight makes the answer worthless.
+      // Applying it anyway would replace the new board's cards with the old
+      // board's, and the reconciliation below would then decide the active
+      // board had changed and switch the user back to the one they just left.
+      if (activeBoardIdRef.current !== requestedBoardId) return;
 
       setBoards(data.boards);
       setColumns(data.columns);
@@ -207,7 +213,10 @@ export default function KanbanBoard({
       }
 
       cursorRef.current = data.server_time;
-      if (data.active_board_id && data.active_board_id !== activeBoardIdRef.current) {
+      // Only meaningful now that the response is known to be for the board
+      // still on screen: this is the server telling us our board is gone and
+      // naming the fallback it chose, not a race arriving late.
+      if (data.active_board_id && data.active_board_id !== requestedBoardId) {
         setActiveBoardId(data.active_board_id);
       }
     },

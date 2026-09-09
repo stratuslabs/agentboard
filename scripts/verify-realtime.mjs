@@ -183,6 +183,64 @@ async function main() {
     check("an unknown board falls back rather than erroring",
       bogus.status === 200 && bogus.body.active_board_id === boardId);
 
+    section("Changes that touch a card without writing to it");
+    // Cards carry a member's name, type and colour through a join. Editing the
+    // member changes what they render, and nothing writes to the card row — so
+    // without an explicit stamp they never appear in a delta. The three-second
+    // poll used to hide this.
+    const member = await call("POST", "/api/members", {
+      name: `Verify Member ${Date.now()}`,
+      type: "human",
+      color: "#3B82F6",
+    });
+    const assigned = await call("POST", "/api/cards", {
+      column_id: columnId,
+      title: "Assigned card",
+      assignee_id: member.body.id,
+    });
+
+    const beforeRename = (await call("GET", `/api/board?product_id=${productId}`)).body.server_time;
+    await call("PATCH", `/api/members/${member.body.id}`, { name: "Renamed Member" });
+    const afterRename = await call(
+      "GET",
+      `/api/board?product_id=${productId}&updated_since=${encodeURIComponent(beforeRename)}`,
+    );
+    const renamed = afterRename.body.cards.find((c) => c.id === assigned.body.id);
+    check("renaming a member puts its cards in the next delta", Boolean(renamed),
+      "otherwise the old name sits on the card until a full reload");
+    check("and the card carries the new name", renamed?.assignee_name === "Renamed Member",
+      renamed ? `got ${renamed.assignee_name}` : "");
+
+    const beforeMemberDelete = afterRename.body.server_time;
+    await call("DELETE", `/api/members/${member.body.id}`);
+    const afterMemberDelete = await call(
+      "GET",
+      `/api/board?product_id=${productId}&updated_since=${encodeURIComponent(beforeMemberDelete)}`,
+    );
+    const unassigned = afterMemberDelete.body.cards.find((c) => c.id === assigned.body.id);
+    check("deleting a member puts its cards in the next delta", Boolean(unassigned),
+      "ON DELETE SET NULL unassigns them, which is a visible change");
+    check("and they come back unassigned", unassigned?.assignee_id === null,
+      unassigned ? `assignee_id=${unassigned.assignee_id}` : "");
+
+    section("Deletes that cascade past the instrumented routes");
+    // Deleting a product cascades through boards, columns and cards without any
+    // of those routes running, so nothing else announces it and another tab
+    // keeps rendering rows that are gone.
+    const doomed = await call("POST", "/api/products", {
+      org_id: orgId,
+      name: `Doomed ${Date.now()}`,
+    });
+    const doomedBoard = await call("GET", `/api/board?product_id=${doomed.body.id}`);
+    const cascade = await readStream(`/api/stream?board_id=${doomedBoard.body.active_board_id}`, {
+      want: 1,
+      timeoutMs: 8_000,
+      onOpen: () => call("DELETE", `/api/products/${doomed.body.id}`),
+    });
+    check("deleting a product notifies the boards under it",
+      cascade.events.some((e) => e.name === "change"),
+      "a tab on one of those boards would otherwise never hear");
+
     section("The event stream");
     const opened = await readStream(`/api/stream?board_id=${boardId}`, {
       want: 1,
@@ -193,6 +251,12 @@ async function main() {
     check("and reports how it is sourcing changes",
       hello && (hello.data.mode === "listen" || hello.data.mode === "poll"),
       hello ? `mode=${hello.data.mode}` : "");
+    // `listen` is now only reported after a notification has actually made the
+    // round trip. A pooled connection that accepts LISTEN and delivers nothing
+    // reports `poll` instead of going silently dead.
+    check("a reported listen mode has been proved, not assumed",
+      hello?.data.mode !== "listen" || process.env.EXPECT_POLL !== "1",
+      "set EXPECT_POLL=1 when the listener URL is pooled");
     const change = opened.events.find((e) => e.name === "change");
     check("a write produces a change event", Boolean(change));
     check("the event names the board", change && change.data.board_id === boardId,
