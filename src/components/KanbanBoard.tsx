@@ -147,8 +147,16 @@ export default function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  // Lets loadColumns and loadCards keep stable identities while still reading
+  // the current board. Written in an effect rather than during render, which
+  // React forbids — under StrictMode's double render the second pass would see
+  // a ref already mutated by the first. Declared above the effect that calls
+  // those two, since effects commit in declaration order and they would
+  // otherwise fetch against the previous board on a switch.
   const activeBoardIdRef = useRef(activeBoardId);
-  activeBoardIdRef.current = activeBoardId;
+  useEffect(() => {
+    activeBoardIdRef.current = activeBoardId;
+  }, [activeBoardId]);
 
   const loadBoards = useCallback(async () => {
     const res = await fetch(`/api/boards?product_id=${productId}`);
