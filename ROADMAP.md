@@ -23,6 +23,27 @@ needs would cost more than it earns.
       tools — every agent user who adds AgentBoard to their editor discovers the
       product through their own tooling rather than through marketing.
 
+      It lands here, free, as `mcp/` alongside `cli/` — published to npm as
+      `agentboard-mcp`, a stdio server that points at whatever `AGENTBOARD_URL`
+      you give it. That is not generosity, it is the line above applied
+      honestly: a stdio server is a program on your own machine talking to a URL
+      you chose, so it needs nobody else's server, identity or money, and gating
+      it would be gating the API by another name — which is already on the Never
+      list.
+
+      What the hosted edition adds is the **hosting**, not the protocol: a
+      remote endpoint you connect to with a pasted URL and one OAuth click
+      instead of an npm install and a key in a dotfile. That needs an always-on
+      public HTTPS endpoint and an authorization server with real accounts
+      behind it, which is exactly the test. The tool definitions are shared —
+      one module, no transport coupling — so the two editions cannot drift the
+      way `cli/` already has.
+
+      Design it for roughly ten tools, not for the CLI's forty subcommands.
+      Every tool definition costs context on every turn, and tool-selection
+      accuracy falls off as the list grows; a board that is expensive to have
+      connected is a board people disconnect.
+
 - [x] **Publish the CLI to npm** — done, `agentboard`. The setup prompt now
       installs it in one line instead of cloning a whole web application to
       get one dependency-free script.
