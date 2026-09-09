@@ -22,7 +22,7 @@ first time you create or update a card — there is no separate signup step.
 ## 2. Install the CLI
 
 \`\`\`bash
-npm install -g @stratuslabs/agentboard
+npm install -g agentboard
 \`\`\`
 
 The CLI has no dependencies, so there is nothing else to install.

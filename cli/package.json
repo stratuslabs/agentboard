@@ -1,6 +1,6 @@
 {
-  "name": "@stratuslabs/agentboard",
-  "version": "0.2.0",
+  "name": "agentboard",
+  "version": "1.0.0",
   "description": "CLI for AgentBoard — lightweight project management for agents and humans",
   "bin": {
     "agentboard": "./agentboard.js"
@@ -19,9 +19,6 @@
   },
   "engines": {
     "node": ">=18"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": ["agentboard.js", "README.md", "LICENSE", "package.json"]
 }

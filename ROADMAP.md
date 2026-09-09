@@ -23,15 +23,18 @@ needs would cost more than it earns.
       tools — every agent user who adds AgentBoard to their editor discovers the
       product through their own tooling rather than through marketing.
 
-- [x] **Publish the CLI to npm** — done, `@stratuslabs/agentboard`. The setup
-      prompt now installs it in one line instead of cloning a whole web
-      application to get one dependency-free script.
+- [x] **Publish the CLI to npm** — done, `agentboard`. The setup prompt now
+      installs it in one line instead of cloning a whole web application to
+      get one dependency-free script.
 
-      The unscoped `agentboard` name is taken by an unrelated package,
-      abandoned a day after it was published and with its repository since
-      deleted. Its owner has been asked whether he will transfer it; if he
-      does, publish the same CLI under both names and keep the scoped one as
-      an alias, since anything already installed points at it.
+      It shipped first as `@stratuslabs/agentboard`, because the unscoped name
+      belonged to an unrelated package abandoned a day after it was published.
+      Its owner handed the name over, so the scoped package is deprecated and
+      points here. Two consequences worth remembering: his `0.3.1` and `0.4.0`
+      are still on the registry and always will be — npm only permits unpublish
+      within 72 hours — which is why this CLI starts at `1.0.0` rather than
+      continuing his version line, and why anything below `1.0.0` is
+      deprecated with a note saying it is different software.
 
 ## Stays free, and stays good
 

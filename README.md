@@ -96,7 +96,7 @@ npm run db:setup
 ## CLI
 
 ```bash
-npm install -g @stratuslabs/agentboard
+npm install -g agentboard
 ```
 
 The CLI declares no dependencies, so that is the whole install. To run it from
