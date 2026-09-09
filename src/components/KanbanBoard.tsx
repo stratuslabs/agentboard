@@ -160,9 +160,12 @@ export default function KanbanBoard({
   }, [activeBoardId]);
 
   // Mirrored for `refreshBoard`, which merges a delta against the cards it
-  // already has and must not read them through a stale closure.
+  // already has and must not read them through a stale closure. Written in an
+  // effect for the same reason as the ref above.
   const cardsRef = useRef<Card[]>(cards);
-  cardsRef.current = cards;
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
 
   /**
    * The server's own clock, as of the last response. Sent back as
@@ -194,53 +197,60 @@ export default function KanbanBoard({
    */
   const refreshBoard = useCallback(
     async (opts?: { full?: boolean }) => {
-      const seq = ++refreshSeqRef.current;
-      const params = new URLSearchParams({ product_id: String(productId) });
-      const requestedBoardId = activeBoardIdRef.current;
-      if (requestedBoardId) params.set("board_id", String(requestedBoardId));
-      const since = opts?.full ? null : cursorRef.current;
-      if (since) params.set("updated_since", since);
+      // Named so the merge-gap path below can retry itself. Recursing through
+      // `refreshBoard` would read the const this callback is still
+      // initialising.
+      const run = async (full: boolean): Promise<void> => {
+        const seq = ++refreshSeqRef.current;
+        const params = new URLSearchParams({ product_id: String(productId) });
+        const requestedBoardId = activeBoardIdRef.current;
+        if (requestedBoardId) params.set("board_id", String(requestedBoardId));
+        const since = full ? null : cursorRef.current;
+        if (since) params.set("updated_since", since);
 
-      const res = await fetch(`/api/board?${params.toString()}`);
-      if (!res.ok) return;
-      const data = await res.json();
+        const res = await fetch(`/api/board?${params.toString()}`);
+        if (!res.ok) return;
+        const data = await res.json();
 
-      // Superseded while in flight. Two ways that happens, and both make the
-      // answer worthless: the user switched boards — applying it would replace
-      // the new board's cards with the old board's and then switch them back —
-      // or a later refresh for this same board has already answered, in which
-      // case this is an older snapshot and an older cursor.
-      if (seq !== refreshSeqRef.current) return;
-      if (activeBoardIdRef.current !== requestedBoardId) return;
+        // Superseded while in flight. Two ways that happens, and both make the
+        // answer worthless: the user switched boards — applying it would replace
+        // the new board's cards with the old board's and then switch them back —
+        // or a later refresh for this same board has already answered, in which
+        // case this is an older snapshot and an older cursor.
+        if (seq !== refreshSeqRef.current) return;
+        if (activeBoardIdRef.current !== requestedBoardId) return;
 
-      setBoards(data.boards);
-      setColumns(data.columns);
+        setBoards(data.boards);
+        setColumns(data.columns);
 
-      if (data.card_ids) {
-        const byId = new Map<number, Card>(cardsRef.current.map((c) => [c.id, c]));
-        for (const card of data.cards as Card[]) byId.set(card.id, card);
-        const merged = (data.card_ids as number[]).map((id) => byId.get(id));
+        if (data.card_ids) {
+          const byId = new Map<number, Card>(cardsRef.current.map((c) => [c.id, c]));
+          for (const card of data.cards as Card[]) byId.set(card.id, card);
+          const merged = (data.card_ids as number[]).map((id) => byId.get(id));
 
-        // A gap means the cursor did not belong to this board, or an update
-        // went missing. Rather than render a board with holes in it, drop the
-        // cursor and take the whole thing again.
-        if (merged.some((card) => card === undefined)) {
-          cursorRef.current = null;
-          await refreshBoard({ full: true });
-          return;
+          // A gap means the cursor did not belong to this board, or an update
+          // went missing. Rather than render a board with holes in it, drop the
+          // cursor and take the whole thing again.
+          if (merged.some((card) => card === undefined)) {
+            cursorRef.current = null;
+            await run(true);
+            return;
+          }
+          setCards(merged as Card[]);
+        } else {
+          setCards(data.cards);
         }
-        setCards(merged as Card[]);
-      } else {
-        setCards(data.cards);
-      }
 
-      cursorRef.current = data.server_time;
-      // Only meaningful now that the response is known to be for the board
-      // still on screen: this is the server telling us our board is gone and
-      // naming the fallback it chose, not a race arriving late.
-      if (data.active_board_id && data.active_board_id !== requestedBoardId) {
-        setActiveBoardId(data.active_board_id);
-      }
+        cursorRef.current = data.server_time;
+        // Only meaningful now that the response is known to be for the board
+        // still on screen: this is the server telling us our board is gone and
+        // naming the fallback it chose, not a race arriving late.
+        if (data.active_board_id && data.active_board_id !== requestedBoardId) {
+          setActiveBoardId(data.active_board_id);
+        }
+      };
+
+      return run(opts?.full ?? false);
     },
     [productId]
   );
@@ -273,7 +283,9 @@ export default function KanbanBoard({
    */
   const pendingRefreshRef = useRef(false);
   const draggingRef = useRef(false);
-  draggingRef.current = activeCard !== null;
+  useEffect(() => {
+    draggingRef.current = activeCard !== null;
+  }, [activeCard]);
 
   useBoardStream(activeBoardId, () => {
     if (draggingRef.current) {

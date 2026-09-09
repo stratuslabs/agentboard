@@ -99,7 +99,9 @@ export function useBoardStream(
   // Held in a ref so an inline arrow does not tear the subscription down and
   // rebuild it on every render.
   const handlerRef = useRef(onChange);
-  handlerRef.current = onChange;
+  useEffect(() => {
+    handlerRef.current = onChange;
+  });
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
