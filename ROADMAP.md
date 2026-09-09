@@ -23,16 +23,20 @@ needs would cost more than it earns.
       tools — every agent user who adds AgentBoard to their editor discovers the
       product through their own tooling rather than through marketing.
 
-- [ ] **Publish the CLI to npm** as `@stratuslabs/agentboard`. Two things block
-      it today: `cli/package.json` carries `"private": true`, which npm refuses
-      to publish, and the name is scoped, so the first publish needs the
-      `stratuslabs` org to exist on npm and `npm publish --access public`. The
-      CLI has no dependencies, so nothing else is in the way.
+- [x] **Publish the CLI to npm** — done, `agentboard`. The setup prompt now
+      installs it in one line instead of cloning a whole web application to
+      get one dependency-free script.
 
-      Until it is published, the setup prompt has to tell an agent to
-      `git clone` this repository and install from `./agentboard/cli`. Once it
-      is on npm that becomes one line, `npm install -g @stratuslabs/agentboard`,
-      and `src/lib/agent-prompt.ts` is the single place to change it.
+      It shipped first as `@stratuslabs/agentboard`, because the unscoped name
+      belonged to an unrelated package abandoned a day after it was published.
+      Its owner handed the name over, so the scoped package is deprecated and
+      points here. His `0.3.1` and `0.4.0` are still on the registry and always
+      will be — npm only permits unpublish within 72 hours — so this CLI starts
+      at `0.9.0`, which clears `0.4.0` and therefore takes the `latest` tag,
+      and anything below it is deprecated with a note saying it is different
+      software. Not `1.0.0`: SECURITY.md says AgentBoard is pre-1.0, and the
+      version on the package is the wrong place to contradict it. 1.0.0 is
+      worth reaching deliberately, once the launch list above is done.
 
 ## Stays free, and stays good
 

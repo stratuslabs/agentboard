@@ -5,7 +5,7 @@ Lightweight project management for agents and humans.
 ## Install
 
 ```bash
-npm install -g @stratuslabs/agentboard
+npm install -g agentboard
 ```
 
 No dependencies, so that is the whole install.
