@@ -64,6 +64,29 @@ export async function PATCH(
     }
   }
 
+  // Appending a note is not "read the description, add a line, write it back".
+  // Two agents working the same card is the normal case here, not a rare one,
+  // and a read-modify-write from each of them loses whichever note lands
+  // second — silently, with both callers seeing success. The append has to
+  // happen inside the UPDATE so Postgres serialises it on the row lock.
+  if (body.append_description !== undefined) {
+    if (typeof body.append_description !== "string") {
+      return NextResponse.json(
+        { error: "append_description must be a string" },
+        { status: 400 }
+      );
+    }
+    if (body.description !== undefined) {
+      return NextResponse.json(
+        {
+          error:
+            "description and append_description are mutually exclusive: one replaces the field, the other adds to it",
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   const allowedFields = [
     "title", "description", "assignee", "assignee_id", "priority", "labels",
     "github_issue_url", "github_pr_url", "column_id", "position", "due_date"
@@ -78,6 +101,19 @@ export async function PATCH(
       sets.push(`${field} = $${paramIdx++}`);
       values.push(body[field]);
     }
+  }
+
+  if (body.append_description !== undefined) {
+    // Separate a non-empty existing description from the new note, but do not
+    // open with a blank line when there is nothing to separate from.
+    sets.push(
+      `description = CASE
+         WHEN COALESCE(description, '') = '' THEN $${paramIdx}
+         ELSE description || E'\\n' || $${paramIdx}
+       END`
+    );
+    paramIdx++;
+    values.push(body.append_description);
   }
 
   if (sets.length === 0) {

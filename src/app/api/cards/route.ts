@@ -4,6 +4,43 @@ import { sql, db as pool } from "@/lib/sql";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
+/**
+ * Largest page a caller may ask for explicitly.
+ */
+const MAX_EXPLICIT_LIMIT = 200;
+
+/**
+ * Ceiling applied even when no `limit` is given.
+ *
+ * This endpoint used to return every matching row, and `SELECT cards.*` means
+ * every row carries its full `description` — which is where card notes live.
+ * A mature board could therefore return its entire history in one response.
+ *
+ * The default is not lowered to a page, because the response body is a bare
+ * array that the web UI and the CLI both consume directly, and boards below
+ * this size must keep behaving exactly as they do today. The ceiling exists so
+ * that "unbounded" is never true, and `X-Next-Cursor` lets anyone who reaches
+ * it keep going.
+ */
+const SAFETY_LIMIT = 1000;
+
+/** Opaque `position:id` keyset cursor. Opaque so its shape can change later. */
+function encodeCursor(position: number, id: number): string {
+  return Buffer.from(`${position}:${id}`, "utf8").toString("base64url");
+}
+
+function decodeCursor(raw: string): { position: number; id: number } | null {
+  let decoded: string;
+  try {
+    decoded = Buffer.from(raw, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  const match = /^(-?\d+):(\d+)$/.exec(decoded);
+  if (!match) return null;
+  return { position: Number(match[1]), id: Number(match[2]) };
+}
+
 async function resolveAgentMember(agentName: string): Promise<number> {
   const { rows: existing } = await sql`
     SELECT id FROM members WHERE name = ${agentName} AND type = 'agent'
@@ -67,14 +104,54 @@ export async function GET(request: NextRequest) {
     values.push(`%${label}%`);
   }
 
+  const rawLimit = sp.get("limit");
+  let limit = SAFETY_LIMIT;
+  if (rawLimit !== null) {
+    const parsed = Number(rawLimit);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_EXPLICIT_LIMIT) {
+      return NextResponse.json(
+        { error: `limit must be an integer between 1 and ${MAX_EXPLICIT_LIMIT}` },
+        { status: 400 }
+      );
+    }
+    limit = parsed;
+  }
+
+  const rawCursor = sp.get("cursor");
+  if (rawCursor !== null) {
+    const cursor = decodeCursor(rawCursor);
+    if (!cursor) {
+      return NextResponse.json({ error: "invalid cursor" }, { status: 400 });
+    }
+    // Row comparison, so the keyset matches the ORDER BY exactly. Comparing the
+    // two columns separately would skip cards that share a position.
+    conditions.push(
+      `(cards.position, cards.id) > ($${paramIdx++}, $${paramIdx++})`
+    );
+    values.push(cursor.position, cursor.id);
+  }
+
   let query = baseQuery;
   if (conditions.length > 0) {
     query += " WHERE " + conditions.join(" AND ");
   }
   query += " ORDER BY cards.position, cards.id";
 
+  // One extra row is how we learn there is a next page without a second COUNT.
+  query += ` LIMIT $${paramIdx++}`;
+  values.push(limit + 1);
+
   const { rows } = await pool.query(query, values);
-  return NextResponse.json(rows);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const response = NextResponse.json(page);
+  if (hasMore) {
+    const last = page[page.length - 1];
+    response.headers.set("X-Next-Cursor", encodeCursor(last.position, last.id));
+  }
+  return response;
 }
 
 export async function POST(request: NextRequest) {
