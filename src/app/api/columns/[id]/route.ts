@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
+import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -27,9 +28,13 @@ export async function PATCH(
     return NextResponse.json(existing[0]);
   }
 
+  sets.push("updated_at = NOW()");
   values.push(id);
   const query = `UPDATE columns SET ${sets.join(", ")} WHERE id = $${paramIdx} RETURNING *`;
   const { rows } = await pool.query(query, values);
+
+  await notifyBoard(existing[0].board_id);
+
   return NextResponse.json(rows[0]);
 }
 
@@ -39,9 +44,12 @@ export async function DELETE(
 ) {
   await initDb();
   const { id } = await params;
+  // Resolved before the delete, while the column still knows its board.
+  const boardId = await boardIdForColumn(id);
   const result = await sql`DELETE FROM columns WHERE id = ${id}`;
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  await notifyBoard(boardId);
   return NextResponse.json({ success: true });
 }

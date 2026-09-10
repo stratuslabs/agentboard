@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useBoardStream } from "@/lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -285,6 +286,25 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
   useEffect(() => { loadOrgs(); loadMembers(); loadPastDueCount(); }, []);
 
+  // Keep the past-due badge live. It used to load once on mount and then sit
+  // there, so a card falling overdue — or being dealt with — was invisible
+  // until the next navigation.
+  //
+  // Debounced because one gesture is often several writes: a card drag lands a
+  // move and a reorder, and the badge does not need to be recounted twice.
+  const pastDueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useBoardStream(null, () => {
+    if (pastDueTimerRef.current) clearTimeout(pastDueTimerRef.current);
+    pastDueTimerRef.current = setTimeout(() => { loadPastDueCount(); }, 400);
+  });
+  useEffect(() => () => {
+    if (pastDueTimerRef.current) clearTimeout(pastDueTimerRef.current);
+  }, []);
+
+  // Two outcomes that look alike and are not: "there is nobody to have overdue
+  // cards" is a real answer and clears the badge, while a failed request means
+  // we do not know and the last count stands. Zeroing on failure would make the
+  // whole nav entry vanish on any blip, since it is gated on the count.
   async function loadPastDueCount() {
     try {
       // Find the first human member (same approach as Assigned page)
@@ -292,7 +312,12 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
       if (!membersRes.ok) return;
       const allMembers: { id: number; type: string }[] = await membersRes.json();
       const human = allMembers.find((m) => m.type === "human");
-      if (!human) return;
+      if (!human) {
+        // Nobody left to be assigned anything — including after deleting the
+        // member whose overdue cards this badge was counting.
+        setPastDueCount(0);
+        return;
+      }
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${human.id}&tz=${encodeURIComponent(tz)}`);
       if (res.ok) {

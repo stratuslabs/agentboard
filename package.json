@@ -24,7 +24,9 @@
     "start": "next start",
     "lint": "eslint .",
     "db:setup": "node scripts/setup-db.js",
-    "db:seed": "node scripts/seed.js"
+    "db:seed": "node scripts/seed.js",
+    "typecheck": "tsc --noEmit",
+    "test:realtime": "node scripts/verify-realtime.mjs"
   },
   "bin": {
     "agentboard": "./bin/agentboard.js"

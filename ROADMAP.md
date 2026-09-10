@@ -66,6 +66,13 @@ them is what a hosted subscription is for:
 
 - The full REST API — it *is* the product, and gating it would be self-defeating
 - Every board view, and the whole keyboard surface
+- **Live updates.** A board two people are looking at should agree with itself.
+  This needs a connection to your own server and nothing else — no APNs
+  certificates, no third party, no always-on process beyond the one already
+  serving the app — so it fails the test above and belongs here. It is also
+  *easier* here than in the hosted edition: a long-running server holds a
+  stream open indefinitely, while a serverless platform caps it and has to
+  reconnect around the limit
 - Outbound webhooks — point them wherever you like
 - Import and export, so your data is never hostage
 - Custom columns and fields, themes

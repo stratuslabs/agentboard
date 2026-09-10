@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { initDb, slugify } from "@/lib/db";
+import { notifyBoard } from "@/lib/realtime/notify";
 
 export async function GET(request: NextRequest) {
   await initDb();
@@ -29,5 +30,7 @@ export async function POST(request: NextRequest) {
     VALUES (${board_id}, ${name}, ${slug}, ${maxRows[0].max + 1}, ${color || "#6B7280"})
     RETURNING *
   `;
+  await notifyBoard(board_id);
+
   return NextResponse.json(rows[0], { status: 201 });
 }

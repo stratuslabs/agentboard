@@ -90,6 +90,9 @@ npm run db:setup
 |---|---|---|
 | `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. `DATABASE_URL` is accepted as a fallback, which is the name some versions of the Vercel/Neon integration set |
 | `POSTGRES_POOL_MAX` | No | Max pooled connections per process (default `5`) |
+| `DIRECT_POSTGRES_URL` | No | Direct (unpooled) connection string used only for `LISTEN`, which a transaction-mode pooler cannot do. Needed only when `POSTGRES_URL` points at a pooled endpoint. Unset means the event stream polls instead |
+| `SSE_MAX_SECONDS` | No | How long an event stream stays open before asking the client to reconnect (default `240`). The reconnect is invisible; this exists because serverless platforms cap streaming responses |
+| `SSE_POLL_MS` | No | Poll interval for the event stream when no `LISTEN` connection is available (default `2000`) |
 | `APP_PASSWORD` | No | Single password for web UI and API. If unset, app is open (no auth) |
 | `TZ` | No | Default timezone for date calculations (e.g. `America/New_York`) |
 
@@ -229,6 +232,49 @@ GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_i
 
 Card creation accepts an `X-Agent-Name` header. The named agent is registered
 as a member on first use and assigned to the card.
+
+### Live updates
+
+One request for everything a board screen renders, and one event stream that
+says when to ask again.
+
+```
+GET /api/board?product_id=1
+GET /api/board?product_id=1&board_id=4
+GET /api/board?product_id=1&board_id=4&updated_since=<server_time>
+
+GET /api/stream              # every board
+GET /api/stream?board_id=4   # one board
+```
+
+`GET /api/board` returns `{ server_time, boards, active_board_id, columns, cards }`.
+Boards and columns always come back whole — they are a handful of rows, and
+filtering them would only cost the client a second reconciliation path.
+
+Pass the `server_time` from the previous response back as `updated_since` and
+`cards` narrows to what changed, alongside `card_ids`: every card id on the
+board, in order. That list is how a delta reports a deletion, since a row that
+no longer exists can never appear in a "changed since" result — reconcile
+membership from the ids rather than inferring it from the changes. Treat
+`server_time` as an opaque cursor; it is the database's clock, not the caller's.
+
+The response also carries a weak `ETag`, so an unchanged board answers
+`If-None-Match` with a `304` and an empty body.
+
+`GET /api/stream` is Server-Sent Events. It carries invalidation, not data:
+
+```
+event: hello       data: {"board_id":4,"mode":"listen"}
+event: change      data: {"board_id":4}
+event: reconnect   data: {"reason":"max-duration"}
+```
+
+A `change` event means "fetch a delta", which keeps live updates and reconnect
+catch-up on the same code path. `mode` reports whether the server is sourcing
+changes from `LISTEN/NOTIFY` or falling back to polling — see
+`DIRECT_POSTGRES_URL`. The server closes the stream on its own schedule and
+sends `reconnect` first, so a platform timeout never cuts a response mid-write;
+reconnect and resume from your last cursor.
 
 ### Attachments
 

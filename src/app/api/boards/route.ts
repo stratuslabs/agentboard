@@ -1,6 +1,7 @@
 import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { notifyBoard } from "@/lib/realtime/notify";
 
 const DEFAULT_COLUMNS = [
   { name: "Backlog", color: "#6B7280" },
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest) {
       VALUES (${board.id}, ${col.name}, ${colSlug}, ${j}, ${col.color})
     `;
   }
+
+  await notifyBoard(board.id);
 
   return NextResponse.json(board, { status: 201 });
 }

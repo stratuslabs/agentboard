@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useBoardStream } from "@/lib/useBoardStream";
 import {
   DndContext,
   closestCorners,
@@ -158,57 +159,170 @@ export default function KanbanBoard({
     activeBoardIdRef.current = activeBoardId;
   }, [activeBoardId]);
 
-  const loadBoards = useCallback(async () => {
-    const res = await fetch(`/api/boards?product_id=${productId}`);
-    if (!res.ok) return;
-    const data: Board[] = await res.json();
-    setBoards(data);
-    if (data.length > 0) {
-      setActiveBoardId(data[0].id);
-    }
-  }, [productId]);
+  // Mirrored for `refreshBoard`, which merges a delta against the cards it
+  // already has and must not read them through a stale closure. Written in an
+  // effect for the same reason as the ref above.
+  const cardsRef = useRef<Card[]>(cards);
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
 
-  const loadColumns = useCallback(async () => {
-    const boardId = activeBoardIdRef.current;
-    if (!boardId) return;
-    const res = await fetch(`/api/columns?board_id=${boardId}`);
-    if (res.ok) {
-      setColumns(await res.json());
-    }
-  }, []);
+  /**
+   * The server's own clock, as of the last response. Sent back as
+   * `updated_since` so the next fetch carries only what changed. Null means
+   * "ask for everything" — on first load, after a board switch, or whenever a
+   * merge turns out not to reconcile.
+   */
+  const cursorRef = useRef<string | null>(null);
 
-  const loadCards = useCallback(async () => {
-    const boardId = activeBoardIdRef.current;
-    if (!boardId) return;
-    const res = await fetch(`/api/cards?board_id=${boardId}`);
-    if (res.ok) {
-      setCards(await res.json());
-    }
-  }, []);
+  /**
+   * Which refresh is the current one.
+   *
+   * Change events, mutation handlers and the end of a drag can all call
+   * `refreshBoard` at once — a drag alone emits a move and a reorder and then
+   * reloads. Responses can come back out of order, and an older snapshot
+   * applied after a newer one leaves the board wrong, with an older cursor to
+   * match. Only the newest request is allowed to write.
+   */
+  const refreshSeqRef = useRef(0);
+  const appliedSeqRef = useRef(0);
+
+  /**
+   * One request for the whole screen: boards, columns and cards together.
+   *
+   * Boards and columns always come back whole because they are small. Cards
+   * arrive as a delta plus `card_ids` — every id on the board, in order — and
+   * that id list is what makes deletions visible: a row that no longer exists
+   * can never appear in a "changed since" result, so membership is rebuilt from
+   * the list rather than inferred from the changes.
+   */
+  const refreshBoard = useCallback(
+    async (opts?: { full?: boolean }) => {
+      // Named so the merge-gap path below can retry itself. Recursing through
+      // `refreshBoard` would read the const this callback is still
+      // initialising.
+      const run = async (full: boolean): Promise<void> => {
+        const seq = ++refreshSeqRef.current;
+        const params = new URLSearchParams({ product_id: String(productId) });
+        const requestedBoardId = activeBoardIdRef.current;
+        if (requestedBoardId) params.set("board_id", String(requestedBoardId));
+        const since = full ? null : cursorRef.current;
+        if (since) params.set("updated_since", since);
+
+        // A refresh is fired from event handlers that do not await it, so a
+        // rejected fetch — offline, a dropped connection — would surface as an
+        // unhandled rejection rather than a skipped refresh. Failing quietly is
+        // right here: the stream will say so again, and the sweep is behind it.
+        let res: Response;
+        try {
+          res = await fetch(`/api/board?${params.toString()}`);
+        } catch {
+          return;
+        }
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Superseded while in flight. Two ways that happens, and both make the
+        // answer worthless: the user switched boards — applying it would replace
+        // the new board's cards with the old board's and then switch them back —
+        // or a later refresh for this same board has already answered, in which
+        // case this is an older snapshot and an older cursor.
+        //
+        // Compared against what was last *applied*, not what was last issued.
+        // Keyed to the newest request, a newer one that fails or never returns
+        // would claim the sequence and discard the older response that did
+        // arrive — leaving the board stale with nothing left to retry.
+        if (seq <= appliedSeqRef.current) return;
+        if (activeBoardIdRef.current !== requestedBoardId) return;
+        appliedSeqRef.current = seq;
+
+        setBoards(data.boards);
+        setColumns(data.columns);
+
+        if (data.card_ids) {
+          const byId = new Map<number, Card>(cardsRef.current.map((c) => [c.id, c]));
+          for (const card of data.cards as Card[]) byId.set(card.id, card);
+          const merged = (data.card_ids as number[]).map((id) => byId.get(id));
+
+          // A gap means the cursor did not belong to this board, or an update
+          // went missing. Rather than render a board with holes in it, drop the
+          // cursor and take the whole thing again.
+          if (merged.some((card) => card === undefined)) {
+            cursorRef.current = null;
+            await run(true);
+            return;
+          }
+          setCards(merged as Card[]);
+        } else {
+          setCards(data.cards);
+        }
+
+        cursorRef.current = data.server_time;
+        // Only meaningful now that the response is known to be for the board
+        // still on screen: this is the server telling us our board is gone and
+        // naming the fallback it chose, not a race arriving late.
+        if (data.active_board_id && data.active_board_id !== requestedBoardId) {
+          setActiveBoardId(data.active_board_id);
+        }
+      };
+
+      return run(opts?.full ?? false);
+    },
+    [productId]
+  );
+
+  // Kept under their old names: every mutation handler below already calls the
+  // one it cares about, and each is now the same single request.
+  const loadBoards = refreshBoard;
+  const loadColumns = refreshBoard;
+  const loadCards = refreshBoard;
 
   useEffect(() => {
-    loadBoards();
+    refreshBoard({ full: true });
     fetch("/api/members").then((r) => r.json()).then(setMembers).catch(() => {});
-  }, [loadBoards]);
+  }, [refreshBoard]);
 
-  useEffect(() => {
-    if (activeBoardId) {
-      loadColumns();
-      loadCards();
-    }
-  }, [activeBoardId, loadColumns, loadCards]);
-
-  // Live polling — refresh cards & columns every 3s when not dragging
+  // Switching boards invalidates the cursor — it describes a different board's
+  // history — so the new board is fetched whole.
   useEffect(() => {
     if (!activeBoardId) return;
-    const interval = setInterval(() => {
-      if (!activeCard) {
-        loadCards();
-        loadColumns();
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [activeBoardId, activeCard, loadCards, loadColumns]);
+    cursorRef.current = null;
+    refreshBoard({ full: true });
+  }, [activeBoardId, refreshBoard]);
+
+  /**
+   * Live updates, in place of the three-second poll this used to run.
+   *
+   * Events that land mid-drag are held, not applied: the board is showing an
+   * optimistic position that the pointer still owns, and replacing the cards
+   * underneath it would fight the gesture. The flag is drained on drop.
+   */
+  const pendingRefreshRef = useRef(false);
+  const draggingRef = useRef(false);
+  useEffect(() => {
+    draggingRef.current = activeCard !== null;
+  }, [activeCard]);
+
+  // Subscribed to everything rather than to the active board. This screen
+  // renders the product's whole board-tab row, so a sibling board being
+  // created, renamed or deleted changes what is on screen even though the
+  // notification names a board the user is not looking at. The connection is
+  // already unscoped — filtering happens here, not on the server — so the only
+  // cost is a delta fetch that an ETag usually answers with a 304.
+  useBoardStream(null, () => {
+    if (draggingRef.current) {
+      pendingRefreshRef.current = true;
+      return;
+    }
+    refreshBoard();
+  });
+
+  useEffect(() => {
+    if (activeCard === null && pendingRefreshRef.current) {
+      pendingRefreshRef.current = false;
+      refreshBoard();
+    }
+  }, [activeCard, refreshBoard]);
 
   const getFilteredCards = useCallback(
     (columnId: number) => {

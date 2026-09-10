@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
+import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -118,6 +119,8 @@ export async function POST(request: NextRequest) {
       rows[0].assignee_color = memberRows[0].color;
     }
   }
+
+  await notifyBoard(await boardIdForColumn(column_id));
 
   return NextResponse.json(rows[0], { status: 201 });
 }

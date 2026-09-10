@@ -1,6 +1,7 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
+import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -49,6 +50,10 @@ export async function PATCH(
   if (existing.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Resolved before the update: a column change can move the card to a board
+  // whose watchers also need to hear that it left.
+  const boardBefore = await boardIdForCard(id);
 
   // Auto-register agent from X-Agent-Name header
   const agentName = request.headers.get("x-agent-name");
@@ -100,6 +105,8 @@ export async function PATCH(
     }
   }
 
+  await notifyBoards([boardBefore, await boardIdForCard(id)]);
+
   return NextResponse.json(rows[0]);
 }
 
@@ -109,9 +116,12 @@ export async function DELETE(
 ) {
   await initDb();
   const { id } = await params;
+  // Resolved first: once the row is gone there is no board left to name.
+  const boardId = await boardIdForCard(id);
   const result = await sql`DELETE FROM cards WHERE id = ${id}`;
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  await notifyBoards([boardId]);
   return NextResponse.json({ success: true });
 }

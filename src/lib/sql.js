@@ -145,6 +145,44 @@ const db = {
   },
 };
 
+/**
+ * Run several reads against one consistent snapshot.
+ *
+ * A validator and the body it describes have to be read at the same instant.
+ * Taken separately, a write landing between them produces a 200 whose payload
+ * is stale and whose ETag describes the newer state — and a client that caches
+ * that pair is then told 304 for as long as it keeps asking.
+ *
+ * REPEATABLE READ fixes the snapshot at the first statement in the
+ * transaction, so everything the callback reads afterwards agrees with it.
+ * Sample the cursor first and it becomes the snapshot's own instant.
+ *
+ * A whole transaction is also the one thing a transaction-mode pooler handles
+ * correctly, so this is safe against a pooled endpoint.
+ *
+ * @template T
+ * @param {(client: import('pg').PoolClient) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+async function readSnapshot(fn) {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // The connection is already unusable; releasing it is what matters.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 /** Close the pool so a short-lived script can exit. */
 async function end() {
   if (pool) {
@@ -153,4 +191,4 @@ async function end() {
   }
 }
 
-module.exports = { sql, db, end };
+module.exports = { sql, db, readSnapshot, end, sslConfig, connectionString, CONNECTION_STRING_VARS };

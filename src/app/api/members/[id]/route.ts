@@ -1,6 +1,12 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import {
+  boardIdsForCards,
+  cardIdsForMember,
+  notifyBoards,
+  stampCards,
+} from "@/lib/realtime/notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -35,6 +41,14 @@ export async function PATCH(
     WHERE id = ${id}
     RETURNING *
   `;
+
+  // Cards show this member's name, type and colour through a join, so editing
+  // one changes what they render without touching a card row. Stamping them is
+  // what puts them in the next delta.
+  const cardIds = await cardIdsForMember(id);
+  await stampCards(cardIds);
+  await notifyBoards(await boardIdsForCards(cardIds));
+
   return NextResponse.json(rows[0]);
 }
 
@@ -44,9 +58,20 @@ export async function DELETE(
 ) {
   await initDb();
   const { id } = await params;
+
+  // Captured first: deleting the member sets assignee_id to NULL on these
+  // cards, and afterwards there is nothing left to find them by. The cards
+  // become unassigned, which is a visible change nobody would otherwise see.
+  const cardIds = await cardIdsForMember(id);
+  const boardIds = await boardIdsForCards(cardIds);
+
   const result = await sql`DELETE FROM members WHERE id = ${id}`;
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  await stampCards(cardIds);
+  await notifyBoards(boardIds);
+
   return NextResponse.json({ success: true });
 }

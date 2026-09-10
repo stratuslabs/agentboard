@@ -43,27 +43,33 @@ export default function AssignedPage() {
       .then((r) => r.json())
       .then((members: { id: number; type: string }[]) => {
         const human = members.find((m) => m.type === "human");
-        if (human) setCurrentMemberId(human.id);
+        // Cleared rather than left alone when there is no human: this list
+        // belongs to a member, and holding the last one keeps rows on screen
+        // for somebody who is gone.
+        setCurrentMemberId(human ? human.id : null);
       })
       .catch(() => {});
   }, []);
 
   const loadCards = useCallback(async () => {
-    let url = "/api/cards/views?view=assigned";
-    if (currentMemberId) {
-      url += `&member_id=${currentMemberId}`;
+    // The route requires a member and answers 400 without one, so there was
+    // never an "everyone" query here — only a request that failed quietly and
+    // left the previous member's cards on screen.
+    if (currentMemberId === null) {
+      setCards([]);
+      return;
     }
-    const res = await fetch(url);
+    const res = await fetch(
+      `/api/cards/views?view=assigned&member_id=${currentMemberId}`
+    );
     if (res.ok) {
       setCards(await res.json());
     }
   }, [currentMemberId]);
 
   useEffect(() => {
-    if (currentMemberId !== null) {
-      loadCards();
-    }
-  }, [currentMemberId, loadCards]);
+    loadCards();
+  }, [loadCards]);
 
   return (
     <ListView
