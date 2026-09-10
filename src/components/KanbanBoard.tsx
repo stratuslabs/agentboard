@@ -185,6 +185,7 @@ export default function KanbanBoard({
    * match. Only the newest request is allowed to write.
    */
   const refreshSeqRef = useRef(0);
+  const appliedSeqRef = useRef(0);
 
   /**
    * One request for the whole screen: boards, columns and cards together.
@@ -208,7 +209,16 @@ export default function KanbanBoard({
         const since = full ? null : cursorRef.current;
         if (since) params.set("updated_since", since);
 
-        const res = await fetch(`/api/board?${params.toString()}`);
+        // A refresh is fired from event handlers that do not await it, so a
+        // rejected fetch — offline, a dropped connection — would surface as an
+        // unhandled rejection rather than a skipped refresh. Failing quietly is
+        // right here: the stream will say so again, and the sweep is behind it.
+        let res: Response;
+        try {
+          res = await fetch(`/api/board?${params.toString()}`);
+        } catch {
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
 
@@ -217,8 +227,14 @@ export default function KanbanBoard({
         // the new board's cards with the old board's and then switch them back —
         // or a later refresh for this same board has already answered, in which
         // case this is an older snapshot and an older cursor.
-        if (seq !== refreshSeqRef.current) return;
+        //
+        // Compared against what was last *applied*, not what was last issued.
+        // Keyed to the newest request, a newer one that fails or never returns
+        // would claim the sequence and discard the older response that did
+        // arrive — leaving the board stale with nothing left to retry.
+        if (seq <= appliedSeqRef.current) return;
         if (activeBoardIdRef.current !== requestedBoardId) return;
+        appliedSeqRef.current = seq;
 
         setBoards(data.boards);
         setColumns(data.columns);
@@ -287,7 +303,13 @@ export default function KanbanBoard({
     draggingRef.current = activeCard !== null;
   }, [activeCard]);
 
-  useBoardStream(activeBoardId, () => {
+  // Subscribed to everything rather than to the active board. This screen
+  // renders the product's whole board-tab row, so a sibling board being
+  // created, renamed or deleted changes what is on screen even though the
+  // notification names a board the user is not looking at. The connection is
+  // already unscoped — filtering happens here, not on the server — so the only
+  // cost is a delta fetch that an ETag usually answers with a 304.
+  useBoardStream(null, () => {
     if (draggingRef.current) {
       pendingRefreshRef.current = true;
       return;

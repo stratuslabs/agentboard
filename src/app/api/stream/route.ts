@@ -163,6 +163,27 @@ export async function GET(request: NextRequest) {
       // process, and it has no listener ceiling to warn about it.
       if (closed) return;
 
+      // Subscribed before anything is awaited, and before `hello`.
+      //
+      // The baseline below is a query, so it is a window: a write can commit
+      // after its snapshot and fire its notification while no handler is
+      // attached. The notification is dropped, the baseline predates the
+      // write, and nothing reports it until the sweep — or never, with
+      // reconciliation switched off. Registering first closes that, and
+      // `shutdown` clears `unsubscribe`, so aborting during the await now
+      // tears the handler down rather than leaking it.
+      //
+      // The cost is that a `change` can reach the client before `hello`. That
+      // is harmless: both mean "fetch a delta", and the client answers them
+      // the same way.
+      if (live) {
+        unsubscribe = onBoardChange((changed) => {
+          if (boardId === null || changed === boardId) {
+            event("change", { board_id: changed });
+          }
+        });
+      }
+
       // The signature sweep. It is the whole mechanism when there is no
       // NOTIFY, and a slow safety net when there is — the same code either
       // way, so the client cannot tell which is driving it.
@@ -188,14 +209,6 @@ export async function GET(request: NextRequest) {
       }
 
       event("hello", { board_id: boardId, mode: live ? "listen" : "poll" });
-
-      if (live) {
-        unsubscribe = onBoardChange((changed) => {
-          if (boardId === null || changed === boardId) {
-            event("change", { board_id: changed });
-          }
-        });
-      }
 
       if (interval > 0) {
         const tick = async () => {
