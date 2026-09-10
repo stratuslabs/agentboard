@@ -301,6 +301,10 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
     if (pastDueTimerRef.current) clearTimeout(pastDueTimerRef.current);
   }, []);
 
+  // Two outcomes that look alike and are not: "there is nobody to have overdue
+  // cards" is a real answer and clears the badge, while a failed request means
+  // we do not know and the last count stands. Zeroing on failure would make the
+  // whole nav entry vanish on any blip, since it is gated on the count.
   async function loadPastDueCount() {
     try {
       // Find the first human member (same approach as Assigned page)
@@ -308,7 +312,12 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
       if (!membersRes.ok) return;
       const allMembers: { id: number; type: string }[] = await membersRes.json();
       const human = allMembers.find((m) => m.type === "human");
-      if (!human) return;
+      if (!human) {
+        // Nobody left to be assigned anything — including after deleting the
+        // member whose overdue cards this badge was counting.
+        setPastDueCount(0);
+        return;
+      }
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${human.id}&tz=${encodeURIComponent(tz)}`);
       if (res.ok) {

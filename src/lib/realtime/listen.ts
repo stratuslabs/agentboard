@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { Client } from "pg";
 import { connectionString, sslConfig } from "@/lib/sql";
 import { REALTIME_CHANNEL, type BoardChange } from "./notify";
+import { envInt } from "@/lib/env";
 
 /**
  * One LISTEN connection per process, fanned out to every open stream.
@@ -38,7 +39,7 @@ const MAX_RETRY_MS = 30_000;
  * connected to, and a false negative costs live updates for the life of the
  * process, while a slow true positive costs one startup.
  */
-const PROBE_TIMEOUT_MS = Number(process.env.SSE_PROBE_TIMEOUT_MS || 3_000);
+const PROBE_TIMEOUT_MS = envInt("SSE_PROBE_TIMEOUT_MS", 3_000);
 
 /** Resolves when the round-trip probe for this token comes back. */
 let pendingProbe: { token: string; seen: () => void } | null = null;
@@ -79,7 +80,19 @@ async function start(): Promise<boolean> {
   const url = listenerUrl();
   if (!url) return false;
 
-  const next = new Client({ connectionString: url, ssl: sslConfig(url) });
+  // Both timeouts matter because `/api/stream` awaits this before writing a
+  // single byte, and a browser fires no `onopen` until something arrives.
+  // `pg` defaults to waiting forever on connect, so a black-holed SYN parks
+  // the stream — and every other stream opening behind the shared promise —
+  // until the kernel gives up, which is minutes. The pool already sets ten
+  // seconds; match it. `query_timeout` covers the probe's own `pg_notify`,
+  // whose timeout only bounds the round trip after the query resolves.
+  const next = new Client({
+    connectionString: url,
+    ssl: sslConfig(url),
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 10_000,
+  });
 
   next.on("notification", (msg) => {
     if (msg.channel !== REALTIME_CHANNEL || !msg.payload) return;

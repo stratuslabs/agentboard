@@ -43,13 +43,19 @@ export default function PastDuePage() {
       .then((r) => r.json())
       .then((members: { id: number; type: string }[]) => {
         const human = members.find((m) => m.type === "human");
-        if (human) setCurrentMemberId(human.id);
+        // Cleared rather than left alone when there is no human: this list
+        // belongs to a member, and holding the last one keeps rows on screen
+        // for somebody who is gone.
+        setCurrentMemberId(human ? human.id : null);
       })
       .catch(() => {});
   }, []);
 
   const loadCards = useCallback(async () => {
-    if (!currentMemberId) return;
+    if (!currentMemberId) {
+      setCards([]);
+      return;
+    }
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const res = await fetch(`/api/cards/views?view=past-due&member_id=${currentMemberId}&tz=${encodeURIComponent(tz)}`);
     if (res.ok) {

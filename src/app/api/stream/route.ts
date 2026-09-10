@@ -2,6 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest } from "next/server";
 import { sql } from "@/lib/sql";
 import { ensureListening, onBoardChange } from "@/lib/realtime/listen";
+import { envInt } from "@/lib/env";
 
 /**
  * Live board updates over Server-Sent Events.
@@ -31,9 +32,9 @@ export const maxDuration = 300;
  * from a cursor it already holds. Self-hosters can raise this freely — a
  * long-running Node process has no such limit.
  */
-const MAX_SECONDS = Number(process.env.SSE_MAX_SECONDS || 240);
+const MAX_SECONDS = envInt("SSE_MAX_SECONDS", 240);
 const HEARTBEAT_MS = 15_000;
-const POLL_MS = Number(process.env.SSE_POLL_MS || 2_000);
+const POLL_MS = envInt("SSE_POLL_MS", 2_000);
 
 /**
  * How often to reconcile even when notifications are arriving.
@@ -48,7 +49,7 @@ const POLL_MS = Number(process.env.SSE_POLL_MS || 2_000);
  * of aggregates per connection, against the forty requests a minute per tab
  * that used to be normal. Set to 0 to switch it off.
  */
-const RECONCILE_MS = Number(process.env.SSE_RECONCILE_MS ?? 30_000);
+const RECONCILE_MS = envInt("SSE_RECONCILE_MS", 30_000, 0);
 
 /**
  * A cheap signature of everything the board screen renders.
@@ -131,6 +132,23 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      /**
+       * Register a timer, or don't if we are already finished.
+       *
+       * Setup spans two awaits, and the client can disconnect during either.
+       * `shutdown` drains this array once, so a timer pushed afterwards is
+       * never cleared — which is how a 240-second self-terminate outlived the
+       * connection it belonged to. Checking here removes the class rather than
+       * the instance, and `unref` means even a timer that escapes cannot hold
+       * the process open.
+       */
+      function schedule(fn: () => void, ms: number) {
+        if (closed) return;
+        const t = setTimeout(fn, ms);
+        t.unref?.();
+        timers.push(t);
+      }
+
       request.signal.addEventListener("abort", shutdown);
 
       // Proxies buffer a response with no bytes on it, and the browser will not
@@ -145,6 +163,30 @@ export async function GET(request: NextRequest) {
       // process, and it has no listener ceiling to warn about it.
       if (closed) return;
 
+      // The signature sweep. It is the whole mechanism when there is no
+      // NOTIFY, and a slow safety net when there is — the same code either
+      // way, so the client cannot tell which is driving it.
+      const interval = live ? RECONCILE_MS : POLL_MS;
+      let last: string | null = null;
+
+      // Sampled before `hello`, and that ordering is the whole point.
+      //
+      // The client's contract is to answer `hello` by fetching a delta. Take
+      // this baseline afterwards and it lands a round trip later than the
+      // client's own read, so a write arriving in between is absorbed as the
+      // baseline: no tick ever sees it as a difference, and the board stays
+      // stale until something unrelated moves the stamp. Taking it first can
+      // only cost a redundant `change`, and the event carries no data.
+      if (interval > 0) {
+        try {
+          last = await stampFor(boardId);
+        } catch (err) {
+          console.error("realtime: initial stamp failed", err);
+        }
+        // A second await, and so a second chance to have been disconnected.
+        if (closed) return;
+      }
+
       event("hello", { board_id: boardId, mode: live ? "listen" : "poll" });
 
       if (live) {
@@ -155,17 +197,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // The signature sweep. It is the whole mechanism when there is no
-      // NOTIFY, and a slow safety net when there is — the same code either
-      // way, so the client cannot tell which is driving it.
-      const interval = live ? RECONCILE_MS : POLL_MS;
       if (interval > 0) {
-        let last: string | null = null;
-        try {
-          last = await stampFor(boardId);
-        } catch (err) {
-          console.error("realtime: initial stamp failed", err);
-        }
         const tick = async () => {
           if (closed) return;
           try {
@@ -175,9 +207,9 @@ export async function GET(request: NextRequest) {
           } catch (err) {
             console.error("realtime: poll failed", err);
           }
-          if (!closed) timers.push(setTimeout(tick, interval));
+          schedule(tick, interval);
         };
-        timers.push(setTimeout(tick, interval));
+        schedule(tick, interval);
       }
 
       const beat = () => {
@@ -185,16 +217,14 @@ export async function GET(request: NextRequest) {
         // A comment line: keeps intermediaries from timing the connection out
         // without waking any client-side handler.
         send(`: ping\n\n`);
-        timers.push(setTimeout(beat, HEARTBEAT_MS));
+        schedule(beat, HEARTBEAT_MS);
       };
-      timers.push(setTimeout(beat, HEARTBEAT_MS));
+      schedule(beat, HEARTBEAT_MS);
 
-      timers.push(
-        setTimeout(() => {
-          event("reconnect", { reason: "max-duration" });
-          shutdown();
-        }, MAX_SECONDS * 1_000)
-      );
+      schedule(() => {
+        event("reconnect", { reason: "max-duration" });
+        shutdown();
+      }, MAX_SECONDS * 1_000);
     },
   });
 

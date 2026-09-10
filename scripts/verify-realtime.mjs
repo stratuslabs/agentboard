@@ -8,10 +8,18 @@
 //
 //   BASE_URL=http://localhost:3000 POSTGRES_URL=... node scripts/verify-realtime.mjs
 
-import { sql, end } from "../src/lib/sql.js";
+import pg from "pg";
+import { sql, end, connectionString, sslConfig } from "../src/lib/sql.js";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const TOKEN = process.env.APP_PASSWORD || "";
+
+// A delta reaches this far back beyond its cursor, so that a write stamped
+// before the cursor but committed after it is not lost. Assertions about a
+// delta carrying *exactly* what changed have to let the window pass first, or
+// they are really asserting how fast the test runs.
+const OVERLAP_MS = Number(process.env.BOARD_DELTA_OVERLAP_MS ?? 2_000) || 0;
+const settle = () => new Promise((r) => setTimeout(r, OVERLAP_MS + 250));
 
 let passed = 0;
 let failed = 0;
@@ -153,14 +161,18 @@ async function main() {
     const stale = await call("GET", `/api/board?product_id=${productId}`, undefined, { "If-None-Match": etag });
     check("a stale validator is answered in full", stale.status === 200, `got ${stale.status}`);
 
-    const cursor2 = afterCreate.body.server_time;
+    // Past the overlap, so the two creations above are behind the window and
+    // the delta below can be held to exactly what this edit changed.
+    await settle();
+    const cursor2 = (await call("GET", `/api/board?product_id=${productId}`)).body.server_time;
     await call("PATCH", `/api/cards/${first.body.id}`, { title: "Delta one, edited" });
     const afterEdit = await call("GET", `/api/board?product_id=${productId}&updated_since=${encodeURIComponent(cursor2)}`);
     check("an edit returns one card", afterEdit.body.cards.length === 1, `got ${afterEdit.body.cards.length}`);
     check("and it is the edited one", afterEdit.body.cards[0]?.title === "Delta one, edited");
 
     section("Deletions, which a delta cannot report on its own");
-    const cursor3 = afterEdit.body.server_time;
+    await settle();
+    const cursor3 = (await call("GET", `/api/board?product_id=${productId}`)).body.server_time;
     await call("DELETE", `/api/cards/${second.body.id}`);
     const afterDelete = await call("GET", `/api/board?product_id=${productId}&updated_since=${encodeURIComponent(cursor3)}`);
     check("a delete produces no changed row", afterDelete.body.cards.length === 0, `got ${afterDelete.body.cards.length}`);
@@ -240,6 +252,56 @@ async function main() {
     check("deleting a product notifies the boards under it",
       cascade.events.some((e) => e.name === "change"),
       "a tab on one of those boards would otherwise never hear");
+
+    // A write is stamped with NOW(), which is transaction-start time, and only
+    // becomes visible at commit. Held open deliberately, that gap is wide
+    // enough to drive from the outside: the row carries a timestamp from
+    // before the cursor was sampled, and appears after the cards were read.
+    section("A write that commits after the cursor was sampled");
+    if (OVERLAP_MS === 0) {
+      console.log("  skip (BOARD_DELTA_OVERLAP_MS=0 disables the window this exercises)");
+    } else {
+    const dsn = connectionString();
+    const holder = new pg.Client({ connectionString: dsn, ssl: sslConfig(dsn) });
+    await holder.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(
+        "UPDATE cards SET title = $2, updated_at = NOW() WHERE id = $1",
+        [first.body.id, "Committed late"]
+      );
+
+      // Sampled while the write is stamped but not yet visible.
+      const sampled = await call("GET", `/api/board?product_id=${productId}`);
+      const raceCursor = sampled.body.server_time;
+      check("the uncommitted write is not in the response",
+        !sampled.body.cards.some((c) => c.title === "Committed late"));
+
+      // Two reads while the write is still open must agree with each other:
+      // the validator and the rows it describes come from one snapshot.
+      const again = await call("GET", `/api/board?product_id=${productId}`);
+      check("two reads during an open write agree",
+        sampled.headers.get("etag") === again.headers.get("etag"),
+        `${sampled.headers.get("etag")} vs ${again.headers.get("etag")}`);
+
+      await holder.query("COMMIT");
+
+      const afterCommit = await call(
+        "GET",
+        `/api/board?product_id=${productId}&updated_since=${encodeURIComponent(raceCursor)}`
+      );
+      const late = afterCommit.body.cards.find((c) => c.id === first.body.id);
+      check("a write stamped before the cursor still reaches the next delta",
+        Boolean(late),
+        `delta carried ${afterCommit.body.cards.length} card(s)`);
+      check("and carries the committed value",
+        late?.title === "Committed late",
+        `got ${late?.title ?? "nothing"}`);
+    } finally {
+      await holder.query("ROLLBACK").catch(() => {});
+      await holder.end().catch(() => {});
+    }
+    }
 
     section("The event stream");
     const opened = await readStream(`/api/stream?board_id=${boardId}`, {
