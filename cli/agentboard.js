@@ -968,6 +968,13 @@ async function main() {
         }
 
         const card = await req("GET", `/api/cards/${id}`);
+        // Servers before this CLI release don't say where a card lives, which
+        // only matters when we need its product or current column.
+        const needsLocation =
+          (flags["to-board"] && !flags["to-product"]) || !flags.column;
+        if (needsLocation && (card.product_id === undefined || card.column_slug === undefined)) {
+          die("This server is too old for that move; update AgentBoard, or pass --to-product and --column.");
+        }
 
         let cols;
         let where;
