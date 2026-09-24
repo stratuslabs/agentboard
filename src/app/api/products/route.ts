@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { initDb, slugify, createDefaultBoards } from "@/lib/db";
+import { suggestEmoji } from "@/lib/emoji-suggest";
 
 export async function GET(request: NextRequest) {
   await initDb();
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     const { rows } = await sql`
       INSERT INTO products (org_id, name, slug, emoji, position)
-      VALUES (${org_id}, ${name}, ${slug}, ${emoji || '📦'}, ${maxRows[0].max + 1})
+      VALUES (${org_id}, ${name}, ${slug}, ${emoji || suggestEmoji(name)}, ${maxRows[0].max + 1})
       RETURNING *
     `;
 

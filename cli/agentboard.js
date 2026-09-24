@@ -610,7 +610,7 @@ async function main() {
           await req("POST", "/api/products", {
             org_id: orgId,
             name,
-            emoji: flags.emoji || "📦",
+            emoji: flags.emoji,
           }),
           flags
         );

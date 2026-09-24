@@ -189,7 +189,7 @@ PATCH  /api/orgs/reorder   { ids: [1, 2, 3] }
 ```
 GET    /api/products?org_id=
 GET    /api/products/by-slug?org_slug=&product_slug=
-POST   /api/products         { org_id, name, emoji? }
+POST   /api/products         { org_id, name, emoji? }   # emoji auto-picked from name if omitted
 PATCH  /api/products/:id     { name?, emoji? }
 DELETE /api/products/:id
 PATCH  /api/products/move    { product_id, org_id, position? }
