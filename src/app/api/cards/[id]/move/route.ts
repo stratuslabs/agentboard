@@ -2,6 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, boardIdForColumn, notifyBoards } from "@/lib/realtime/notify";
+import { getCardWithLocation } from "@/lib/card-location";
 
 export async function PATCH(
   request: NextRequest,
@@ -20,6 +21,11 @@ export async function PATCH(
     return NextResponse.json({ error: "column_id is required" }, { status: 400 });
   }
 
+  const { rows: colRows } = await sql`SELECT id FROM columns WHERE id = ${column_id}`;
+  if (colRows.length === 0) {
+    return NextResponse.json({ error: "Column not found" }, { status: 404 });
+  }
+
   let newPosition = position;
   if (newPosition === undefined) {
     const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;
@@ -28,13 +34,13 @@ export async function PATCH(
 
   const boardBefore = await boardIdForCard(id);
 
-  const { rows: updated } = await sql`
+  await sql`
     UPDATE cards SET column_id = ${column_id}, position = ${newPosition}, updated_at = NOW()
     WHERE id = ${id}
-    RETURNING *
   `;
 
   await notifyBoards([boardBefore, await boardIdForColumn(column_id)]);
 
-  return NextResponse.json(updated[0]);
+  // Includes product/board so a caller can confirm where the card landed.
+  return NextResponse.json(await getCardWithLocation(id));
 }

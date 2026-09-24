@@ -116,7 +116,9 @@ agentboard member update <member-id> --name "New Name" [--type human]
 agentboard task add "Title" --product <slug> --board <slug> [options]
 agentboard task list --product <slug> --board <slug> [--assignee X --priority X]
 agentboard task show <id>
-agentboard task move <id> --column <slug>
+agentboard task move <id> --column <slug>                       # same board
+agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
+agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
 agentboard task done <id>
 agentboard task remove <id>
@@ -135,6 +137,12 @@ agentboard settings --key theme --value dark
 agentboard preferences                    # view all
 agentboard preferences --key key --value val
 ```
+
+`task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
+
+## Flag Handling
+
+Flags a command doesn't support are errors, not ignored — e.g. `task move 14 --product x` fails instead of printing the card as if it had moved. Flags that take a value always consume the next argument, even one starting with `--`, so `--description "--dry-run is broken"` works; `--description=...` also works.
 
 ## Output Flags
 

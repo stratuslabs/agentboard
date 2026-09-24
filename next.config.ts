@@ -18,6 +18,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // `next dev` otherwise writes AGENTS.md/CLAUDE.md (or upserts its own block
+  // into them) whenever it detects a coding agent. We maintain those files
+  // ourselves, so keep the framework out of them.
+  agentRules: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
