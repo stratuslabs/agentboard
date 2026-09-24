@@ -23,6 +23,75 @@ function die(msg, code = 1) {
 
 // ---- Arg parser -----------------------------------------------------------
 
+const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version"]);
+
+// Flags that always take a value. The next argument is consumed even when it
+// starts with "--", so `--description "--dry-run is broken"` keeps its text
+// instead of turning it into a flag. `--flag=value` works too.
+const VALUE_FLAGS = new Set([
+  "product", "board", "board-id", "column", "to-product", "to-board",
+  "priority", "assignee", "label", "description", "due", "title",
+  "issue", "pr", "file", "ids", "name", "emoji", "org", "type", "color",
+  "avatar-url", "position", "set", "append", "key", "value",
+]);
+
+// Flags each command accepts, beyond --json/--quiet/--help/--version.
+// Anything else is an error: an ignored flag reads as success when the
+// command did something other than what was asked.
+const COMMAND_FLAGS = {
+  list: ["product", "board", "column", "priority", "label", "assignee", "include-done"],
+  new: ["product", "board", "column", "priority", "assignee", "label", "description", "due"],
+  status: [],
+  show: [],
+  rename: [],
+  notes: ["set", "append"],
+  attention: [],
+  "my-tasks": ["assignee"],
+  today: [],
+  "past-due": ["assignee"],
+  "org list": [],
+  "org add": [],
+  "org remove": [],
+  "org rename": ["name"],
+  "org reorder": ["ids"],
+  "product list": ["org"],
+  "product add": ["org", "emoji"],
+  "product remove": [],
+  "product rename": ["name", "emoji"],
+  "product move": ["org"],
+  "product reorder": ["ids"],
+  "board list": ["product"],
+  "board add": ["product"],
+  "board remove": [],
+  "board rename": ["name"],
+  "board reorder": ["ids"],
+  "board view": ["product", "board"],
+  "column list": ["product", "board", "board-id"],
+  "column add": ["product", "board", "board-id", "color"],
+  "column remove": [],
+  "column rename": ["name", "color", "position"],
+  "member list": [],
+  "member add": ["type", "color", "avatar-url"],
+  "member remove": [],
+  "member update": ["name", "type", "color", "avatar-url"],
+  "task add": ["product", "board", "column", "description", "priority", "label", "assignee", "due"],
+  "task list": ["product", "board", "column", "assignee", "priority", "label"],
+  "task show": [],
+  "task move": ["column", "to-product", "to-board"],
+  "task update": ["title", "description", "assignee", "priority", "label", "due", "issue", "pr"],
+  "task done": [],
+  "task remove": [],
+  "task link": ["issue", "pr"],
+  "task attach": ["file"],
+  "task attachments": [],
+  "task reorder": ["ids"],
+  settings: ["key", "value"],
+  preferences: ["key", "value"],
+  "attachment remove": [],
+};
+
+const GLOBAL_FLAGS = ["json", "quiet", "help", "version"];
+
 function parseArgs(argv) {
   const args = argv.slice(2);
   const positional = [];
@@ -38,27 +107,30 @@ function parseArgs(argv) {
     }
 
     if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      // Boolean-style flags
-      if (
-        key === "json" ||
-        key === "quiet" ||
-        key === "include-done" ||
-        key === "help" ||
-        key === "version"
-      ) {
+      const eq = arg.indexOf("=");
+      const key = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+      const inline = eq === -1 ? undefined : arg.slice(eq + 1);
+
+      if (BOOLEAN_FLAGS.has(key)) {
+        if (inline !== undefined) die(`--${key} does not take a value`);
         flags[key] = true;
         i++;
-        continue;
-      }
-      // Key-value flags
-      if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-        flags[key] = args[i + 1];
-        i += 2;
+      } else if (VALUE_FLAGS.has(key)) {
+        if (inline !== undefined) {
+          flags[key] = inline;
+          i++;
+        } else if (i + 1 < args.length) {
+          flags[key] = args[i + 1];
+          i += 2;
+        } else {
+          die(`--${key} requires a value`);
+        }
       } else {
-        flags[key] = true;
-        i++;
+        die(`Unknown flag: --${key}. Run 'agentboard help' for usage.`);
       }
+    } else if (/^-[a-zA-Z]/.test(arg)) {
+      // No short flags exist; don't let `-q` pass as a positional argument.
+      die(`Unknown flag: ${arg}. Short flags aren't supported; use the --long form.`);
     } else {
       positional.push(arg);
       i++;
@@ -66,6 +138,23 @@ function parseArgs(argv) {
   }
 
   return { positional, flags };
+}
+
+// Reject flags the command doesn't use. Unknown commands are left for the
+// dispatcher to report.
+function checkFlags(positional, flags) {
+  const [cmd, sub] = positional;
+  const key = COMMAND_FLAGS[`${cmd} ${sub}`] ? `${cmd} ${sub}` : cmd;
+  const allowed = COMMAND_FLAGS[key];
+  if (!allowed) return;
+  const unsupported = Object.keys(flags).filter(
+    (f) => !allowed.includes(f) && !GLOBAL_FLAGS.includes(f)
+  );
+  if (unsupported.length > 0) {
+    const list = unsupported.map((f) => `--${f}`).join(", ");
+    const accepted = allowed.length ? allowed.map((f) => `--${f}`).join(", ") : "none";
+    die(`'${key}' does not accept ${list}. Accepted flags: ${accepted}`);
+  }
 }
 
 // ---- Output formatting ----------------------------------------------------
@@ -211,9 +300,13 @@ function makeResolvers(req) {
 
   async function resolveProductId(slugOrName) {
     const products = await req("GET", "/api/products");
-    const p = products.find((x) => x.slug === slugOrName || x.name === slugOrName);
-    if (!p) die(`Product not found: ${slugOrName}`);
-    return p.id;
+    // Product slugs are unique per org, not globally — refuse to guess.
+    const matches = products.filter((x) => x.slug === slugOrName || x.name === slugOrName);
+    if (matches.length === 0) die(`Product not found: ${slugOrName}`);
+    if (matches.length > 1) {
+      die(`'${slugOrName}' matches ${matches.length} products in different orgs; rename one to disambiguate`);
+    }
+    return matches[0].id;
   }
 
   async function resolveBoardId(productId, slugOrName) {
@@ -285,6 +378,9 @@ Management Commands:
   column list|add|remove|rename
   member list|add|remove|update
   task add|list|show|move|update|done|remove|link|attach|attachments
+    task move <id> --column <col>
+    task move <id> --to-board <slug> [--column <col>]
+    task move <id> --to-product <slug> --to-board <slug> [--column <col>]
   settings [--key <k> --value <v>]
   preferences [--key <k> --value <v>]
   attachment remove <id>
@@ -292,6 +388,9 @@ Management Commands:
 Output:
   --json     JSON output
   --quiet    IDs only
+
+Unknown or unsupported flags are errors. Flag values may start with "--";
+use --flag=value or quote as usual.
 
 Environment:
   AGENTBOARD_URL         Server URL (required)
@@ -316,6 +415,8 @@ async function main() {
     printUsage();
     process.exit(0);
   }
+
+  checkFlags(positional, flags);
 
   const remoteUrl = process.env.AGENTBOARD_URL;
   // Named for what it holds rather than for one of the two things it can be:
@@ -856,12 +957,44 @@ async function main() {
         output(await req("GET", `/api/cards/${id}`), flags);
       } else if (sub === "move") {
         const id = positional[2];
-        if (!id || !flags.column) die("Usage: agentboard task move <card-id> --column <slug>");
-        const colSlug = STATUS_ALIASES[flags.column] || flags.column;
-        const cols = await req("GET", `/api/columns/by-card/${id}`);
-        if (!cols || cols.length === 0) die("Could not determine board for card");
-        const targetCol = cols.find((c) => c.slug === colSlug);
-        if (!targetCol) die(`Column '${colSlug}' not found on this board`);
+        const usage =
+          "Usage: agentboard task move <card-id> --column <slug>\n" +
+          "       agentboard task move <card-id> --to-board <slug> [--column <slug>]\n" +
+          "       agentboard task move <card-id> --to-product <slug> --to-board <slug> [--column <slug>]";
+        if (!id || !(flags.column || flags["to-board"] || flags["to-product"])) die(usage);
+        // A product has several boards; picking one silently would be a guess.
+        if (flags["to-product"] && !flags["to-board"]) {
+          die("--to-product requires --to-board (a product has several boards)");
+        }
+
+        const card = await req("GET", `/api/cards/${id}`);
+
+        let cols;
+        let where;
+        if (flags["to-board"]) {
+          const productId = flags["to-product"]
+            ? await resolve.resolveProductId(flags["to-product"])
+            : card.product_id;
+          const boardId = await resolve.resolveBoardId(productId, flags["to-board"]);
+          cols = await req("GET", `/api/columns?board_id=${boardId}`);
+          where = `board '${flags["to-board"]}'`;
+        } else {
+          cols = await req("GET", `/api/columns/by-card/${id}`);
+          where = "this board";
+        }
+        if (!cols || cols.length === 0) die(`No columns found on ${where}`);
+
+        // Keep the card's current column unless one is named; never fall back
+        // to some other column when the slug is missing on the destination.
+        const colSlug = flags.column
+          ? STATUS_ALIASES[flags.column] || flags.column
+          : card.column_slug;
+        const targetCol = cols.find((c) => c.slug === colSlug || c.name === colSlug);
+        if (!targetCol) {
+          die(
+            `Column '${colSlug}' not found on ${where}. Available: ${cols.map((c) => c.slug).join(", ")}`
+          );
+        }
         output(
           await req("PATCH", `/api/cards/${id}/move`, { column_id: targetCol.id }),
           flags

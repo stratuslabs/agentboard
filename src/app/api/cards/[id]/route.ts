@@ -2,6 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
+import { getCardWithLocation } from "@/lib/card-location";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -26,16 +27,11 @@ export async function GET(
 ) {
   await initDb();
   const { id } = await params;
-  const { rows } = await sql`
-    SELECT cards.*, m.name AS assignee_name, m.type AS assignee_type, m.color AS assignee_color
-    FROM cards
-    LEFT JOIN members m ON cards.assignee_id = m.id
-    WHERE cards.id = ${id}
-  `;
-  if (rows.length === 0) {
+  const card = await getCardWithLocation(id);
+  if (!card) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(rows[0]);
+  return NextResponse.json(card);
 }
 
 export async function PATCH(
