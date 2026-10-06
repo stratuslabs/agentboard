@@ -1,22 +1,51 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Warm near-black neutrals with an ivory primary; every colour in
+ * the UI should come from here so the palette changes in one place.
+ */
 @theme {
-  --color-surface-900: #0f1117;
-  --color-surface-800: #1a1d27;
-  --color-surface-700: #252836;
-  --color-surface-600: #2e3245;
-  --color-surface-500: #3d4258;
-  --color-priority-urgent: #ef4444;
-  --color-priority-high: #f97316;
-  --color-priority-medium: #3b82f6;
-  --color-priority-low: #6b7280;
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #0b0a09;
+  --color-bg-sidebar: #0e0d0c;
+  --color-surface-1: #131211;
+  --color-surface-2: #191816;
+  --color-surface-3: #211f1d;
+  --color-surface-4: #2a2825;
+  --color-border: #23211f;
+  --color-border-strong: #302d2a;
+
+  --color-text-1: #eeeae3;
+  --color-text-2: #a8a29a;
+  --color-text-3: #716b64;
+  --color-text-4: #4d4843;
+
+  --color-ivory: #f3eee5;
+  --color-ivory-hover: #ffffff;
+  --color-on-ivory: #0b0a09;
+  --color-silver: #b8bbc1;
+
+  --color-danger: #e5604f;
+  --color-warn: #e3b341;
+  --color-success: #7db88a;
+
+  --color-col-backlog: #7a746c;
+  --color-col-todo: #7b9bd8;
+  --color-col-progress: #dda24a;
+  --color-col-review: #a48fe0;
+  --color-col-done: #7db88a;
+
+  --color-priority-urgent: #e5604f;
+  --color-priority-high: #e08a3c;
+  --color-priority-medium: #7b9bd8;
+  --color-priority-low: #716b64;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-surface-500) transparent;
+  scrollbar-color: var(--color-surface-4) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -29,26 +58,33 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: var(--color-surface-500);
+  background-color: var(--color-surface-4);
   border-radius: 3px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-surface-600);
+  background-color: var(--color-border-strong);
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background-color: var(--color-surface-900);
-  color: #e2e8f0;
+  background-color: var(--color-bg);
+  color: var(--color-text-1);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-ivory) 22%, transparent);
 }
 
 .card-hover {
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .card-hover:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transform: translateY(-1px);
+  border-color: var(--color-surface-4);
 }
 
 .sidebar-transition {
@@ -56,16 +92,31 @@ body {
 }
 
 .fade-in {
-  animation: fadeIn 0.15s ease-in;
+  animation: fadeIn 0.15s ease-out;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.18s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

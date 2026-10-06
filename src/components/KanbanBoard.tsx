@@ -219,6 +219,20 @@ export default function KanbanBoard({
         } catch {
           return;
         }
+        // The product, or the organization above it, was deleted by somebody
+        // else. A cascade notification is what woke us, so the useful answer
+        // is to stop rendering rows that no longer exist — holding the last
+        // good snapshot leaves a board on screen that every edit will refuse.
+        if (res.status === 404) {
+          if (seq <= appliedSeqRef.current) return;
+          appliedSeqRef.current = seq;
+          cursorRef.current = null;
+          setBoards([]);
+          setColumns([]);
+          setCards([]);
+          setActiveBoardId(null);
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
 
@@ -261,8 +275,12 @@ export default function KanbanBoard({
         // Only meaningful now that the response is known to be for the board
         // still on screen: this is the server telling us our board is gone and
         // naming the fallback it chose, not a race arriving late.
-        if (data.active_board_id && data.active_board_id !== requestedBoardId) {
-          setActiveBoardId(data.active_board_id);
+        //
+        // Null is an answer too, and a truthy test swallowed it: when the last
+        // board on a product is deleted there is no fallback, and keeping the
+        // dead id active left the tab holding a board that no longer exists.
+        if (data.active_board_id !== requestedBoardId) {
+          setActiveBoardId(data.active_board_id ?? null);
         }
       };
 
