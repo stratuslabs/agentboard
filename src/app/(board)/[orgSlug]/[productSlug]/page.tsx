@@ -4,15 +4,13 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { SearchX } from "lucide-react";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { Button, EmptyState, PageLoader } from "@/components/ui";
 
 const KanbanBoard = dynamic(() => import("@/components/KanbanBoard"), {
   ssr: false,
-  loading: () => (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-gray-500 text-sm">Loading board...</div>
-    </div>
-  ),
+  loading: () => <PageLoader />,
 });
 
 interface ProductData {
@@ -64,37 +62,18 @@ export default function ProductBoardPage() {
   }, [orgSlug, productSlug, setSelectedProduct]);
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1.5">
-            <div className="w-2 h-8 bg-white/80 rounded-sm animate-pulse" />
-            <div className="w-2 h-6 bg-white/40 rounded-sm animate-pulse [animation-delay:150ms]" />
-            <div className="w-2 h-4 bg-white/20 rounded-sm animate-pulse [animation-delay:300ms]" />
-          </div>
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (notFound || !product) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-2xl bg-surface-800 border border-surface-600 flex items-center justify-center mx-auto mb-4 text-2xl">
-            🔍
-          </div>
-          <h2 className="text-lg font-medium text-gray-400 mb-1">Product not found</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            The product at /{orgSlug}/{productSlug} doesn&apos;t exist.
-          </p>
-          <button
-            onClick={() => router.push("/")}
-            className="px-4 py-2 text-sm bg-accent hover:bg-accent-hover text-white rounded-lg transition-colors"
-          >
-            Go home
-          </button>
-        </div>
+      <div className="flex flex-1 items-center justify-center pb-20">
+        <EmptyState
+          icon={<SearchX />}
+          title="Product not found"
+          body={<>The product at /{orgSlug}/{productSlug} doesn&apos;t exist.</>}
+          action={<Button variant="primary" onClick={() => router.push("/")}>Go home</Button>}
+        />
       </div>
     );
   }

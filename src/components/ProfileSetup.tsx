@@ -1,19 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { UserRound } from "lucide-react";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { Avatar, Button, ColorSwatches, Dialog, Field, Input, PRESET_COLORS } from "./ui";
 
-const PRESET_COLORS = [
-  "#EF4444",
-  "#F97316",
-  "#EAB308",
-  "#22C55E",
-  "#06B6D4",
-  "#3B82F6",
-  "#8B5CF6",
-  "#EC4899",
-  "#6B7280",
-];
 
 export default function ProfileSetup() {
   const { prefs, isLoaded, setProfileMemberId } = usePreferences();
@@ -76,111 +67,54 @@ export default function ProfileSetup() {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div
-        className="bg-surface-800 border border-surface-600 rounded-2xl shadow-2xl w-96 p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog onClose={() => {}} dismissable={false} heavy z={200} className="w-[384px] max-w-full rounded-2xl">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5 p-7">
         {/* Header */}
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-surface-700 border border-surface-500 flex items-center justify-center mx-auto mb-3">
-            <svg
-              className="w-6 h-6 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-white">Set up your profile</h2>
-          <p className="text-sm text-gray-400 mt-1">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Avatar name={name.trim() || "?"} color={color} size={48} className="mb-1" />
+          <h2 className="text-lg font-semibold tracking-[-0.3px] text-text-1">Set up your profile</h2>
+          <p className="text-[13px] text-text-2">
             Tell us who you are so your team knows it&apos;s you.
           </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              Name
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (error) setError("");
-              }}
-              className="w-full px-3 py-2.5 bg-surface-700 border border-surface-500 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
-              placeholder="Your name"
-              autoFocus
-              disabled={submitting}
-            />
-          </div>
-
-          {/* Color picker */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2">
-              Pick a color
-            </label>
-            <div className="flex items-center gap-2">
-              {PRESET_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${
-                    color === c
-                      ? "border-white scale-110"
-                      : "border-transparent hover:border-gray-500"
-                  }`}
-                  style={{ backgroundColor: c }}
-                  disabled={submitting}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Preview */}
-          <div className="flex items-center gap-3 bg-surface-700/50 border border-surface-600 rounded-lg px-3 py-2.5">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0"
-              style={{ backgroundColor: color }}
-            >
-              {name.trim() ? name.trim().charAt(0).toUpperCase() : "?"}
-            </div>
-            <div>
-              <div className="text-sm text-white">
-                {name.trim() || "Your name"}
-              </div>
-              <div className="text-[10px] text-gray-500">Human</div>
-            </div>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
+        <Field label="Name" htmlFor="profile-name">
+          <Input
+            id="profile-name"
+            inputSize="lg"
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (error) setError("");
+            }}
+            placeholder="Your name"
+            autoFocus
             disabled={submitting}
-            className="w-full py-2.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Setting up..." : "Continue"}
-          </button>
-        </form>
-      </div>
-    </div>
+          />
+        </Field>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium text-text-2">Color</span>
+          <ColorSwatches value={color} onChange={setColor} disabled={submitting} className="justify-between" />
+        </div>
+
+        <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3 py-2.5 text-[12.5px]">
+          <UserRound className="h-3.5 w-3.5 text-text-2" />
+          <span className="text-text-3">Joining as</span>
+          <span className="font-medium text-text-1">Human</span>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {error}
+          </div>
+        )}
+
+        <Button type="submit" variant="primary" size="lg" disabled={submitting} className="w-full">
+          {submitting ? "Setting up…" : "Continue"}
+        </Button>
+      </form>
+    </Dialog>
   );
 }

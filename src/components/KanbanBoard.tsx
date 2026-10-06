@@ -24,15 +24,18 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
+import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, ListFilter, Pencil, Plus, Star, Tag, Trash2, X } from "lucide-react";
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardModal from "./CardModal";
 import ConfirmModal from "./ConfirmModal";
+import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import type { Card, Member } from "@/lib/cards";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
-  return <div ref={setNodeRef} className="flex-1 overflow-y-auto p-2 space-y-2">{children}</div>;
+  return <div ref={setNodeRef} className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">{children}</div>;
 }
 
 // Custom collision detection: prefer cards (pointerWithin), fall back to columns (rectIntersection)
@@ -57,33 +60,6 @@ const customCollisionDetection: CollisionDetection = (args) => {
 
   return closestCorners(args);
 };
-
-interface Card {
-  id: number;
-  column_id: number;
-  title: string;
-  description: string;
-  assignee: string | null;
-  assignee_id: number | null;
-  assignee_name: string | null;
-  assignee_type: string | null;
-  assignee_color: string | null;
-  priority: string;
-  labels: string;
-  github_issue_url: string | null;
-  github_pr_url: string | null;
-  due_date: string | null;
-  position: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Member {
-  id: number;
-  name: string;
-  type: string;
-  color: string;
-}
 
 interface Column {
   id: number;
@@ -544,7 +520,7 @@ export default function KanbanBoard({
 
   function handleDeleteBoard(boardId: number) {
     setConfirmAction({
-      title: "Delete Board",
+      title: "Delete board",
       message: "This will delete the board and all its columns and cards.",
       action: async () => {
         await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
@@ -630,7 +606,7 @@ export default function KanbanBoard({
     const column = columns.find((c) => c.id === columnId);
     const cardCount = cards.filter((c) => c.column_id === columnId).length;
     setConfirmAction({
-      title: "Delete Column",
+      title: "Delete column",
       message: `This will delete "${column?.name || "this column"}"${cardCount > 0 ? ` and its ${cardCount} card${cardCount === 1 ? "" : "s"}` : ""}.`,
       action: async () => {
         await fetch(`/api/columns/${columnId}`, { method: "DELETE" });
@@ -654,277 +630,228 @@ export default function KanbanBoard({
 
   const hasFilters = filterAssignee || filterPriority || filterLabel;
 
-  // No longer needed — using members list for filter
+  const columnMenuColumn = columnContextMenu ? columns.find((c) => c.id === columnContextMenu.columnId) : null;
+  const columnMenuIndex = columnContextMenu ? columns.findIndex((c) => c.id === columnContextMenu.columnId) : -1;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Breadcrumb + Board tabs */}
-      <div className="border-b border-surface-600 px-6 pt-4 pb-0">
-        <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
-          {onBack && (
-            <button onClick={onBack} className="w-7 h-7 -ml-1 mr-1 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 hover:text-white transition-colors shrink-0" title="Back">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            </button>
-          )}
-          <span>{orgName}</span>
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 5l7 7-7 7"
-            />
-          </svg>
-          <span className="text-white font-medium">
-            {productEmoji} {productName}
-          </span>
-          <button onClick={onToggleStar}
-            className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${isStarred ? "text-yellow-400 hover:text-yellow-300" : "text-gray-600 hover:text-gray-400"}`}
-            title={isStarred ? "Unstar" : "Star"}>
-            <svg className="w-4 h-4" viewBox="0 0 20 20" fill={isStarred ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isStarred ? 0 : 1.5}>
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex gap-1 items-end relative">
-          {boards.map((board) => (
-            <div key={board.id} className="relative">
-              {renamingBoardId === board.id ? (
-                <input
-                  type="text"
-                  value={renameBoardName}
-                  onChange={(e) => setRenameBoardName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleRenameBoard(board.id);
-                    if (e.key === "Escape") { setRenamingBoardId(null); setRenameBoardName(""); }
-                  }}
-                  onBlur={() => { setRenamingBoardId(null); setRenameBoardName(""); }}
-                  className="px-4 py-2 text-sm font-medium rounded-t-lg bg-surface-700 text-white border-t border-x border-surface-500 focus:outline-none focus:ring-1 focus:ring-accent w-32"
-                  autoFocus
-                />
-              ) : (
-                <button
-                  onClick={() => setActiveBoardId(board.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });
-                  }}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                    activeBoardId === board.id
-                      ? "bg-surface-700 text-white border-t border-x border-surface-500"
-                      : "text-gray-400 hover:text-gray-300 hover:bg-surface-800"
-                  }`}
-                >
-                  {board.name}
-                </button>
-              )}
-            </div>
-          ))}
-
-          {/* Add board button / inline input */}
-          {addingBoard ? (
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                value={newBoardName}
-                onChange={(e) => setNewBoardName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddBoard();
-                  if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); }
-                }}
-                className="px-3 py-1.5 text-sm bg-surface-700 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent w-32"
-                placeholder="Board name"
-                autoFocus
-              />
-              <button
-                onClick={handleAddBoard}
-                className="px-2 py-1.5 text-xs bg-accent hover:bg-accent-hover text-white rounded transition-colors"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => { setAddingBoard(false); setNewBoardName(""); }}
-                className="px-2 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAddingBoard(true)}
-              className="px-2 py-2 text-sm text-gray-500 hover:text-gray-300 hover:bg-surface-800 rounded-t-lg transition-colors"
-              title="Add board"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
-
-          {/* Column context menu */}
-          {columnContextMenu && (
-            <div
-              className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]"
-              style={{ left: columnContextMenu.x, top: columnContextMenu.y }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  const col = columns.find((c) => c.id === columnContextMenu.columnId);
-                  if (col) {
-                    setRenamingColumnId(col.id);
-                    setRenameColumnName(col.name);
-                  }
-                  setColumnContextMenu(null);
-                }}
-              >
-                Rename
-              </button>
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                disabled={columns.findIndex((c) => c.id === columnContextMenu.columnId) === 0}
-                onClick={() => {
-                  handleMoveColumnLeft(columnContextMenu.columnId);
-                  setColumnContextMenu(null);
-                }}
-              >
-                Move left
-              </button>
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                disabled={columns.findIndex((c) => c.id === columnContextMenu.columnId) === columns.length - 1}
-                onClick={() => {
-                  handleMoveColumnRight(columnContextMenu.columnId);
-                  setColumnContextMenu(null);
-                }}
-              >
-                Move right
-              </button>
-              <div className="border-t border-surface-500 my-1" />
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  const columnId = columnContextMenu.columnId;
-                  setColumnContextMenu(null);
-                  handleDeleteColumn(columnId);
-                }}
-              >
-                Delete column
-              </button>
-            </div>
-          )}
-
-          {/* Board context menu */}
-          {boardContextMenu && (
-            <div
-              className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]"
-              style={{ left: boardContextMenu.x, top: boardContextMenu.y }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  const board = boards.find((b) => b.id === boardContextMenu.boardId);
-                  if (board) {
-                    setRenamingBoardId(board.id);
-                    setRenameBoardName(board.name);
-                  }
-                  setBoardContextMenu(null);
-                }}
-              >
-                Rename
-              </button>
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  handleMoveBoardLeft(boardContextMenu.boardId);
-                  setBoardContextMenu(null);
-                }}
-              >
-                Move left
-              </button>
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  handleMoveBoardRight(boardContextMenu.boardId);
-                  setBoardContextMenu(null);
-                }}
-              >
-                Move right
-              </button>
-              <div className="border-t border-surface-500 my-1" />
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-surface-600 transition-colors"
-                onClick={() => {
-                  const boardId = boardContextMenu.boardId;
-                  setBoardContextMenu(null);
-                  handleDeleteBoard(boardId);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/* Breadcrumb */}
+      <div className="flex h-14 shrink-0 items-center gap-2 px-7 text-[13px] max-md:px-4">
+        {onBack && (
+          <IconButton onClick={onBack} title="Back" aria-label="Back" size={28} className="-ml-1.5 mr-0.5">
+            <ArrowLeft className="h-4 w-4" />
+          </IconButton>
+        )}
+        <span className="truncate text-text-3">{orgName}</span>
+        <ChevronRight className="h-[13px] w-[13px] shrink-0 text-text-4" />
+        <span className="text-[14px]">{productEmoji}</span>
+        <span className="truncate font-semibold text-text-1">{productName}</span>
+        <IconButton onClick={onToggleStar} size={24} aria-pressed={isStarred}
+          className={isStarred ? "text-text-1" : "text-text-3"}
+          title={isStarred ? "Unstar" : "Star"} aria-label={isStarred ? "Unstar product" : "Star product"}>
+          <Star className="h-3.5 w-3.5" fill={isStarred ? "currentColor" : "none"} />
+        </IconButton>
       </div>
 
+      {/* Board tabs */}
+      <div className="flex h-10 shrink-0 items-end gap-6 overflow-x-auto border-b border-border px-7 max-md:px-4">
+        {boards.map((board) => {
+          const active = activeBoardId === board.id;
+          return renamingBoardId === board.id ? (
+            <input
+              key={board.id}
+              type="text"
+              value={renameBoardName}
+              onChange={(e) => setRenameBoardName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameBoard(board.id);
+                if (e.key === "Escape") { setRenamingBoardId(null); setRenameBoardName(""); }
+              }}
+              onBlur={() => { setRenamingBoardId(null); setRenameBoardName(""); }}
+              className="mb-1.5 h-7 w-32 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 focus:border-text-4 focus:outline-none"
+              autoFocus
+            />
+          ) : (
+            <button
+              key={board.id}
+              onClick={() => setActiveBoardId(board.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });
+              }}
+              className={cx(
+                "-mb-px flex h-full shrink-0 items-end border-b-2 pb-2.5 text-[13px] whitespace-nowrap transition-colors",
+                active ? "border-ivory font-medium text-text-1" : "border-transparent text-text-3 hover:text-text-2",
+              )}
+            >
+              {board.name}
+            </button>
+          );
+        })}
+
+        {/* Add board button / inline input */}
+        {addingBoard ? (
+          <div className="mb-1.5 flex shrink-0 items-center gap-1">
+            <input
+              type="text"
+              value={newBoardName}
+              onChange={(e) => setNewBoardName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAddBoard();
+                if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); }
+              }}
+              className="h-7 w-32 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none"
+              placeholder="Board name"
+              autoFocus
+            />
+            <Button variant="primary" size="sm" className="h-7" onClick={handleAddBoard}>Add</Button>
+            <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingBoard(false); setNewBoardName(""); }}>Cancel</Button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setAddingBoard(true)}
+            className="flex h-full shrink-0 items-end pb-3 text-text-3 transition-colors hover:text-text-1"
+            title="Add board"
+            aria-label="Add board"
+          >
+            <Plus className="h-[15px] w-[15px]" />
+          </button>
+        )}
+      </div>
+
+      {/* Column menu */}
+      {columnContextMenu && (
+        <MenuPanel className="fixed w-48" style={{ left: columnContextMenu.x, top: columnContextMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <MenuItem icon={<Pencil />} onClick={() => {
+            if (columnMenuColumn) {
+              setRenamingColumnId(columnMenuColumn.id);
+              setRenameColumnName(columnMenuColumn.name);
+            }
+            setColumnContextMenu(null);
+          }}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={<ArrowLeftToLine />} disabled={columnMenuIndex === 0} onClick={() => {
+            handleMoveColumnLeft(columnContextMenu.columnId);
+            setColumnContextMenu(null);
+          }}>
+            Move left
+          </MenuItem>
+          <MenuItem icon={<ArrowRightToLine />} disabled={columnMenuIndex === columns.length - 1} onClick={() => {
+            handleMoveColumnRight(columnContextMenu.columnId);
+            setColumnContextMenu(null);
+          }}>
+            Move right
+          </MenuItem>
+          <MenuDivider />
+          <MenuItem danger icon={<Trash2 />} onClick={() => {
+            const columnId = columnContextMenu.columnId;
+            setColumnContextMenu(null);
+            handleDeleteColumn(columnId);
+          }}>
+            Delete column
+          </MenuItem>
+        </MenuPanel>
+      )}
+
+      {/* Board menu */}
+      {boardContextMenu && (
+        <MenuPanel className="fixed w-48" style={{ left: boardContextMenu.x, top: boardContextMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <MenuItem icon={<Pencil />} onClick={() => {
+            const board = boards.find((b) => b.id === boardContextMenu.boardId);
+            if (board) {
+              setRenamingBoardId(board.id);
+              setRenameBoardName(board.name);
+            }
+            setBoardContextMenu(null);
+          }}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={<ArrowLeftToLine />} onClick={() => {
+            handleMoveBoardLeft(boardContextMenu.boardId);
+            setBoardContextMenu(null);
+          }}>
+            Move left
+          </MenuItem>
+          <MenuItem icon={<ArrowRightToLine />} onClick={() => {
+            handleMoveBoardRight(boardContextMenu.boardId);
+            setBoardContextMenu(null);
+          }}>
+            Move right
+          </MenuItem>
+          <MenuDivider />
+          <MenuItem danger icon={<Trash2 />} onClick={() => {
+            const boardId = boardContextMenu.boardId;
+            setBoardContextMenu(null);
+            handleDeleteBoard(boardId);
+          }}>
+            Delete
+          </MenuItem>
+        </MenuPanel>
+      )}
+
       {/* Filter bar */}
-      <div className="flex items-center gap-3 px-6 py-2 border-b border-surface-600 bg-surface-800/50">
-        <span className="text-xs text-gray-500 font-medium">Filter:</span>
-        <select
+      <div className="flex min-h-[52px] shrink-0 flex-wrap items-center gap-2 border-b border-border px-7 py-2 max-md:px-4">
+        <span className="mr-0.5 flex items-center gap-2 text-[12.5px] text-text-3">
+          <ListFilter className="h-3.5 w-3.5" />
+          Filter
+        </span>
+        <Select
+          aria-label="Filter by assignee"
           value={filterAssignee}
           onChange={(e) => setFilterAssignee(e.target.value)}
-          className="px-2 py-1 bg-surface-700 border border-surface-500 rounded text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-[140px] [&>select]:h-[30px] [&>select]:rounded-md [&>select]:bg-surface-1 [&>select]:text-[12.5px] [&>select]:text-text-2"
         >
           <option value="">All assignees</option>
           <option value="__unassigned__">Unassigned</option>
           {members.map((m) => (
             <option key={m.id} value={String(m.id)}>
-              {m.name}{m.type === "agent" ? " \u{1F916}" : ""}
+              {m.name}{m.type === "agent" ? " (agent)" : ""}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
+          aria-label="Filter by priority"
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="px-2 py-1 bg-surface-700 border border-surface-500 rounded text-xs text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-[132px] [&>select]:h-[30px] [&>select]:rounded-md [&>select]:bg-surface-1 [&>select]:text-[12.5px] [&>select]:text-text-2"
         >
           <option value="">All priorities</option>
           <option value="urgent">Urgent</option>
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
-        </select>
-        <input
-          type="text"
-          value={filterLabel}
-          onChange={(e) => setFilterLabel(e.target.value)}
-          className="px-2 py-1 bg-surface-700 border border-surface-500 rounded text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent w-32"
-          placeholder="Filter by label"
-        />
+        </Select>
+        <span className="relative">
+          <input
+            type="text"
+            value={filterLabel}
+            onChange={(e) => setFilterLabel(e.target.value)}
+            aria-label="Filter by label"
+            className="h-[30px] w-40 rounded-md border border-border-strong bg-surface-1 pr-8 pl-3 text-[12.5px] text-text-2 placeholder:text-text-4 focus:border-text-4 focus:outline-none"
+            placeholder="Filter by label"
+          />
+          <Tag className="pointer-events-none absolute top-1/2 right-2.5 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+        </span>
         {hasFilters && (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-[12.5px]"
             onClick={() => {
               setFilterAssignee("");
               setFilterPriority("");
               setFilterLabel("");
             }}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
           >
+            <X className="h-3.5 w-3.5" />
             Clear
-          </button>
+          </Button>
         )}
       </div>
 
       {/* Columns */}
-      <div className="flex-1 overflow-x-auto p-6">
+      <div className="flex-1 overflow-x-auto px-7 pt-5 pb-6 max-md:px-4">
         <DndContext
           sensors={sensors}
           collisionDetection={customCollisionDetection}
@@ -932,80 +859,60 @@ export default function KanbanBoard({
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 h-full">
+          <div className="flex h-full gap-3">
             {columns.map((column) => {
               const colCards = getFilteredCards(column.id);
               return (
                 <div
                   key={column.id}
-                  className="w-72 shrink-0 flex flex-col bg-surface-900/50 rounded-xl border border-surface-600"
+                  className="flex w-[264px] shrink-0 flex-col rounded-[10px] border border-border bg-surface-1"
                 >
                   {/* Column header */}
-                  <div className="flex items-center justify-between px-3 py-2.5 border-b border-surface-600">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: column.color }}
+                  <div className="flex h-11 shrink-0 items-center gap-2 pr-2.5 pl-3.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: column.color }} />
+                    {renamingColumnId === column.id ? (
+                      <input
+                        type="text"
+                        value={renameColumnName}
+                        onChange={(e) => setRenameColumnName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameColumn(column.id);
+                          if (e.key === "Escape") { setRenamingColumnId(null); setRenameColumnName(""); }
+                        }}
+                        onBlur={() => { setRenamingColumnId(null); setRenameColumnName(""); }}
+                        className="h-7 min-w-0 flex-1 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] font-medium text-text-1 focus:border-text-4 focus:outline-none"
+                        autoFocus
                       />
-                      {renamingColumnId === column.id ? (
-                        <input
-                          type="text"
-                          value={renameColumnName}
-                          onChange={(e) => setRenameColumnName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleRenameColumn(column.id);
-                            if (e.key === "Escape") { setRenamingColumnId(null); setRenameColumnName(""); }
-                          }}
-                          onBlur={() => { setRenamingColumnId(null); setRenameColumnName(""); }}
-                          className="text-sm font-medium bg-surface-700 text-white border border-surface-500 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-accent w-full"
-                          autoFocus
-                        />
-                      ) : (
-                        <span className="text-sm font-medium text-gray-200 truncate">
-                          {column.name}
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500 bg-surface-700 px-1.5 py-0.5 rounded-full shrink-0">
-                        {colCards.length}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setColumnContextMenu({ columnId: column.id, x: rect.left, y: rect.bottom + 4 });
-                        }}
-                        className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
-                        title="Column options"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAddingCardColId(column.id);
-                          setNewCardTitle("");
-                        }}
-                        className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors"
-                        title="Add card"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 4v16m8-8H4"
-                          />
-                        </svg>
-                      </button>
-                    </div>
+                    ) : (
+                      <>
+                        <span className="truncate text-[13px] font-medium text-text-1">{column.name}</span>
+                        <span className="font-mono text-[11px] text-text-3">{colCards.length}</span>
+                        <span className="flex-1" />
+                      </>
+                    )}
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setColumnContextMenu({ columnId: column.id, x: rect.left, y: rect.bottom + 4 });
+                      }}
+                      size={24}
+                      title="Column options"
+                      aria-label={`${column.name} options`}
+                    >
+                      <Ellipsis className="h-[15px] w-[15px]" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => {
+                        setAddingCardColId(column.id);
+                        setNewCardTitle("");
+                      }}
+                      size={24}
+                      title="Add card"
+                      aria-label={`Add card to ${column.name}`}
+                    >
+                      <Plus className="h-[15px] w-[15px]" />
+                    </IconButton>
                   </div>
 
                   {/* Cards */}
@@ -1018,21 +925,22 @@ export default function KanbanBoard({
                         <SortableCard
                           key={card.id}
                           card={card}
+                          selected={modalCard?.id === card.id}
                           onClick={() => setModalCard(card)}
                         />
                       ))}
                     </SortableContext>
 
                     {/* Droppable area for empty columns */}
-                    {colCards.length === 0 && (
-                      <div className="h-16 rounded-lg border-2 border-dashed border-surface-600 flex items-center justify-center text-xs text-gray-600">
+                    {colCards.length === 0 && addingCardColId !== column.id && (
+                      <div className="flex h-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-border-strong text-xs text-text-4">
                         Drop cards here
                       </div>
                     )}
 
                     {/* Add card form */}
                     {addingCardColId === column.id && (
-                      <div className="p-2 bg-surface-800 rounded-lg border border-surface-600">
+                      <div className="rounded-lg border border-border-strong bg-surface-2 p-2">
                         <input
                           type="text"
                           value={newCardTitle}
@@ -1041,23 +949,13 @@ export default function KanbanBoard({
                             if (e.key === "Enter") handleAddCard(column.id);
                             if (e.key === "Escape") setAddingCardColId(null);
                           }}
-                          className="w-full px-2 py-1.5 bg-surface-700 border border-surface-500 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+                          className="h-8 w-full rounded-md border border-border-strong bg-surface-1 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none"
                           placeholder="Card title"
                           autoFocus
                         />
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={() => handleAddCard(column.id)}
-                            className="px-3 py-1 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded transition-colors"
-                          >
-                            Add
-                          </button>
-                          <button
-                            onClick={() => setAddingCardColId(null)}
-                            className="px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors"
-                          >
-                            Cancel
-                          </button>
+                        <div className="mt-2 flex gap-1.5">
+                          <Button variant="primary" size="sm" className="h-7" onClick={() => handleAddCard(column.id)}>Add</Button>
+                          <Button variant="ghost" size="sm" className="h-7" onClick={() => setAddingCardColId(null)}>Cancel</Button>
                         </div>
                       </div>
                     )}
@@ -1068,7 +966,7 @@ export default function KanbanBoard({
 
             {/* Add column button */}
             {addingColumn ? (
-              <div className="w-72 shrink-0 p-3 bg-surface-900/50 rounded-xl border border-surface-600 self-start">
+              <div className="w-[264px] shrink-0 self-start rounded-[10px] border border-border bg-surface-1 p-2.5">
                 <input
                   type="text"
                   value={newColumnName}
@@ -1080,46 +978,21 @@ export default function KanbanBoard({
                       setNewColumnName("");
                     }
                   }}
-                  className="w-full px-2 py-1.5 bg-surface-700 border border-surface-500 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+                  className="h-8 w-full rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none"
                   placeholder="Column name"
                   autoFocus
                 />
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={handleAddColumn}
-                    className="px-3 py-1 bg-accent hover:bg-accent-hover text-white text-xs font-medium rounded transition-colors"
-                  >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAddingColumn(false);
-                      setNewColumnName("");
-                    }}
-                    className="px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors"
-                  >
-                    Cancel
-                  </button>
+                <div className="mt-2 flex gap-1.5">
+                  <Button variant="primary" size="sm" className="h-7" onClick={handleAddColumn}>Add</Button>
+                  <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingColumn(false); setNewColumnName(""); }}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <button
                 onClick={() => setAddingColumn(true)}
-                className="w-72 shrink-0 h-12 rounded-xl border-2 border-dashed border-surface-600 flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-gray-300 hover:border-surface-500 transition-colors self-start"
+                className="flex h-11 w-[264px] shrink-0 items-center justify-center gap-2 self-start rounded-[10px] border border-dashed border-border-strong text-[13px] text-text-3 transition-colors hover:border-text-4 hover:text-text-2"
               >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
+                <Plus className="h-4 w-4" />
                 Add column
               </button>
             )}
@@ -1127,7 +1000,7 @@ export default function KanbanBoard({
 
           <DragOverlay>
             {activeCard ? (
-              <div className="opacity-90">
+              <div className="rotate-[1.5deg] shadow-[0_16px_40px_rgba(0,0,0,0.55)]">
                 <KanbanCard card={activeCard} onClick={() => {}} />
               </div>
             ) : null}
