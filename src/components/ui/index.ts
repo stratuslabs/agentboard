@@ -9,3 +9,4 @@ export { MenuPanel, MenuItem, MenuDivider, MenuLabel } from "./Menu";
 export { Dialog } from "./Dialog";
 export { PRESET_COLORS, ColorSwatches } from "./ColorSwatches";
 export { EmptyState, PageLoader } from "./EmptyState";
+export { GithubIcon } from "./GithubIcon";

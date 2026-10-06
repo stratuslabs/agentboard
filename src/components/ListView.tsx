@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Calendar } from "lucide-react";
-import CardModal from "./CardModal";
+import CardDetail from "./CardDetail";
 import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
-import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus } from "@/lib/cards";
+import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "@/lib/cards";
 
 export interface ViewCard extends Card {
   org_name: string;
@@ -28,7 +28,26 @@ interface ListViewProps {
 }
 
 export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, tone = "default", onRefresh, onBack }: ListViewProps) {
-  const [modalCard, setModalCard] = useState<ViewCard | null>(null);
+  const [openCardId, setOpenCardId] = useState<number | null>(null);
+  const [cardView, setCardView] = useState<"panel" | "page">("panel");
+  // A linked card that is not in this list (`?card=` from elsewhere) is
+  // fetched on its own so the link still opens.
+  const [outsideCard, setOutsideCard] = useState<ViewCard | null>(null);
+
+  useEffect(() => {
+    const { cardId, full } = readCardParam();
+    if (!cardId) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- applying the URL on arrival */
+    setOpenCardId(cardId);
+    setCardView(full ? "page" : "panel");
+    fetch(`/api/cards/${cardId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        if (c) setOutsideCard({ ...c, org_name: "", product_emoji: "", column_color: "" });
+        else { setOpenCardId(null); writeCardParam(null); }
+      })
+      .catch(() => {});
+  }, []);
 
   // Group cards by product
   const grouped = cards.reduce<Record<string, { emoji: string; name: string; cards: ViewCard[] }>>((acc, card) => {
@@ -38,15 +57,51 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
     return acc;
   }, {});
 
+  // Rows in the order they are shown, which is what prev/next walks.
+  const ordered = Object.values(grouped).flatMap((g) => g.cards);
+  const openCard = openCardId === null
+    ? null
+    : ordered.find((c) => c.id === openCardId) ?? (outsideCard?.id === openCardId ? outsideCard : null);
+
+  function open(cardId: number, view: "panel" | "page" = cardView) {
+    setOpenCardId(cardId);
+    setCardView(view);
+    writeCardParam(cardId, view === "page");
+  }
+
+  function close() {
+    setOpenCardId(null);
+    setCardView("panel");
+    writeCardParam(null);
+  }
+
   function handleCardUpdate(updated: Card) {
-    setModalCard((prev) => prev ? { ...prev, ...updated } : null);
+    setOutsideCard((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
     onRefresh();
   }
 
   function handleCardDelete() {
-    setModalCard(null);
+    close();
     onRefresh();
   }
+
+  const detail = openCard && (
+    <CardDetail
+      key={openCard.id}
+      mode={cardView}
+      card={openCard}
+      context={{ orgName: openCard.org_name || undefined, productEmoji: openCard.product_emoji, productName: openCard.product_name, boardName: openCard.board_name }}
+      siblings={ordered.some((c) => c.id === openCard.id) ? ordered : undefined}
+      siblingsLabel={title}
+      onNavigate={(c) => open(c.id)}
+      onClose={close}
+      onToggleMode={() => open(openCard.id, cardView === "page" ? "panel" : "page")}
+      onUpdate={handleCardUpdate}
+      onDelete={handleCardDelete}
+    />
+  );
+
+  if (openCard && cardView === "page") return detail;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -84,8 +139,8 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
                     return (
                       <button
                         key={card.id}
-                        onClick={() => setModalCard(card)}
-                        className="flex h-11 w-full items-center gap-3 rounded-lg border border-border bg-surface-1 px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
+                        onClick={() => open(card.id)}
+                        className={cx("flex h-11 w-full items-center gap-3 rounded-lg border px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2", openCardId === card.id ? "border-text-3 bg-surface-2" : "border-border bg-surface-1")}
                       >
                         <PriorityDot priority={card.priority} />
                         <span className="min-w-0 flex-1 truncate text-[13.5px] text-text-1">{card.title}</span>
@@ -113,15 +168,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
         )}
       </div>
 
-      {/* Card modal */}
-      {modalCard && (
-        <CardModal
-          card={modalCard}
-          onClose={() => setModalCard(null)}
-          onUpdate={handleCardUpdate}
-          onDelete={handleCardDelete}
-        />
-      )}
+      {detail}
     </div>
   );
 }

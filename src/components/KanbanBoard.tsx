@@ -27,11 +27,11 @@ import {
 import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, ListFilter, Pencil, Plus, Star, Tag, Trash2, X } from "lucide-react";
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
-import CardModal from "./CardModal";
+import CardDetail from "./CardDetail";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "@/contexts/PreferencesContext";
-import type { Card, Member } from "@/lib/cards";
+import { type Card, type Member, readCardParam, writeCardParam } from "@/lib/cards";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -101,7 +101,10 @@ export default function KanbanBoard({
   const [columns, setColumns] = useState<Column[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [activeCard, setActiveCard] = useState<Card | null>(null);
-  const [modalCard, setModalCard] = useState<Card | null>(null);
+  // The open card is an id, not a copy: it reads through to `cards`, so live
+  // updates reach the panel and a card deleted elsewhere closes it.
+  const [openCardId, setOpenCardId] = useState<number | null>(null);
+  const [cardView, setCardView] = useState<"panel" | "page">("panel");
   const [addingCardColId, setAddingCardColId] = useState<number | null>(null);
   const [newCardTitle, setNewCardTitle] = useState("");
   const [addingColumn, setAddingColumn] = useState(false);
@@ -478,15 +481,58 @@ export default function KanbanBoard({
 
   function handleCardUpdate(updatedCard: Card) {
     setCards((prev) =>
-      prev.map((c) => (c.id === updatedCard.id ? updatedCard : c))
+      prev.map((c) => (c.id === updatedCard.id ? { ...c, ...updatedCard } : c))
     );
-    setModalCard(updatedCard);
   }
 
   function handleCardDelete(cardId: number) {
     setCards((prev) => prev.filter((c) => c.id !== cardId));
-    setModalCard(null);
+    closeCard();
   }
+
+  function openCard(cardId: number, view: "panel" | "page" = cardView) {
+    setOpenCardId(cardId);
+    setCardView(view);
+    writeCardParam(cardId, view === "page");
+  }
+
+  function closeCard() {
+    setOpenCardId(null);
+    setCardView("panel");
+    writeCardParam(null);
+  }
+
+  // A `?card=` link: open it once the board holding it is on screen. The card
+  // may live on another of this product's boards, in which case that board is
+  // switched to first and the card opens when its cards arrive.
+  const deepLinkRef = useRef<{ cardId: number; full: boolean; resolved: boolean } | null>(null);
+  useEffect(() => {
+    const { cardId, full } = readCardParam();
+    if (cardId) deepLinkRef.current = { cardId, full, resolved: false };
+  }, []);
+  useEffect(() => {
+    const link = deepLinkRef.current;
+    if (!link || activeBoardId === null) return;
+    if (cards.some((c) => c.id === link.cardId)) {
+      deepLinkRef.current = null;
+      setOpenCardId(link.cardId);
+      setCardView(link.full ? "page" : "panel");
+      return;
+    }
+    if (link.resolved || cards.length === 0) return;
+    link.resolved = true;
+    fetch(`/api/cards/${link.cardId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((found: { product_id: number; board_id: number } | null) => {
+        if (found && found.product_id === productId && found.board_id !== activeBoardIdRef.current) {
+          setActiveBoardId(found.board_id);
+        } else {
+          deepLinkRef.current = null;
+          if (!found || found.product_id !== productId) writeCardParam(null);
+        }
+      })
+      .catch(() => { deepLinkRef.current = null; });
+  }, [cards, activeBoardId, productId]);
 
   async function handleAddBoard() {
     if (!newBoardName.trim()) return;
@@ -629,6 +675,41 @@ export default function KanbanBoard({
   }, [boardContextMenu, columnContextMenu]);
 
   const hasFilters = filterAssignee || filterPriority || filterLabel;
+
+  const openCardObj = openCardId !== null ? cards.find((c) => c.id === openCardId) ?? null : null;
+  const activeBoard = boards.find((b) => b.id === activeBoardId);
+
+  function cardDetailProps(card: Card) {
+    // Prev/next walks the card's column as it is shown; if a filter hides the
+    // card itself, fall back to the whole column so it still has neighbours.
+    const visible = getFilteredCards(card.column_id);
+    const siblings = visible.some((c) => c.id === card.id)
+      ? visible
+      : cards.filter((c) => c.column_id === card.column_id).sort((a, b) => a.position - b.position);
+    return {
+      card,
+      columns,
+      context: { orgName, productEmoji, productName, boardName: activeBoard?.name },
+      siblings,
+      siblingsLabel: columns.find((c) => c.id === card.column_id)?.name,
+      onNavigate: (c: Card) => openCard(c.id),
+      onClose: closeCard,
+      onToggleMode: () => openCard(card.id, cardView === "page" ? "panel" : "page"),
+      onUpdate: handleCardUpdate,
+      onDelete: handleCardDelete,
+    };
+  }
+
+  if (openCardObj && cardView === "page") {
+    return (
+      <>
+        <CardDetail key={openCardObj.id} mode="page" {...cardDetailProps(openCardObj)} onMove={() => loadCards()} />
+        {confirmAction && (
+          <ConfirmModal title={confirmAction.title} message={confirmAction.message} onConfirm={confirmAction.action} onCancel={() => setConfirmAction(null)} />
+        )}
+      </>
+    );
+  }
 
   const columnMenuColumn = columnContextMenu ? columns.find((c) => c.id === columnContextMenu.columnId) : null;
   const columnMenuIndex = columnContextMenu ? columns.findIndex((c) => c.id === columnContextMenu.columnId) : -1;
@@ -925,8 +1006,8 @@ export default function KanbanBoard({
                         <SortableCard
                           key={card.id}
                           card={card}
-                          selected={modalCard?.id === card.id}
-                          onClick={() => setModalCard(card)}
+                          selected={openCardId === card.id}
+                          onClick={() => openCard(card.id)}
                         />
                       ))}
                     </SortableContext>
@@ -996,6 +1077,9 @@ export default function KanbanBoard({
                 Add column
               </button>
             )}
+
+            {/* Room to scroll the last columns out from under the side panel. */}
+            {openCardObj && <div aria-hidden className="w-[508px] shrink-0 max-md:hidden" />}
           </div>
 
           <DragOverlay>
@@ -1008,22 +1092,13 @@ export default function KanbanBoard({
         </DndContext>
       </div>
 
-      {/* Card modal */}
-      {modalCard && (
-        <CardModal
-          card={modalCard}
-          columns={columns}
-          onClose={() => setModalCard(null)}
-          onUpdate={handleCardUpdate}
-          onDelete={handleCardDelete}
-          onMove={(cardId, newColumnId) => {
-            setCards((prev) =>
-              prev.map((c) =>
-                c.id === cardId ? { ...c, column_id: newColumnId } : c
-              )
-            );
-            loadCards();
-          }}
+      {/* Card side panel */}
+      {openCardObj && cardView === "panel" && (
+        <CardDetail
+          key={openCardObj.id}
+          mode="panel"
+          {...cardDetailProps(openCardObj)}
+          onMove={() => loadCards()}
         />
       )}
 
