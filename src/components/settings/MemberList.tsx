@@ -6,7 +6,13 @@ import { Avatar, ColorSwatches, IconButton, MenuPanel, cx } from "../ui";
 
 /** The bordered card that holds member groups. */
 export function MemberListCard({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-hidden rounded-[10px] border border-border bg-surface-1 [&>*:last-child]:border-b-0">{children}</div>;
+  // Not overflow-hidden: a row's menu has to hang past the last row. The
+  // first and last rows round themselves to the corners instead.
+  return (
+    <div className="rounded-[10px] border border-border bg-surface-1 [&>*:first-child]:rounded-t-[9px] [&>*:last-child]:rounded-b-[9px] [&>*:last-child]:border-b-0">
+      {children}
+    </div>
+  );
 }
 
 export function MemberGroupHeader({ label, count, trailing }: { label: string; count: number; trailing?: React.ReactNode }) {
