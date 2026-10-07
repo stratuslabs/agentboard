@@ -230,39 +230,51 @@ export default function CardDetail({
   const dirtyRef = useRef(new Set<string>());
   const pendingRef = useRef<Record<string, unknown>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inFlightRef = useRef(0);
+  // One save at a time. Edits made while a save is out wait in `pending` and
+  // go together in the next request, so an older value can never land after
+  // a newer one — two PATCHes in flight could otherwise finish in either order.
+  const busyRef = useRef(false);
   const cardIdRef = useRef(card.id);
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
 
   const flush = useCallback(async () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    const body = pendingRef.current;
-    if (Object.keys(body).length === 0) return;
-    pendingRef.current = {};
-    const id = cardIdRef.current;
-    inFlightRef.current++;
-    setSaveState("saving");
-    try {
-      const res = await fetch(`/api/cards/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const updated = await res.json();
-      onUpdateRef.current(updated);
-      for (const key of Object.keys(body)) {
-        if (!(key in pendingRef.current)) dirtyRef.current.delete(key);
+    if (busyRef.current) return; // the save in progress sends whatever is pending next
+    busyRef.current = true;
+    let failed = false;
+    while (!failed && Object.keys(pendingRef.current).length > 0) {
+      const body = pendingRef.current;
+      pendingRef.current = {};
+      setSaveState("saving");
+      try {
+        const res = await fetch(`/api/cards/${cardIdRef.current}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const updated = await res.json();
+        // The API names the assignee only when there is one; unassigning has
+        // to clear the old name and colour, or a merge would keep them.
+        if (updated.assignee_id == null) {
+          updated.assignee_name = null;
+          updated.assignee_type = null;
+          updated.assignee_color = null;
+        }
+        onUpdateRef.current(updated);
+        for (const key of Object.keys(body)) {
+          if (!(key in pendingRef.current)) dirtyRef.current.delete(key);
+        }
+      } catch {
+        // Put the failed fields back so the next edit, or closing, retries them.
+        pendingRef.current = { ...body, ...pendingRef.current };
+        failed = true;
+        setSaveState("error");
       }
-      inFlightRef.current--;
-      setSaveState(inFlightRef.current > 0 ? "saving" : "saved");
-    } catch {
-      inFlightRef.current--;
-      // Put the failed fields back so the next edit, or closing, retries them.
-      pendingRef.current = { ...body, ...pendingRef.current };
-      setSaveState("error");
     }
+    busyRef.current = false;
+    if (!failed) setSaveState("saved");
   }, []);
 
   const queueSave = useCallback((fields: Record<string, unknown>, immediate: boolean) => {

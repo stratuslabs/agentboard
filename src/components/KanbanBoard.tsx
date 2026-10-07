@@ -100,6 +100,9 @@ export default function KanbanBoard({
   const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
+  // The board `cards` belongs to. Lags `activeBoardId` while a switch loads,
+  // and tells "this board has no cards" apart from "not loaded yet".
+  const [loadedBoardId, setLoadedBoardId] = useState<number | null>(null);
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   // The open card is an id, not a copy: it reads through to `cards`, so live
   // updates reach the panel and a card deleted elsewhere closes it.
@@ -209,6 +212,7 @@ export default function KanbanBoard({
           setBoards([]);
           setColumns([]);
           setCards([]);
+          setLoadedBoardId(null);
           setActiveBoardId(null);
           return;
         }
@@ -249,6 +253,9 @@ export default function KanbanBoard({
         } else {
           setCards(data.cards);
         }
+        // The server answers for the board it chose, which is the fallback
+        // when the requested one is gone.
+        setLoadedBoardId(data.active_board_id ?? null);
 
         cursorRef.current = data.server_time;
         // Only meaningful now that the response is known to be for the board
@@ -519,7 +526,7 @@ export default function KanbanBoard({
       setCardView(link.full ? "page" : "panel");
       return;
     }
-    if (link.resolved || cards.length === 0) return;
+    if (link.resolved || loadedBoardId !== activeBoardId) return;
     link.resolved = true;
     fetch(`/api/cards/${link.cardId}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -532,7 +539,7 @@ export default function KanbanBoard({
         }
       })
       .catch(() => { deepLinkRef.current = null; });
-  }, [cards, activeBoardId, productId]);
+  }, [cards, loadedBoardId, activeBoardId, productId]);
 
   async function handleAddBoard() {
     if (!newBoardName.trim()) return;
