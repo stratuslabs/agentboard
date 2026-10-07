@@ -182,6 +182,11 @@ function LinkValue({ value, placeholder, icon, onCommit }: { value: string; plac
   );
 }
 
+// Saves for a card queue behind each other across instances too: switching
+// between the panel and the full page remounts this component, and the new
+// one must not overtake the save the old one sent on its way out.
+const savesInFlight = new Map<number, Promise<void>>();
+
 export default function CardDetail({
   card,
   mode,
@@ -241,38 +246,46 @@ export default function CardDetail({
   const flush = useCallback(async () => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (busyRef.current) return; // the save in progress sends whatever is pending next
+    if (Object.keys(pendingRef.current).length === 0) return;
     busyRef.current = true;
+    const id = cardIdRef.current;
     let failed = false;
-    while (!failed && Object.keys(pendingRef.current).length > 0) {
-      const body = pendingRef.current;
-      pendingRef.current = {};
-      setSaveState("saving");
-      try {
-        const res = await fetch(`/api/cards/${cardIdRef.current}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const updated = await res.json();
-        // The API names the assignee only when there is one; unassigning has
-        // to clear the old name and colour, or a merge would keep them.
-        if (updated.assignee_id == null) {
-          updated.assignee_name = null;
-          updated.assignee_type = null;
-          updated.assignee_color = null;
+    const drain = async () => {
+      while (!failed && Object.keys(pendingRef.current).length > 0) {
+        const body = pendingRef.current;
+        pendingRef.current = {};
+        setSaveState("saving");
+        try {
+          const res = await fetch(`/api/cards/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error(String(res.status));
+          const updated = await res.json();
+          // The API names the assignee only when there is one; unassigning has
+          // to clear the old name and colour, or a merge would keep them.
+          if (updated.assignee_id == null) {
+            updated.assignee_name = null;
+            updated.assignee_type = null;
+            updated.assignee_color = null;
+          }
+          onUpdateRef.current(updated);
+          for (const key of Object.keys(body)) {
+            if (!(key in pendingRef.current)) dirtyRef.current.delete(key);
+          }
+        } catch {
+          // Put the failed fields back so the next edit, or closing, retries them.
+          pendingRef.current = { ...body, ...pendingRef.current };
+          failed = true;
+          setSaveState("error");
         }
-        onUpdateRef.current(updated);
-        for (const key of Object.keys(body)) {
-          if (!(key in pendingRef.current)) dirtyRef.current.delete(key);
-        }
-      } catch {
-        // Put the failed fields back so the next edit, or closing, retries them.
-        pendingRef.current = { ...body, ...pendingRef.current };
-        failed = true;
-        setSaveState("error");
       }
-    }
+    };
+    const mine = (savesInFlight.get(id) ?? Promise.resolve()).then(drain);
+    savesInFlight.set(id, mine);
+    await mine;
+    if (savesInFlight.get(id) === mine) savesInFlight.delete(id);
     busyRef.current = false;
     if (!failed) setSaveState("saved");
   }, []);
@@ -287,7 +300,16 @@ export default function CardDetail({
 
   // Closing, expanding or stepping to another card unmounts this; whatever is
   // still waiting on the debounce goes out first.
-  useEffect(() => () => { void flush(); }, [flush]);
+  // The parent hears about those fields straight away, so a panel that remounts
+  // (panel <-> full page) starts from the edit rather than the last save.
+  const cardRef = useRef(card);
+  useEffect(() => { cardRef.current = card; }, [card]);
+  useEffect(() => () => {
+    if (Object.keys(pendingRef.current).length > 0) {
+      onUpdateRef.current({ ...cardRef.current, ...pendingRef.current } as Card);
+    }
+    void flush();
+  }, [flush]);
 
   // Fields not being edited follow the card as the board refreshes it.
   useEffect(() => {
@@ -306,7 +328,12 @@ export default function CardDetail({
   function editText(field: TextField, value: string, set: (v: string) => void) {
     set(value);
     const normalized = field === "github_issue_url" || field === "github_pr_url" ? value || null : value;
-    if (field === "title" && !value.trim()) return; // a card always keeps a title
+    if (field === "title" && !value.trim()) {
+      // A card always keeps a title: drop the half-erased one still waiting to
+      // save, and leaving the field puts the saved title back.
+      delete pendingRef.current.title;
+      return;
+    }
     queueSave({ [field]: normalized }, false);
   }
 
@@ -600,7 +627,13 @@ export default function CardDetail({
     <AutoTextarea
       value={title}
       onChange={(v) => editText("title", v, setTitle)}
-      onBlur={() => { if (!title.trim()) setTitle(card.title); void flush(); }}
+      onBlur={() => {
+        if (!title.trim()) {
+          setTitle(card.title);
+          if (!("title" in pendingRef.current)) dirtyRef.current.delete("title");
+        }
+        void flush();
+      }}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
       aria-label="Title"
       placeholder="Card title"

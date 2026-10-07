@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Check, Copy, FileText } from "lucide-react";
 import { Avatar, Button } from "../ui";
 import { agentSetupPrompt } from "@/lib/agent-prompt";
@@ -14,10 +14,15 @@ function PromptLine({ line }: { line: string }) {
   return <div className={tone}>{line || " "}</div>;
 }
 
+const PLACEHOLDER_URL = "https://your-agentboard-url.com";
+const noSubscription = () => () => {};
+
 export default function ConnectAgent() {
   const { members } = useBoardMembers();
   const [copied, setCopied] = useState(false);
-  const boardUrl = typeof window !== "undefined" ? window.location.origin : "https://your-agentboard-url.com";
+  // The server renders the placeholder and the browser swaps in its own
+  // origin after hydrating, so the two renders agree.
+  const boardUrl = useSyncExternalStore(noSubscription, () => window.location.origin, () => PLACEHOLDER_URL);
   const prompt = agentSetupPrompt(boardUrl);
   const agents = members.filter((m) => m.type === "agent");
 

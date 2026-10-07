@@ -149,6 +149,15 @@ export default function KanbanBoard({
     cardsRef.current = cards;
   }, [cards]);
 
+  // Also for `refreshBoard`: an open card that leaves the board (deleted, or
+  // moved elsewhere by someone else) closes, and its `?card=` goes with it.
+  const openCardIdRef = useRef(openCardId);
+  useEffect(() => {
+    openCardIdRef.current = openCardId;
+  }, [openCardId]);
+  // A `?card=` link still waiting for its board; see the effect further down.
+  const deepLinkRef = useRef<{ cardId: number; full: boolean; resolved: boolean } | null>(null);
+
   /**
    * The server's own clock, as of the last response. Sent back as
    * `updated_since` so the next fetch carries only what changed. Null means
@@ -236,6 +245,7 @@ export default function KanbanBoard({
         setBoards(data.boards);
         setColumns(data.columns);
 
+        let nextCards: Card[];
         if (data.card_ids) {
           const byId = new Map<number, Card>(cardsRef.current.map((c) => [c.id, c]));
           for (const card of data.cards as Card[]) byId.set(card.id, card);
@@ -249,9 +259,16 @@ export default function KanbanBoard({
             await run(true);
             return;
           }
-          setCards(merged as Card[]);
+          nextCards = merged as Card[];
         } else {
-          setCards(data.cards);
+          nextCards = data.cards;
+        }
+        setCards(nextCards);
+        const openId = openCardIdRef.current;
+        if (openId !== null && !deepLinkRef.current && !nextCards.some((c) => c.id === openId)) {
+          setOpenCardId(null);
+          setCardView("panel");
+          writeCardParam(null);
         }
         // The server answers for the board it chose, which is the fallback
         // when the requested one is gone.
@@ -512,7 +529,6 @@ export default function KanbanBoard({
   // A `?card=` link: open it once the board holding it is on screen. The card
   // may live on another of this product's boards, in which case that board is
   // switched to first and the card opens when its cards arrive.
-  const deepLinkRef = useRef<{ cardId: number; full: boolean; resolved: boolean } | null>(null);
   useEffect(() => {
     const { cardId, full } = readCardParam();
     if (cardId) deepLinkRef.current = { cardId, full, resolved: false };
@@ -762,7 +778,11 @@ export default function KanbanBoard({
           ) : (
             <button
               key={board.id}
-              onClick={() => setActiveBoardId(board.id)}
+              onClick={() => {
+                if (board.id === activeBoardId) return;
+                if (openCardId !== null) closeCard();
+                setActiveBoardId(board.id);
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setBoardContextMenu({ boardId: board.id, x: e.clientX, y: e.clientY });

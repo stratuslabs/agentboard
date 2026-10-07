@@ -30,9 +30,10 @@ interface ListViewProps {
 export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, tone = "default", onRefresh, onBack }: ListViewProps) {
   const [openCardId, setOpenCardId] = useState<number | null>(null);
   const [cardView, setCardView] = useState<"panel" | "page">("panel");
-  // A linked card that is not in this list (`?card=` from elsewhere) is
-  // fetched on its own so the link still opens.
-  const [outsideCard, setOutsideCard] = useState<ViewCard | null>(null);
+  // The open card, held here as well as read from `cards`: an edit can take it
+  // out of this list (a new due date on Today, Done on Past Due) and the panel
+  // stays on it. A `?card=` link to a card outside the list is fetched into it.
+  const [heldCard, setHeldCard] = useState<ViewCard | null>(null);
 
   useEffect(() => {
     const { cardId, full } = readCardParam();
@@ -42,7 +43,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
     fetch(`/api/cards/${cardId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((c) => {
-        if (c) setOutsideCard({ ...c, org_name: "", product_emoji: "", column_color: "" });
+        if (c) setHeldCard({ ...c, org_name: "", product_emoji: "", column_color: "" });
         else { setOpenCardId(null); writeCardParam(null); }
       })
       .catch(() => {});
@@ -60,9 +61,11 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
   const ordered = Object.values(grouped).flatMap((g) => g.cards);
   const openCard = openCardId === null
     ? null
-    : ordered.find((c) => c.id === openCardId) ?? (outsideCard?.id === openCardId ? outsideCard : null);
+    : ordered.find((c) => c.id === openCardId) ?? (heldCard?.id === openCardId ? heldCard : null);
 
-  function open(cardId: number, view: "panel" | "page" = cardView) {
+  function open(card: ViewCard, view: "panel" | "page" = cardView) {
+    const cardId = card.id;
+    setHeldCard(card);
     setOpenCardId(cardId);
     setCardView(view);
     writeCardParam(cardId, view === "page");
@@ -75,7 +78,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
   }
 
   function handleCardUpdate(updated: Card) {
-    setOutsideCard((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    setHeldCard((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
     onRefresh();
   }
 
@@ -92,9 +95,9 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
       context={{ orgName: openCard.org_name || undefined, productEmoji: openCard.product_emoji, productName: openCard.product_name, boardName: openCard.board_name }}
       siblings={ordered.some((c) => c.id === openCard.id) ? ordered : undefined}
       siblingsLabel={title}
-      onNavigate={(c) => open(c.id)}
+      onNavigate={(c) => open(ordered.find((o) => o.id === c.id) ?? (c as ViewCard))}
       onClose={close}
-      onToggleMode={() => open(openCard.id, cardView === "page" ? "panel" : "page")}
+      onToggleMode={() => open(openCard, cardView === "page" ? "panel" : "page")}
       onUpdate={handleCardUpdate}
       onDelete={handleCardDelete}
     />
@@ -138,7 +141,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
                     return (
                       <button
                         key={card.id}
-                        onClick={() => open(card.id)}
+                        onClick={() => open(card)}
                         className={cx("flex h-11 w-full items-center gap-3 rounded-lg border px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2", openCardId === card.id ? "border-text-3 bg-surface-2" : "border-border bg-surface-1")}
                       >
                         <PriorityDot priority={card.priority} />
