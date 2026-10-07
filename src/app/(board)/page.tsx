@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { Columns3 } from "lucide-react";
 import { useSidebar } from "@/contexts/SidebarContext";
+import { EmptyState, PageLoader } from "@/components/ui";
 
 export default function HomePage() {
   const router = useRouter();
@@ -46,45 +48,17 @@ export default function HomePage() {
 
   // Show loading while restoring
   if (!checked) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1.5">
-            <div className="w-2 h-8 bg-white/80 rounded-sm animate-pulse" />
-            <div className="w-2 h-6 bg-white/40 rounded-sm animate-pulse [animation-delay:150ms]" />
-            <div className="w-2 h-4 bg-white/20 rounded-sm animate-pulse [animation-delay:300ms]" />
-          </div>
-        </div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   // Desktop empty state
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-16 h-16 rounded-2xl bg-surface-800 border border-surface-600 flex items-center justify-center mx-auto mb-4">
-          <svg
-            className="w-8 h-8 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
-            />
-          </svg>
-        </div>
-        <h2 className="text-lg font-medium text-gray-400 mb-1">
-          Select a product
-        </h2>
-        <p className="text-sm text-gray-600">
-          Choose a product from the sidebar to view its boards
-        </p>
-      </div>
+    <div className="flex flex-1 items-center justify-center pb-20">
+      <EmptyState
+        icon={<Columns3 />}
+        title="Select a product"
+        body="Choose a product from the sidebar to view its boards"
+      />
     </div>
   );
 }

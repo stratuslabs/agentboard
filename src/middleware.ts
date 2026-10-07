@@ -60,6 +60,19 @@ function presentsCredential(request: NextRequest): boolean {
   );
 }
 
+/**
+ * Brand images the login screen shows before anyone has signed in. Everything
+ * else in public/ stays behind the password like the rest of the app.
+ */
+const PUBLIC_ASSETS = new Set([
+  "/logo.png",
+  "/brand-art.webp",
+  "/icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+]);
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -72,7 +85,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/api/auth/login" ||
     pathname.startsWith("/_next") ||
-    pathname === "/favicon.ico"
+    pathname === "/favicon.ico" ||
+    PUBLIC_ASSETS.has(pathname)
   ) {
     return NextResponse.next();
   }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -23,13 +22,42 @@ import {
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  CircleUserRound,
+  Copy,
+  Ellipsis,
+  List,
+  LogOut,
+  PanelLeftClose,
+  Pencil,
+  Pin,
+  Plus,
+  Settings,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useBoardStream } from "@/lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { agentSetupPrompt } from "@/lib/agent-prompt";
+import { SidebarFooterSlot, SidebarRailSlot } from "@/edition";
+import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
-const EmojiPicker = dynamic(() => import("./EmojiPicker"), { ssr: false, loading: () => <div className="absolute left-0 top-8 z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl p-4 text-xs text-gray-400">Loading...</div> });
+const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute top-8 left-0 z-50 rounded-[9px] border border-border-strong bg-surface-2 p-4 text-xs text-text-3 shadow-xl">
+      Loading…
+    </div>
+  ),
+});
 
 interface Org {
   id: number;
@@ -53,6 +81,44 @@ interface SidebarProps {
   isMobile?: boolean;
 }
 
+const INLINE_INPUT =
+  "w-full h-[29px] rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none";
+
+/** A sidebar row: icon or emoji, label, optional trailing content. */
+function NavLink({ href, icon, label, active, trailing, tone = "default" }: {
+  href: string; icon: React.ReactNode; label: string; active: boolean; trailing?: React.ReactNode; tone?: "default" | "danger";
+}) {
+  return (
+    <Link
+      href={href}
+      className={cx(
+        "flex h-[29px] w-full items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        tone === "danger"
+          ? cx("text-danger", active ? "bg-danger/15" : "hover:bg-danger/10")
+          : active
+            ? "bg-surface-3 font-medium text-text-1"
+            : "text-text-2 hover:bg-surface-2 hover:text-text-1",
+      )}
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {trailing}
+    </Link>
+  );
+}
+
+function NavButton({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-[29px] w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-text-2 transition-colors hover:bg-surface-2 hover:text-text-1"
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
 // --- Sortable Org Header ---
 function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
   org: Org; expanded: boolean; onToggle: () => void; onContextMenu: (e: React.MouseEvent) => void;
@@ -64,29 +130,26 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
 
   if (isEditing) {
     return (
-      <div ref={setNodeRef} style={style} className="px-3 py-1">
+      <div ref={setNodeRef} style={style} className="py-0.5">
         <input type="text" value={editingName} onChange={(e) => onEditChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onEditSubmit(); if (e.key === "Escape") onEditCancel(); }}
           onBlur={onEditSubmit}
-          className="w-full px-2 py-1 text-xs font-semibold bg-surface-700 border border-surface-500 rounded text-white uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-accent" autoFocus />
+          className={cx(INLINE_INPUT, "font-mono text-[11px] tracking-[0.8px] uppercase")} autoFocus />
       </div>
     );
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/org flex items-center cursor-default">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/org flex h-6 cursor-default items-center">
       <button onClick={onToggle} onContextMenu={onContextMenu}
-        className="flex items-center gap-2 flex-1 px-2 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors">
-        <svg className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`} fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-        </svg>
-        {org.name}
+        className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 text-left font-mono text-[10.5px] font-medium tracking-[0.8px] text-text-3 uppercase transition-colors hover:text-text-2">
+        {expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-text-4" /> : <ChevronRight className="h-3 w-3 shrink-0 text-text-4" />}
+        <span className="truncate">{org.name}</span>
       </button>
-      <button onClick={onMenuClick}
-        className={`w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-surface-600 transition-colors shrink-0 mr-1 ${menuOpen ? "text-gray-300 bg-surface-600" : "opacity-0 group-hover/org:opacity-100"}`}
-        title="More options">
-        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-      </button>
+      <IconButton onClick={onMenuClick} size={22} aria-label={`${org.name} options`} title="More options"
+        className={cx("mr-0.5", menuOpen ? "bg-surface-3 text-text-1" : "opacity-0 group-hover/org:opacity-100 focus-visible:opacity-100")}>
+        <Ellipsis className="h-3.5 w-3.5" />
+      </IconButton>
     </div>
   );
 }
@@ -96,44 +159,66 @@ function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children
   const { setNodeRef, isOver: droppableIsOver } = useDroppable({ id: `org-drop-${orgId}` });
   const highlight = isOver || droppableIsOver;
   return (
-    <div ref={setNodeRef} className={`ml-2 min-h-[8px] rounded transition-colors ${highlight ? "bg-accent/10 ring-1 ring-accent/30" : ""}`}>
+    <div ref={setNodeRef} className={cx("flex min-h-2 flex-col gap-px rounded-md transition-colors", highlight && "bg-surface-2 ring-1 ring-border-strong")}>
       {children}
     </div>
   );
 }
 
 // --- Sortable Product Item ---
-function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange, isStarred, onToggleStar }: {
+function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
   product: Product; isSelected: boolean; href: string; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
-  isStarred: boolean; onToggleStar: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `product-${product.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   if (isEditing) {
     return (
-      <div ref={setNodeRef} style={style} className="px-4 py-1 mx-1">
+      <div ref={setNodeRef} style={style}>
         <input type="text" value={editingName} onChange={(e) => onEditChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onEditSubmit(); if (e.key === "Escape") onEditCancel(); }}
           onBlur={onEditSubmit}
-          className="w-full px-2 py-1 text-sm bg-surface-700 border border-surface-500 rounded text-white focus:outline-none focus:ring-1 focus:ring-accent" autoFocus />
+          className={INLINE_INPUT} autoFocus />
       </div>
     );
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/product relative flex items-center mx-1 cursor-default">
-      <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }} className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-surface-600 transition-colors text-base leading-none ml-1" title="Change emoji">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+      className={cx("group/product relative flex h-[29px] cursor-default items-center gap-1 rounded-md pl-1 transition-colors",
+        isSelected ? "bg-surface-3" : "hover:bg-surface-2")}>
+      <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[14px] leading-none transition-colors hover:bg-surface-4"
+        title="Change emoji" aria-label={`Change emoji for ${product.name}`}>
         {product.emoji}
       </button>
       <Link href={href} onContextMenu={onContextMenu}
-        className={`flex-1 text-left px-2 py-1.5 text-sm rounded-md transition-colors truncate ${isSelected ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"}`}>
+        className={cx("flex h-full min-w-0 flex-1 items-center truncate pr-2 pl-1 text-[13px] transition-colors",
+          isSelected ? "font-medium text-text-1" : "text-text-2 group-hover/product:text-text-1")}>
         {product.name}
       </Link>
       {emojiPickerOpen && (
         <EmojiPicker onSelect={(emoji) => onEmojiChange(emoji)} onClose={onEmojiToggle} />
+      )}
+    </div>
+  );
+}
+
+function GetStartedStep({ n, complete, enabled, label, onClick }: { n: number; complete: boolean; enabled: boolean; label: React.ReactNode; onClick?: () => void }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className={cx("flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full font-mono text-[10px]",
+        complete ? "bg-success/15 text-success" : "border border-border-strong text-text-3")}>
+        {complete ? <Check className="h-3 w-3" /> : n}
+      </span>
+      {complete ? (
+        <span className="text-[12.5px] text-text-3 line-through">{label}</span>
+      ) : enabled && onClick ? (
+        <button onClick={onClick} className="text-left text-[12.5px] text-text-1 transition-colors hover:text-ivory-hover">{label}</button>
+      ) : (
+        <span className="text-[12.5px] text-text-4">{label}</span>
       )}
     </div>
   );
@@ -167,83 +252,36 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }
     setTimeout(() => setCopied(false), 2000);
   }
 
+  const done = [hasOrg, hasProduct, false].filter(Boolean).length;
+
   return (
-    <div className="px-3 py-3 border-b border-surface-600">
-      <div className="bg-accent/10 border border-accent/20 rounded-lg p-3">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-base">🚀</span>
-          <span className="text-sm font-semibold text-white">Get Started</span>
+    <div className="px-3 pt-1 pb-3">
+      <div className="rounded-lg border border-border bg-surface-1 p-3">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[13px] font-semibold text-text-1">Get started</span>
+          <span className="font-mono text-[10.5px] text-text-3">{done}/3</span>
         </div>
 
-        <div className="space-y-2">
-          {/* Step 1: Add org */}
-          <div className="flex items-center gap-2">
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${hasOrg ? "bg-green-500/20 text-green-400" : "bg-surface-600 text-gray-500"}`}>
-              {hasOrg ? "✓" : "1"}
-            </div>
-            {hasOrg ? (
-              <span className="text-xs text-gray-500 line-through">Add an organization</span>
-            ) : (
-              <button onClick={onAddOrg} className="text-xs text-accent hover:text-white transition-colors text-left">
-                Add an organization
-              </button>
-            )}
-          </div>
-
-          {/* Step 2: Add product */}
-          <div className="flex items-center gap-2">
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${hasProduct ? "bg-green-500/20 text-green-400" : "bg-surface-600 text-gray-500"}`}>
-              {hasProduct ? "✓" : "2"}
-            </div>
-            {hasProduct ? (
-              <span className="text-xs text-gray-500 line-through">Add a product</span>
-            ) : hasOrg ? (
-              <button onClick={() => onAddProduct(orgs[0].id)} className="text-xs text-accent hover:text-white transition-colors text-left">
-                Add a product
-              </button>
-            ) : (
-              <span className="text-xs text-gray-600">Add a product</span>
-            )}
-          </div>
-
-          {/* Step 3: Connect agent */}
-          <div className="flex items-start gap-2">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 bg-surface-600 text-gray-500">
-              3
-            </div>
-            <div className="flex-1 min-w-0">
-              {hasProduct ? (
-                <button onClick={() => setShowPrompt(!showPrompt)} className="text-xs text-accent hover:text-white transition-colors text-left">
-                  Connect your first agent {showPrompt ? "▴" : "▾"}
-                </button>
-              ) : (
-                <span className="text-xs text-gray-600">Connect your first agent</span>
-              )}
-            </div>
-          </div>
+        <div className="flex flex-col gap-2">
+          <GetStartedStep n={1} complete={hasOrg} enabled label="Add an organization" onClick={onAddOrg} />
+          <GetStartedStep n={2} complete={hasProduct} enabled={hasOrg} label="Add a product" onClick={() => onAddProduct(orgs[0].id)} />
+          <GetStartedStep n={3} complete={false} enabled={hasProduct}
+            label={<span className="inline-flex items-center gap-1">Connect your first agent <ChevronDown className={cx("h-3 w-3 transition-transform", showPrompt && "rotate-180")} /></span>}
+            onClick={() => setShowPrompt(!showPrompt)} />
         </div>
 
         {/* Expandable agent prompt */}
         {showPrompt && (
-          <div className="mt-3 pt-3 border-t border-accent/20">
-            <p className="text-[11px] text-gray-400 mb-2">
+          <div className="mt-3 border-t border-border pt-3">
+            <p className="mb-2 text-[11.5px] text-text-3">
               Copy this and paste it to your agent. It&apos;ll handle the rest.
             </p>
-            <div className="relative">
-              <pre className="bg-surface-900 border border-surface-600 rounded-lg p-2.5 text-[10px] text-gray-400 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
-                {prompt.slice(0, 300)}...
-              </pre>
-              <button
-                onClick={handleCopy}
-                className={`mt-2 w-full px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  copied
-                    ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                    : "bg-accent hover:bg-accent-hover text-white"
-                }`}
-              >
-                {copied ? "✓ Copied to clipboard!" : "Copy full prompt"}
-              </button>
-            </div>
+            <pre className="max-h-32 overflow-y-auto rounded-md border border-border bg-bg p-2.5 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap text-text-2">
+              {prompt.slice(0, 300)}…
+            </pre>
+            <Button variant={copied ? "secondary" : "primary"} size="sm" onClick={handleCopy} className="mt-2 w-full">
+              {copied ? <><Check className="h-3.5 w-3.5 text-success" /> Copied to clipboard</> : <><Copy className="h-3.5 w-3.5" /> Copy full prompt</>}
+            </Button>
           </div>
         )}
       </div>
@@ -255,7 +293,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }
 export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct, isStarred, setShowAllOrg } = usePreferences();
+  const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [productsByOrg, setProductsByOrg] = useState<Record<number, Product[]>>({});
   const [addingOrgName, setAddingOrgName] = useState("");
@@ -356,14 +394,10 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
     toggleExpandedOrg(orgId);
   }
 
-  function toggleShowAllProducts(orgId: number) {
-    setShowAllOrg(orgId, !showAllProducts[orgId]);
-  }
-
   function handleOrgMenuClick(e: React.MouseEvent, orgId: number) {
     e.stopPropagation();
     if (orgMenuId === orgId) { setOrgMenuId(null); return; }
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setOrgMenuPos({ x: rect.left, y: rect.bottom + 4 });
     setOrgMenuId(orgId);
   }
@@ -395,7 +429,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
   function handleDeleteOrg(orgId: number) {
     setConfirmAction({
-      title: "Delete Organization",
+      title: "Delete organization",
       message: "This will delete the organization and all its products, boards, and cards.",
       action: async () => { await fetch(`/api/orgs/${orgId}`, { method: "DELETE" }); loadOrgs(); setConfirmAction(null); },
     });
@@ -409,7 +443,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
   function handleDeleteProduct(productId: number, orgId: number) {
     setConfirmAction({
-      title: "Delete Product",
+      title: "Delete product",
       message: "This will delete the product and all its boards and cards.",
       action: async () => { await fetch(`/api/products/${productId}`, { method: "DELETE" }); await refreshProducts(orgId); setConfirmAction(null); },
     });
@@ -538,44 +572,34 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
     }
   }
 
-  // Collect all sortable IDs for the unified context
-  const allSortableIds: string[] = [];
-  for (const org of orgs) {
-    allSortableIds.push(`org-${org.id}`);
-    for (const product of (productsByOrg[org.id] || [])) {
-      allSortableIds.push(`product-${product.id}`);
-    }
-  }
-
   if (collapsed && !isMobile) {
     return (
-      <div className="w-12 bg-surface-800 border-r border-surface-600 flex flex-col items-center py-3 sidebar-transition shrink-0">
-        <button onClick={onToggle} className="w-8 h-8 rounded-lg overflow-hidden hover:opacity-80 transition-opacity" title="Expand sidebar">
-          <img src="/icon-192.png" alt="AgentBoard" className="w-full h-full" />
+      <div className="sidebar-transition flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3">
+        <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
+          <Logo size={32} />
         </button>
         <div className="flex-1" />
-        <button onClick={() => router.push("/settings")} className="w-8 h-8 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors mb-1" title="Settings">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-        </button>
-        <button onClick={handleLogout} className="w-8 h-8 rounded-lg hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Logout">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-        </button>
+        <SidebarRailSlot />
+        <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
+          <Settings className="h-4 w-4" />
+        </IconButton>
+        <IconButton onClick={handleLogout} size={32} title="Logout" aria-label="Logout" className="text-text-2">
+          <LogOut className="h-4 w-4" />
+        </IconButton>
       </div>
     );
   }
 
   return (
-    <div className={`${isMobile ? "w-full" : "w-64"} bg-surface-800 ${isMobile ? "" : "border-r border-surface-600"} flex flex-col sidebar-transition shrink-0`}>
+    <div className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border")}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg overflow-hidden"><img src="/icon-192.png" alt="AgentBoard" className="w-full h-full" /></div>
-          <span className="font-semibold text-white text-sm">AgentBoard</span>
-        </div>
+      <div className="flex h-14 shrink-0 items-center gap-2.5 pr-3.5 pl-4">
+        <Logo size={28} />
+        <Wordmark className="flex-1 text-sm" />
         {!isMobile && (
-          <button onClick={onToggle} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors" title="Collapse sidebar">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-          </button>
+          <IconButton onClick={onToggle} title="Collapse sidebar" aria-label="Collapse sidebar">
+            <PanelLeftClose className="h-4 w-4" />
+          </IconButton>
         )}
       </div>
 
@@ -597,47 +621,21 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
       )}
 
       {/* Quick views */}
-      <div className="px-3 py-2 border-b border-surface-600 space-y-0.5">
+      <nav className="flex flex-col gap-px px-3 pt-1 pb-2">
         {pastDueCount > 0 && (
-          <Link
-            href="/past-due"
-            className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
-              pathname === "/past-due" ? "bg-red-500/20 text-red-400" : "text-red-400 hover:bg-red-500/10"
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-base leading-none">🔴</span>
-              Past Due
-            </span>
-            <span className="text-xs bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full font-medium">
-              {pastDueCount}
-            </span>
-          </Link>
+          <NavLink href="/past-due" tone="danger" active={pathname === "/past-due"} icon={<CircleAlert />} label="Past Due"
+            trailing={<span className="font-mono text-[11px]">{pastDueCount}</span>} />
         )}
-        <Link
-          href="/today"
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
-            pathname === "/today" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
-          }`}
-        >
-          <span className="text-base leading-none">{"\u{1F4C5}"}</span>
-          Today
-        </Link>
-        <Link
-          href="/assigned"
-          className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md transition-colors ${
-            pathname === "/assigned" ? "bg-accent/20 text-white" : "text-gray-300 hover:bg-surface-700 hover:text-white"
-          }`}
-        >
-          <span className="text-base leading-none">{"\u{1F464}"}</span>
-          Assigned to me
-        </Link>
-      </div>
+        <NavLink href="/today" active={pathname === "/today"} icon={<CalendarDays />} label="Today" />
+        <NavLink href="/assigned" active={pathname === "/assigned"} icon={<CircleUserRound />} label="Assigned to me" />
+      </nav>
+      <div className="h-px shrink-0 bg-border" />
 
       {/* Org/Product tree */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto px-3 pt-3 pb-1.5">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <SortableContext items={orgs.map((o) => `org-${o.id}`)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-2.5">
             {orgs.map((org) => {
               const allProducts = productsByOrg[org.id] || [];
               const isShowAll = showAllProducts[org.id] || false;
@@ -645,7 +643,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
               // Default: show only starred. Show all if toggled or if no starred products exist
               const visibleProducts = (isShowAll || starredInOrg.length === 0) ? allProducts : starredInOrg;
               return (
-              <div key={org.id} className="mb-1">
+              <div key={org.id} className="flex flex-col gap-px">
                 <SortableOrgHeader org={org} expanded={expandedOrgs.has(org.id)} onToggle={() => toggleOrg(org.id)}
                   onContextMenu={(e) => handleContextMenu(e, "org", org.id)}
                   isEditing={editingOrgId === org.id} editingName={editingOrgName} onEditChange={setEditingOrgName}
@@ -654,8 +652,6 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
 
                 {expandedOrgs.has(org.id) && (
                   <DroppableOrgZone orgId={org.id} isOver={dragOverOrgId === org.id && activeProductDrag !== null}>
-                    {/* Starred-only indicator */}
-
                     <SortableContext items={visibleProducts.map((p) => `product-${p.id}`)} strategy={verticalListSortingStrategy}>
                       {visibleProducts.map((product) => (
                         <SortableProductItem key={product.id} product={product} isSelected={pathname === `/${org.slug}/${product.slug}`}
@@ -665,36 +661,33 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
                           onEditSubmit={() => handleRenameProduct(product.id, org.id)} onEditCancel={() => { setEditingProductId(null); setEditingProductName(""); }}
                           emojiPickerOpen={emojiPickerProductId === product.id}
                           onEmojiToggle={() => setEmojiPickerProductId(emojiPickerProductId === product.id ? null : product.id)}
-                          onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)}
-                          isStarred={starredProducts.has(product.id)}
-                          onToggleStar={() => toggleStarredProduct(product.id)} />
+                          onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)} />
                       ))}
                     </SortableContext>
 
                     {/* Empty drop zone when no products */}
                     {visibleProducts.length === 0 && (
-                      <div className="h-6 flex items-center justify-center text-xs text-gray-600 italic">Drop here</div>
+                      <div className="flex h-7 items-center px-2 text-[12px] text-text-4">Drop here</div>
                     )}
 
                     {addingProductOrg === org.id && (
-                      <div className="px-4 py-1 mx-1">
-                        <input type="text" value={addingProductName} onChange={(e) => setAddingProductName(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleAddProduct(org.id); if (e.key === "Escape") { setAddingProductOrg(null); setAddingProductName(""); } }}
-                          onBlur={() => { if (!addingProductName.trim()) setAddingProductOrg(null); }}
-                          className="w-full px-2 py-1 text-sm bg-surface-700 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
-                          placeholder="Product name" autoFocus />
-                      </div>
+                      <input type="text" value={addingProductName} onChange={(e) => setAddingProductName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleAddProduct(org.id); if (e.key === "Escape") { setAddingProductOrg(null); setAddingProductName(""); } }}
+                        onBlur={() => { if (!addingProductName.trim()) setAddingProductOrg(null); }}
+                        className={INLINE_INPUT}
+                        placeholder="Product name" autoFocus />
                     )}
                   </DroppableOrgZone>
                 )}
               </div>
             ); })}
+            </div>
           </SortableContext>
 
           <DragOverlay>
             {activeProductDrag && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-700 border border-surface-500 rounded-lg shadow-xl text-sm text-white opacity-90">
-                <span>{activeProductDrag.emoji}</span>
+              <div className="flex h-[29px] items-center gap-2.5 rounded-md border border-border-strong bg-surface-3 px-2 text-[13px] text-text-1 shadow-[0_12px_32px_rgba(0,0,0,0.6)]">
+                <span className="text-[14px]">{activeProductDrag.emoji}</span>
                 <span>{activeProductDrag.name}</span>
               </div>
             )}
@@ -702,123 +695,107 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
         </DndContext>
 
         {/* Add org */}
-        {showAddOrg ? (
-          <div className="px-3 py-1">
+        <div className="mt-2.5">
+          {showAddOrg ? (
             <input type="text" value={addingOrgName} onChange={(e) => setAddingOrgName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleAddOrg(); if (e.key === "Escape") { setShowAddOrg(false); setAddingOrgName(""); } }}
               onBlur={() => { if (!addingOrgName.trim()) setShowAddOrg(false); }}
-              className="w-full px-2 py-1 text-sm bg-surface-700 border border-surface-500 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
+              className={INLINE_INPUT}
               placeholder="Organization name" autoFocus />
-          </div>
-        ) : (
-          <button onClick={() => setShowAddOrg(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full">
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Add organization
-          </button>
-        )}
+          ) : (
+            <button onClick={() => setShowAddOrg(true)} className="flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[12.5px] text-text-3 transition-colors hover:bg-surface-2 hover:text-text-2">
+              <Plus className="h-[13px] w-[13px]" />
+              Add organization
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Settings & Logout */}
-      <div className="border-t border-surface-600 px-3 py-2">
-        <button onClick={() => router.push("/settings")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-surface-700 rounded-md transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-          Settings
-        </button>
-        <button onClick={handleLogout} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-surface-700 rounded-md transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-          Logout
-        </button>
+      {/* Footer: edition slot, settings & logout */}
+      <div className="flex shrink-0 flex-col gap-px border-t border-border px-3 py-2">
+        <SidebarFooterSlot />
+        <NavButton onClick={() => router.push("/settings")} icon={<Settings />} label="Settings" />
+        <NavButton onClick={handleLogout} icon={<LogOut />} label="Logout" />
       </div>
 
       {/* Org ellipsis dropdown menu */}
       {orgMenuId !== null && (
-        <div className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[160px]" style={{ left: Math.min(orgMenuPos.x, 200), top: orgMenuPos.y }}>
-          <button onClick={(e) => { e.stopPropagation(); setBrowsingOrgId(orgMenuId); setOrgMenuId(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+        <MenuPanel className="fixed w-52" style={{ left: Math.min(orgMenuPos.x, 200), top: orgMenuPos.y }}>
+          <MenuItem icon={<List />} onClick={(e) => { e.stopPropagation(); setBrowsingOrgId(orgMenuId); setOrgMenuId(null); }}>
             Browse all products
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); const id = orgMenuId; setOrgMenuId(null); setAddingProductOrg(id); setAddingProductName(""); if (!expandedOrgs.has(id)) { const next = [...prefs.expandedOrgs, id]; setExpandedOrgs(next); } }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          </MenuItem>
+          <MenuItem icon={<Plus />} onClick={(e) => { e.stopPropagation(); const id = orgMenuId; setOrgMenuId(null); setAddingProductOrg(id); setAddingProductName(""); if (!expandedOrgs.has(id)) { const next = [...prefs.expandedOrgs, id]; setExpandedOrgs(next); } }}>
             Add product
-          </button>
-
-          <div className="border-t border-surface-600 my-1" />
-          <button onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); } setOrgMenuId(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+          </MenuItem>
+          <MenuDivider />
+          <MenuItem icon={<Pencil />} onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); } setOrgMenuId(null); }}>
             Rename
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); handleDeleteOrg(orgMenuId); setOrgMenuId(null); }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-400 hover:bg-red-400/10 hover:text-red-300 transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          </MenuItem>
+          <MenuItem danger icon={<Trash2 />} onClick={(e) => { e.stopPropagation(); handleDeleteOrg(orgMenuId); setOrgMenuId(null); }}>
             Delete
-          </button>
-        </div>
+          </MenuItem>
+        </MenuPanel>
       )}
 
       {/* Browse all products overlay */}
       {browsingOrgId !== null && (() => {
         const org = orgs.find((o) => o.id === browsingOrgId);
         const allProducts = productsByOrg[browsingOrgId] || [];
-        return createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBrowsingOrgId(null)}>
-            <div className="bg-surface-800 border border-surface-600 rounded-xl shadow-2xl w-80 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-4 py-3 border-b border-surface-600">
-                <h3 className="text-sm font-semibold text-white">{org?.name} — All Products</h3>
-                <button onClick={() => setBrowsingOrgId(null)} className="w-6 h-6 rounded hover:bg-surface-600 flex items-center justify-center text-gray-400 transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {allProducts.length === 0 && (
-                  <div className="text-center py-6 text-sm text-gray-500">No products yet</div>
-                )}
-                {allProducts.map((product) => (
-                  <div key={product.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-700 transition-colors">
-                    <Link href={`/${org!.slug}/${product.slug}`} onClick={() => setBrowsingOrgId(null)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-                      <span className="text-base shrink-0">{product.emoji}</span>
-                      <span className="text-sm text-gray-200 truncate hover:text-white">{product.name}</span>
-                    </Link>
-                    <button onClick={() => toggleStarredProduct(product.id)}
-                      className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${starredProducts.has(product.id) ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}>
-                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill={starredProducts.has(product.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={starredProducts.has(product.id) ? 0 : 1.5}>
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-surface-600 px-4 py-2">
-                <p className="text-[11px] text-gray-500">Star products to pin them in the sidebar</p>
-              </div>
+        return (
+          <Dialog onClose={() => setBrowsingOrgId(null)} z={50} className="flex max-h-[70vh] w-[340px] flex-col rounded-xl">
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2.5 pl-4">
+              <h3 className="text-[13px] font-semibold text-text-1">{org?.name}</h3>
+              <span className="flex-1 text-[13px] text-text-3">All products</span>
+              <IconButton onClick={() => setBrowsingOrgId(null)} aria-label="Close">
+                <X className="h-4 w-4" />
+              </IconButton>
             </div>
-          </div>,
-          document.body
+            <div className="flex flex-1 flex-col gap-px overflow-y-auto p-1.5">
+              {allProducts.length === 0 && (
+                <div className="py-6 text-center text-[13px] text-text-3">No products yet</div>
+              )}
+              {allProducts.map((product) => {
+                const starred = starredProducts.has(product.id);
+                return (
+                  <div key={product.id} className="flex h-9 items-center gap-2.5 rounded-[7px] pr-2 pl-3 transition-colors hover:bg-surface-3">
+                    <Link href={`/${org!.slug}/${product.slug}`} onClick={() => setBrowsingOrgId(null)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                      <span className="shrink-0 text-[15px]">{product.emoji}</span>
+                      <span className="truncate text-[13px] text-text-1">{product.name}</span>
+                    </Link>
+                    <IconButton onClick={() => toggleStarredProduct(product.id)} aria-label={starred ? "Unstar" : "Star"} aria-pressed={starred}
+                      className={starred ? "text-text-1" : "text-text-3"}>
+                      <Star className="h-[15px] w-[15px]" fill={starred ? "currentColor" : "none"} />
+                    </IconButton>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-2.5">
+              <Pin className="h-3 w-3 text-text-3" />
+              <p className="text-[11.5px] text-text-3">Star products to pin them in the sidebar</p>
+            </div>
+          </Dialog>
         );
       })()}
 
       {/* Context menu */}
       {contextMenu && (
-        <div className="fixed z-50 bg-surface-700 border border-surface-500 rounded-lg shadow-xl py-1 min-w-[140px]" style={{ left: contextMenu.x, top: contextMenu.y }}>
-          <button onClick={() => {
+        <MenuPanel className="fixed w-44" style={{ left: contextMenu.x, top: contextMenu.y }}>
+          <MenuItem icon={<Pencil />} onClick={() => {
             if (contextMenu.type === "org") { const org = orgs.find((o) => o.id === contextMenu.id); setEditingOrgId(contextMenu.id); setEditingOrgName(org?.name || ""); }
             else { const products = Object.values(productsByOrg).flat(); const product = products.find((p) => p.id === contextMenu.id); setEditingProductId(contextMenu.id); setEditingProductName(product?.name || ""); }
             setContextMenu(null);
-          }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-300 hover:bg-surface-600 hover:text-white transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+          }}>
             Rename
-          </button>
-          <button onClick={() => {
+          </MenuItem>
+          <MenuItem danger icon={<Trash2 />} onClick={() => {
             if (contextMenu.type === "org") handleDeleteOrg(contextMenu.id);
             else handleDeleteProduct(contextMenu.id, contextMenu.orgId!);
             setContextMenu(null);
-          }} className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-400 hover:bg-red-400/10 hover:text-red-300 transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          }}>
             Delete
-          </button>
-        </div>
+          </MenuItem>
+        </MenuPanel>
       )}
 
       {/* Confirm modal */}

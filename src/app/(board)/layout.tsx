@@ -16,7 +16,7 @@ function BoardLayoutInner({ children }: { children: React.ReactNode }) {
   const showContent = isMobile ? !isHome : true;
 
   return (
-    <div className="h-screen flex overflow-hidden bg-surface-900">
+    <div className="h-screen flex overflow-hidden bg-bg">
       <ProfileSetup />
       {showSidebar && (
         <Sidebar

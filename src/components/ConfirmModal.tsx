@@ -1,30 +1,31 @@
 "use client";
 
+import { Trash2 } from "lucide-react";
+import { Button, Dialog } from "./ui";
+
 interface ConfirmModalProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  icon?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmModal({ title, message, confirmLabel = "Delete", onConfirm, onCancel }: ConfirmModalProps) {
+export default function ConfirmModal({ title, message, confirmLabel = "Delete", icon, onConfirm, onCancel }: ConfirmModalProps) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div className="bg-surface-800 border border-surface-600 rounded-xl shadow-2xl w-80 p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-white mb-2">{title}</h3>
-        <p className="text-sm text-gray-400 mb-4">{message}</p>
-        <div className="flex justify-end gap-2">
-          <button onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md hover:bg-surface-700 transition-colors">
-            Cancel
-          </button>
-          <button onClick={onConfirm}
-            className="px-3 py-1.5 text-sm text-white bg-red-500/80 hover:bg-red-500 rounded-md transition-colors">
-            {confirmLabel}
-          </button>
+    <Dialog onClose={onCancel} className="w-[400px] max-w-full">
+      <div className="flex flex-col gap-2.5 px-6 pt-6 pb-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-danger/12 text-danger [&>svg]:h-[17px] [&>svg]:w-[17px]">
+          {icon ?? <Trash2 />}
         </div>
+        <h3 className="text-base font-semibold text-text-1">{title}</h3>
+        <p className="text-[13px] leading-[1.55] text-text-2">{message}</p>
       </div>
-    </div>
+      <div className="flex justify-end gap-2 border-t border-border bg-bg-sidebar px-4 py-3">
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button variant="danger" onClick={onConfirm} autoFocus>{confirmLabel}</Button>
+      </div>
+    </Dialog>
   );
 }
