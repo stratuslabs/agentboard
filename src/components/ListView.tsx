@@ -37,7 +37,6 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
   useEffect(() => {
     const { cardId, full } = readCardParam();
     if (!cardId) return;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- applying the URL on arrival */
     setOpenCardId(cardId);
     setCardView(full ? "page" : "panel");
     fetch(`/api/cards/${cardId}`)

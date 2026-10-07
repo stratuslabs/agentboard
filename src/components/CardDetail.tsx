@@ -280,7 +280,6 @@ export default function CardDetail({
   // Fields not being edited follow the card as the board refreshes it.
   useEffect(() => {
     const d = dirtyRef.current;
-    /* eslint-disable react-hooks/set-state-in-effect -- mirroring a prop that live updates change */
     if (!d.has("title")) setTitle(card.title);
     if (!d.has("description")) setDescription(card.description || "");
     if (!d.has("labels")) setLabels(card.labels || "");
@@ -290,7 +289,6 @@ export default function CardDetail({
     if (!d.has("priority")) setPriority(card.priority);
     if (!d.has("due_date")) setDueDate(card.due_date ? card.due_date.slice(0, 10) : "");
     setColumnId(card.column_id);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [card]);
 
   function editText(field: TextField, value: string, set: (v: string) => void) {
