@@ -1,4 +1,6 @@
 import { sql } from "@/lib/sql";
+import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
+import { slugify } from "@/lib/slug";
 
 let initialized = false;
 
@@ -95,6 +97,30 @@ export async function ensureTables() {
   // so this needs no guard.
   await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  // Migration: an organization slugged `c` or `api` is shadowed by the app's
+  // own routes (`/c/<id>`, `/api/...`), so none of its product pages can be
+  // reached. Move it to `<slug>-org` (or `<slug>-org-2`, ... if that is taken).
+  // Its old URLs never worked, so nothing that worked breaks.
+  const { rows: shadowed } = await sql`
+    SELECT id, slug FROM organizations WHERE slug = ANY(${[...SHADOWED_ORG_SLUGS]})
+  `;
+  for (const org of shadowed) {
+    for (let n = 1; ; n++) {
+      const candidate = n === 1 ? `${org.slug}-org` : `${org.slug}-org-${n}`;
+      // Only move it if it still has the shadowed slug: another instance
+      // starting up at the same time may already have moved it.
+      const { rowCount } = await sql`
+        UPDATE organizations SET slug = ${candidate}
+        WHERE id = ${org.id} AND slug = ${org.slug}
+          AND NOT EXISTS (SELECT 1 FROM organizations WHERE slug = ${candidate})
+      `;
+      if (rowCount) break;
+      const { rows: still } = await sql`
+        SELECT 1 FROM organizations WHERE id = ${org.id} AND slug = ${org.slug}
+      `;
+      if (still.length === 0) break;
+    }
+  }
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,
@@ -136,12 +162,7 @@ export async function ensureTables() {
   `;
 }
 
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+export { slugify };
 
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
 const FALLBACK_COLUMNS = [

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
-import { initDb, slugify } from "@/lib/db";
+import { initDb } from "@/lib/db";
+import { isReservedOrgSlug, orgSlugFromName } from "@/lib/org-slug";
 
 export async function GET() {
   await initDb();
@@ -15,7 +16,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  const slug = customSlug || slugify(name);
+  if (customSlug && isReservedOrgSlug(customSlug)) {
+    return NextResponse.json(
+      { error: `"${customSlug}" is reserved for the app's own pages; pick another slug` },
+      { status: 400 }
+    );
+  }
+  const slug = customSlug || orgSlugFromName(name);
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM organizations`;
 
   try {
