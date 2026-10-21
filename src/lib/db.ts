@@ -107,12 +107,18 @@ export async function ensureTables() {
   for (const org of shadowed) {
     for (let n = 1; ; n++) {
       const candidate = n === 1 ? `${org.slug}-org` : `${org.slug}-org-${n}`;
+      // Only move it if it still has the shadowed slug: another instance
+      // starting up at the same time may already have moved it.
       const { rowCount } = await sql`
         UPDATE organizations SET slug = ${candidate}
-        WHERE id = ${org.id}
+        WHERE id = ${org.id} AND slug = ${org.slug}
           AND NOT EXISTS (SELECT 1 FROM organizations WHERE slug = ${candidate})
       `;
       if (rowCount) break;
+      const { rows: still } = await sql`
+        SELECT 1 FROM organizations WHERE id = ${org.id} AND slug = ${org.slug}
+      `;
+      if (still.length === 0) break;
     }
   }
   await sql`
