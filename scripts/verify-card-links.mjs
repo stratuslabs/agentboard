@@ -77,12 +77,17 @@ async function main() {
     process.exit(1);
   }
   const orgId = org.body.id;
+  const extraOrgs = [];
 
   try {
     const product = await call("POST", "/api/products", { org_id: orgId, name: "Links Product" });
     const full = await call("GET", `/api/board?product_id=${product.body.id}`);
     const firstBoard = full.body.active_board_id;
-    const otherBoard = full.body.boards.find((b) => b.id !== firstBoard).id;
+    // Make the second board here rather than relying on the configured
+    // default boards, which may be just one.
+    const extra = await call("POST", "/api/boards", { product_id: product.body.id, name: "Links Other Board" });
+    check("second board created", extra.status === 201 && extra.body?.id !== firstBoard, `got ${extra.status}`);
+    const otherBoard = extra.body.id;
     const otherCols = await call("GET", `/api/columns?board_id=${otherBoard}`);
 
     const onFirst = await call("POST", "/api/cards", { column_id: full.body.columns[0].id, title: "On the first board" });
@@ -112,7 +117,28 @@ async function main() {
     }
     const found = await call("GET", `/api/cards/${onFirst.body.id}`);
     check("GET /api/cards/<id> now carries org_slug", found.body?.org_slug === org.body.slug, `got ${found.body?.org_slug}`);
+
+    section("Organization slugs can't shadow app routes like /c/<id>");
+    for (const name of ["C", "Today", "Settings"]) {
+      const reserved = name.toLowerCase();
+      const made = await call("POST", "/api/orgs", { name: `${name}` });
+      if (made.status === 201) extraOrgs.push(made.body.id);
+      check(`org named "${name}" is created`, made.status === 201, `got ${made.status}`);
+      check(`org named "${name}" does not get slug "${reserved}"`, made.body?.slug && made.body.slug !== reserved, `got ${made.body?.slug}`);
+      if (name === "C" && made.status === 201) {
+        const p = await call("POST", "/api/products", { org_id: made.body.id, name: "Shadow Check" });
+        const res = await page(`/${made.body.slug}/${p.body?.slug}`);
+        check(`org "C"'s product page loads at /${made.body.slug}/${p.body?.slug}`, res.status === 200, `got ${res.status}`);
+      }
+    }
+    const custom = await call("POST", "/api/orgs", { name: `Custom C ${Date.now()}`, slug: "c" });
+    if (custom.status === 201) extraOrgs.push(custom.body.id);
+    check("explicit slug \"c\" is rejected with 400", custom.status === 400, `got ${custom.status}`);
+    const renamedOrg = await call("PATCH", `/api/orgs/${orgId}`, { name: "Assigned" });
+    check("rename to \"Assigned\" accepted", renamedOrg.status === 200, `got ${renamedOrg.status}`);
+    check("rename to \"Assigned\" does not take slug \"assigned\"", renamedOrg.body?.slug && renamedOrg.body.slug !== "assigned", `got ${renamedOrg.body?.slug}`);
   } finally {
+    for (const id of extraOrgs) await sql`DELETE FROM organizations WHERE id = ${id}`;
     // The organization cascades to products, boards, columns and cards.
     await sql`DELETE FROM organizations WHERE id = ${orgId}`;
   }

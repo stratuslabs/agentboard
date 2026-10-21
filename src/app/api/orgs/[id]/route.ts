@@ -1,4 +1,5 @@
-import { initDb, slugify } from "@/lib/db";
+import { initDb } from "@/lib/db";
+import { orgSlugFromName } from "@/lib/org-slug";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdsUnderOrg, notifyBoards } from "@/lib/realtime/notify";
@@ -13,7 +14,7 @@ export async function PATCH(
   if (!name) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
-  const slug = slugify(name);
+  const slug = orgSlugFromName(name);
   const { rows } = await sql`
     UPDATE organizations SET name = ${name}, slug = ${slug} WHERE id = ${parseInt(id, 10)} RETURNING *
   `;
