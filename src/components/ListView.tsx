@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Calendar } from "lucide-react";
 import CardDetail from "./CardDetail";
 import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "@/lib/cards";
 
 export interface ViewCard extends Card {
@@ -62,6 +63,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
   const openCard = openCardId === null
     ? null
     : ordered.find((c) => c.id === openCardId) ?? (heldCard?.id === openCardId ? heldCard : null);
+  useDocumentTitle(openCard ? pageTitle(openCard.title, openCard.board_name, openCard.product_name) : pageTitle(title));
 
   function open(card: ViewCard, view: "panel" | "page" = cardView) {
     const cardId = card.id;
