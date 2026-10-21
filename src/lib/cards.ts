@@ -139,9 +139,11 @@ export function writeCardParam(cardId: number | null, full = false): void {
   window.history.replaceState(window.history.state, "", url.toString());
 }
 
+/**
+ * The card's permanent URL, `/c/<id>`. It resolves to wherever the card lives
+ * when it's opened, so it keeps working after the card moves board or the
+ * product is renamed, and doesn't depend on the page it was copied from.
+ */
 export function cardLink(cardId: number): string {
-  const url = new URL(window.location.href);
-  url.searchParams.set("card", String(cardId));
-  url.searchParams.delete("view");
-  return url.toString();
+  return new URL(`/c/${cardId}`, window.location.origin).toString();
 }
