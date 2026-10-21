@@ -28,6 +28,7 @@ import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, L
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
+import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -701,6 +702,7 @@ export default function KanbanBoard({
 
   const openCardObj = openCardId !== null ? cards.find((c) => c.id === openCardId) ?? null : null;
   const activeBoard = boards.find((b) => b.id === activeBoardId);
+  useDocumentTitle(pageTitle(openCardObj?.title, activeBoard?.name, productName));
 
   function cardDetailProps(card: Card) {
     // Prev/next walks the card's column as it is shown; if a filter hides the
