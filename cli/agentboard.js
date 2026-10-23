@@ -16,6 +16,12 @@ const VERSION = require("./package.json").version;
 
 // ---- Helpers --------------------------------------------------------------
 
+// "slug (Name), ..." so an error shows what the board actually has. A column's
+// slug follows its name, so a renamed column no longer answers to its old slug.
+function describeColumns(cols) {
+  return cols.map((c) => (c.name && c.name !== c.slug ? `${c.slug} (${c.name})` : c.slug)).join(", ");
+}
+
 function die(msg, code = 1) {
   process.stderr.write(`Error: ${msg}\n`);
   process.exit(code);
@@ -325,7 +331,7 @@ function makeResolvers(req) {
   async function resolveColumnId(boardId, slugOrName) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     const c = cols.find((x) => x.slug === slugOrName || x.name === slugOrName);
-    if (!c) die(`Column not found: ${slugOrName}`);
+    if (!c) die(`Column not found: ${slugOrName}. Available: ${describeColumns(cols)}`);
     return c.id;
   }
 
@@ -538,7 +544,9 @@ async function main() {
       if (!cols || cols.length === 0) die("Could not determine board for card");
 
       const targetCol = cols.find((c) => c.slug === colSlug);
-      if (!targetCol) die(`Column '${colSlug}' not found on this board`);
+      if (!targetCol) {
+        die(`Column '${colSlug}' not found on this board. Available: ${describeColumns(cols)}`);
+      }
 
       const data = await req("PATCH", `/api/cards/${cardId}/move`, {
         column_id: targetCol.id,
