@@ -88,6 +88,12 @@ const COMMAND_FLAGS = {
   settings: ["key", "value"],
   preferences: ["key", "value"],
   "attachment remove": [],
+  "subtask list": [],
+  "subtask add": [],
+  "subtask done": [],
+  "subtask undo": [],
+  "subtask rename": [],
+  "subtask remove": [],
 };
 
 const GLOBAL_FLAGS = ["json", "quiet", "help", "version"];
@@ -384,6 +390,11 @@ Management Commands:
   settings [--key <k> --value <v>]
   preferences [--key <k> --value <v>]
   attachment remove <id>
+  subtask list <card-id>               Sub-tasks on a card, with progress
+  subtask add <card-id> <title>        Add a sub-task to the end of the list
+  subtask done|undo <subtask-id>       Check or uncheck a sub-task
+  subtask rename <subtask-id> <title>
+  subtask remove <subtask-id>
 
 Output:
   --json     JSON output
@@ -1096,6 +1107,48 @@ async function main() {
         output(await req("PATCH", "/api/preferences", { key: flags.key, value }), flags);
       } else {
         output(await req("GET", "/api/preferences"), flags);
+      }
+    }
+
+    // ---- subtask ----
+    else if (cmd === "subtask") {
+      const id = positional[2];
+      const rest = positional.slice(3).join(" ").trim();
+      const usage = {
+        list: "Usage: agentboard subtask list <card-id>",
+        add: "Usage: agentboard subtask add <card-id> <title>",
+        done: "Usage: agentboard subtask done <subtask-id>",
+        undo: "Usage: agentboard subtask undo <subtask-id>",
+        rename: "Usage: agentboard subtask rename <subtask-id> <title>",
+        remove: "Usage: agentboard subtask remove <subtask-id>",
+      }[sub];
+      if (!usage) die(`Unknown subtask command: ${sub}. Use: list, add, done, undo, rename, remove`);
+      if (!id) die(usage);
+      if (!/^[1-9][0-9]*$/.test(id)) die(`${sub === "list" || sub === "add" ? "card" : "subtask"} id must be a number. ${usage}`);
+      if ((sub === "add" || sub === "rename") && !rest) die(usage);
+
+      if (sub === "list") {
+        const items = await req("GET", `/api/cards/${id}/subtasks`);
+        if (flags.json || flags.quiet) {
+          output(items, flags);
+        } else if (items.length === 0) {
+          process.stdout.write("(no sub-tasks)\n");
+        } else {
+          const w = Math.max(...items.map((t) => String(t.id).length));
+          for (const t of items) {
+            process.stdout.write(`${t.done ? "[x]" : "[ ]"} ${String(t.id).padEnd(w)}  ${t.title}\n`);
+          }
+          const done = items.filter((t) => t.done).length;
+          process.stdout.write(`${done}/${items.length} done\n`);
+        }
+      } else if (sub === "add") {
+        output(await req("POST", `/api/cards/${id}/subtasks`, { title: rest }), flags);
+      } else if (sub === "done" || sub === "undo") {
+        output(await req("PATCH", `/api/subtasks/${id}`, { done: sub === "done" }), flags);
+      } else if (sub === "rename") {
+        output(await req("PATCH", `/api/subtasks/${id}`, { title: rest }), flags);
+      } else {
+        output(await req("DELETE", `/api/subtasks/${id}`), flags);
       }
     }
 

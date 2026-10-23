@@ -131,6 +131,14 @@ agentboard task reorder --ids 1,2,3
 # Attachments
 agentboard attachment remove <id>
 
+# Sub-tasks (a checklist on a card)
+agentboard subtask list <card-id>                # [x]/[ ] per item, then "1/3 done"
+agentboard subtask add <card-id> <title>         # words after the id are joined
+agentboard subtask done <subtask-id>
+agentboard subtask undo <subtask-id>
+agentboard subtask rename <subtask-id> <title>
+agentboard subtask remove <subtask-id>
+
 # Settings & Preferences
 agentboard settings                       # view all
 agentboard settings --key theme --value dark

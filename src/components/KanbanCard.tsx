@@ -1,8 +1,9 @@
 "use client";
 
-import { Bot, Calendar, CircleDot, GitPullRequest } from "lucide-react";
+import { Bot, Calendar, CircleDot, GitPullRequest, ListChecks } from "lucide-react";
 import { Avatar, Chip, PriorityDot, cx } from "./ui";
 import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, githubRef, parseLabels } from "@/lib/cards";
+import { subtaskProgress } from "@/lib/subtasks";
 
 interface KanbanCardProps {
   card: Card;
@@ -19,6 +20,8 @@ export default function KanbanCard({ card, onClick, selected }: KanbanCardProps)
   const issueRef = githubRef(card.github_issue_url);
   // A link whose URL carries no number still deserves a mark on the card.
   const hasUnnumberedLink = (card.github_pr_url && !prRef) || (card.github_issue_url && !issueRef);
+  const progress = subtaskProgress(card.subtask_total, card.subtask_done);
+  const allDone = progress !== null && card.subtask_done === card.subtask_total;
 
   return (
     <div
@@ -57,6 +60,14 @@ export default function KanbanCard({ card, onClick, selected }: KanbanCardProps)
           </span>
         )}
         {hasUnnumberedLink && <GitPullRequest aria-label="GitHub link" className="h-[11px] w-[11px] text-text-3" />}
+        {progress && (
+          <span
+            className={cx("flex items-center gap-[3px] font-mono text-[11px]", allDone ? "text-success" : "text-text-3")}
+            title={`${card.subtask_done} of ${card.subtask_total} sub-tasks done`}
+          >
+            <ListChecks className="h-[11px] w-[11px]" />{progress}
+          </span>
+        )}
         {card.due_date && dueStatus && (
           <span className={cx("flex items-center gap-1 font-mono text-[11px]", DUE_TEXT[dueStatus])} title={`Due: ${card.due_date.slice(0, 10)}`}>
             <Calendar className="h-[11px] w-[11px]" />

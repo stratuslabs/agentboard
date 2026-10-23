@@ -21,6 +21,9 @@ export interface Card {
   position: number;
   created_at: string;
   updated_at: string;
+  /** Sub-task counts, from the board and card endpoints. Absent on older servers. */
+  subtask_total?: number;
+  subtask_done?: number;
 }
 
 export interface Member {

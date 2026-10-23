@@ -92,6 +92,20 @@ async function setup() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  // Sub-tasks: a checklist on a card. Every write also bumps the card's
+  // updated_at, so board deltas and the realtime stream pick it up.
+  await sql`
+    CREATE TABLE IF NOT EXISTS subtasks (
+      id SERIAL PRIMARY KEY,
+      card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      done BOOLEAN NOT NULL DEFAULT FALSE,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
   await sql`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
