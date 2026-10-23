@@ -235,6 +235,18 @@ const STATUS_ALIASES = {
   blocked: "blocked",
 };
 
+// A column the board really has wins over the legacy alias table: once a
+// column is named "Doing" its slug is `doing`, and `status <id> doing` must
+// reach it rather than being rewritten to `in-progress`.
+function findColumn(cols, input) {
+  return (
+    cols.find((c) => c.slug === input) ||
+    cols.find((c) => c.name === input) ||
+    (STATUS_ALIASES[input] && cols.find((c) => c.slug === STATUS_ALIASES[input])) ||
+    null
+  );
+}
+
 // ===========================================================================
 // HTTP request helper
 // ===========================================================================
@@ -330,7 +342,7 @@ function makeResolvers(req) {
 
   async function resolveColumnId(boardId, slugOrName) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
-    const c = cols.find((x) => x.slug === slugOrName || x.name === slugOrName);
+    const c = findColumn(cols, slugOrName);
     if (!c) die(`Column not found: ${slugOrName}. Available: ${describeColumns(cols)}`);
     return c.id;
   }
@@ -373,7 +385,9 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   new <title>                          Create a task
     --priority <p>  --assignee <name>  --label <l>  --description <text>
     --column <col>  --due <date>
-  status <id> <status>                 Move card (backlog|todo|doing|done|blocked|in-review)
+  status <id> <column>                 Move card to a column slug or name
+                                       (doing/wip -> in-progress, review -> in-review
+                                        when the board has no column by that slug)
   show <id>                            Show card details
   rename <id> <title>                  Rename a card
   notes <id>                           View description
@@ -474,8 +488,7 @@ async function main() {
       const { boardId } = await resolve.resolveProductAndBoard(scope.product, scope.board);
       const params = new URLSearchParams({ board_id: boardId });
       if (flags.column) {
-        const colSlug = STATUS_ALIASES[flags.column] || flags.column;
-        const columnId = await resolve.resolveColumnId(boardId, colSlug);
+        const columnId = await resolve.resolveColumnId(boardId, flags.column);
         params.set("column_id", columnId);
       }
       if (flags.priority) params.set("priority", flags.priority);
@@ -506,8 +519,7 @@ async function main() {
 
       let columnId;
       if (flags.column) {
-        const colSlug = STATUS_ALIASES[flags.column] || flags.column;
-        columnId = await resolve.resolveColumnId(boardId, colSlug);
+        columnId = await resolve.resolveColumnId(boardId, flags.column);
       } else {
         columnId = await resolve.findFirstColumnId(boardId);
       }
@@ -532,20 +544,13 @@ async function main() {
       const statusName = positional[2];
       if (!cardId || !statusName) die("Usage: agentboard status <id> <status>");
 
-      const colSlug = STATUS_ALIASES[statusName];
-      if (!colSlug) {
-        die(
-          `Unknown status: ${statusName}. Use: backlog, todo, doing, in-progress, in-review, done, blocked`
-        );
-      }
-
       // Get columns for the card's board
       const cols = await req("GET", `/api/columns/by-card/${cardId}`);
       if (!cols || cols.length === 0) die("Could not determine board for card");
 
-      const targetCol = cols.find((c) => c.slug === colSlug);
+      const targetCol = findColumn(cols, statusName);
       if (!targetCol) {
-        die(`Column '${colSlug}' not found on this board. Available: ${describeColumns(cols)}`);
+        die(`Column '${statusName}' not found on this board. Available: ${describeColumns(cols)}`);
       }
 
       const data = await req("PATCH", `/api/cards/${cardId}/move`, {
@@ -939,8 +944,7 @@ async function main() {
 
         let columnId;
         if (flags.column) {
-          const colSlug = STATUS_ALIASES[flags.column] || flags.column;
-          columnId = await resolve.resolveColumnId(boardId, colSlug);
+          columnId = await resolve.resolveColumnId(boardId, flags.column);
         } else {
           columnId = await resolve.findFirstColumnId(boardId);
         }
@@ -962,8 +966,7 @@ async function main() {
         const { boardId } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
         const params = new URLSearchParams({ board_id: boardId });
         if (flags.column) {
-          const colSlug = STATUS_ALIASES[flags.column] || flags.column;
-          const columnId = await resolve.resolveColumnId(boardId, colSlug);
+          const columnId = await resolve.resolveColumnId(boardId, flags.column);
           params.set("column_id", columnId);
         }
         if (flags.assignee) params.set("assignee", flags.assignee);
@@ -1012,10 +1015,10 @@ async function main() {
 
         // Keep the card's current column unless one is named; never fall back
         // to some other column when the slug is missing on the destination.
-        const colSlug = flags.column
-          ? STATUS_ALIASES[flags.column] || flags.column
-          : card.column_slug;
-        const targetCol = cols.find((c) => c.slug === colSlug || c.name === colSlug);
+        const colSlug = flags.column || card.column_slug;
+        const targetCol = flags.column
+          ? findColumn(cols, flags.column)
+          : cols.find((c) => c.slug === colSlug);
         if (!targetCol) {
           die(
             `Column '${colSlug}' not found on ${where}. Available: ${cols.map((c) => c.slug).join(", ")}`

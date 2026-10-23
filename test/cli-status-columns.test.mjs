@@ -18,6 +18,19 @@ const COLUMNS = [
   { id: 13, board_id: 5, name: "Done", slug: "done", position: 2 },
 ];
 
+// Board for card 8: a column renamed "Doing" owns the slug `doing`, next to a
+// real `in-progress` column. Board 6 is the same board seen via --column.
+const ALIAS_COLUMNS = [
+  { id: 21, board_id: 6, name: "Doing", slug: "doing", position: 0 },
+  { id: 22, board_id: 6, name: "In Progress", slug: "in-progress", position: 1 },
+  { id: 23, board_id: 6, name: "QA", slug: "qa", position: 2 },
+];
+// Board for card 9: only the legacy slugs, so aliases must still resolve.
+const LEGACY_COLUMNS = [
+  { id: 31, board_id: 7, name: "In Progress", slug: "in-progress", position: 0 },
+  { id: 32, board_id: 7, name: "In Review", slug: "in-review", position: 1 },
+];
+
 /** @type {{ method: string, url: string, body: unknown }[]} */
 let requests = [];
 let server;
@@ -33,7 +46,19 @@ before(async () => {
       res.setHeader("Content-Type", "application/json");
       if (req.method === "GET" && req.url === "/api/columns/by-card/7") {
         res.end(JSON.stringify(COLUMNS));
-      } else if (req.method === "PATCH" && req.url === "/api/cards/7/move") {
+      } else if (req.method === "GET" && req.url === "/api/columns/by-card/8") {
+        res.end(JSON.stringify(ALIAS_COLUMNS));
+      } else if (req.method === "GET" && req.url === "/api/columns/by-card/9") {
+        res.end(JSON.stringify(LEGACY_COLUMNS));
+      } else if (req.method === "GET" && req.url === "/api/products") {
+        res.end(JSON.stringify([{ id: 1, slug: "p", name: "P" }]));
+      } else if (req.method === "GET" && req.url === "/api/boards?product_id=1") {
+        res.end(JSON.stringify([{ id: 6, slug: "b", name: "B" }]));
+      } else if (req.method === "GET" && req.url === "/api/columns?board_id=6") {
+        res.end(JSON.stringify(ALIAS_COLUMNS));
+      } else if (req.method === "GET" && req.url.startsWith("/api/cards?")) {
+        res.end(JSON.stringify([]));
+      } else if (req.method === "PATCH" && /^\/api\/cards\/[789]\/move$/.test(req.url)) {
         res.end(JSON.stringify({ id: 7, column_id: body.column_id }));
       } else {
         res.statusCode = 404;
@@ -71,4 +96,28 @@ test("status to a slug the board has still moves the card", async () => {
   const r = await run("status", "7", "done");
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(requests.at(-1), { method: "PATCH", url: "/api/cards/7/move", body: { column_id: 13 } });
+});
+
+test("status prefers a column whose slug is exactly the alias word", async () => {
+  const r = await run("status", "8", "doing");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(requests.at(-1), { method: "PATCH", url: "/api/cards/8/move", body: { column_id: 21 } });
+});
+
+test("status accepts any slug the board has, not only the built-in names", async () => {
+  const r = await run("status", "8", "qa");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(requests.at(-1), { method: "PATCH", url: "/api/cards/8/move", body: { column_id: 23 } });
+});
+
+test("status still maps legacy aliases when no column has that slug", async () => {
+  const r = await run("status", "9", "review");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(requests.at(-1), { method: "PATCH", url: "/api/cards/9/move", body: { column_id: 32 } });
+});
+
+test("list --column prefers the exact slug over the alias", async () => {
+  const r = await run("list", "--product", "p", "--board", "b", "--column", "doing", "--include-done");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(requests.at(-1).url, /column_id=21/);
 });

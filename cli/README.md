@@ -150,6 +150,8 @@ agentboard preferences --key key --value val
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
+`status` and `--column` take any column slug or name on the board. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
+
 ## Flag Handling
 
 Flags a command doesn't support are errors, not ignored — e.g. `task move 14 --product x` fails instead of printing the card as if it had moved. Flags that take a value always consume the next argument, even one starting with `--`, so `--description "--dry-run is broken"` works; `--description=...` also works.
