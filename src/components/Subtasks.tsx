@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { IconButton, cx } from "./ui";
-import { MAX_SUBTASK_TITLE, type Subtask, subtaskProgress } from "@/lib/subtasks";
+import {
+  MAX_SUBTASK_TITLE,
+  type Subtask,
+  restoreSubtask,
+  revertSubtaskPatch,
+  subtaskProgress,
+} from "@/lib/subtasks";
 
 interface SubtasksProps {
   cardId: number;
@@ -113,14 +119,24 @@ export default function Subtasks({ cardId, cardUpdatedAt }: SubtasksProps) {
   const [newTitle, setNewTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   // Writes in flight. A reload that lands mid-write would show the old value,
-  // so reloads wait until local writes have settled.
+  // so a reload asked for during a write is queued and runs once local writes
+  // have settled, instead of being dropped.
   const inFlight = useRef(0);
+  const reloadQueued = useRef(false);
+  // Only the latest load may set the list; an older response is stale.
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
-    if (inFlight.current > 0) return;
+    if (inFlight.current > 0) { reloadQueued.current = true; return; }
+    const seq = ++loadSeq.current;
     try {
       const res = await fetch(`/api/cards/${cardId}/subtasks`);
-      if (res.ok && inFlight.current === 0) setSubtasks(await res.json());
+      if (!res.ok) return;
+      const list: Subtask[] = await res.json();
+      if (seq !== loadSeq.current) return;
+      // A write started while this was loading: its result is newer.
+      if (inFlight.current > 0) { reloadQueued.current = true; return; }
+      setSubtasks(list);
     } catch {
       // keep what we have; the next change reloads
     } finally {
@@ -141,11 +157,18 @@ export default function Subtasks({ cardId, cardUpdatedAt }: SubtasksProps) {
       }
       return await res.json();
     } catch (e) {
+      // Undo just this write, then check the server once writes settle: it
+      // may have applied the change after all.
       rollback();
+      reloadQueued.current = true;
       setError(e instanceof Error ? e.message : "Couldn't save the sub-task");
       return null;
     } finally {
       inFlight.current--;
+      if (inFlight.current === 0 && reloadQueued.current) {
+        reloadQueued.current = false;
+        void load();
+      }
     }
   }
 
@@ -165,7 +188,8 @@ export default function Subtasks({ cardId, cardUpdatedAt }: SubtasksProps) {
   }
 
   async function update(id: number, patch: Partial<Pick<Subtask, "title" | "done">>) {
-    const before = subtasks;
+    const before = subtasks.find((s) => s.id === id);
+    if (!before) return;
     setSubtasks((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
     const saved = await write(
       () => fetch(`/api/subtasks/${id}`, {
@@ -173,15 +197,19 @@ export default function Subtasks({ cardId, cardUpdatedAt }: SubtasksProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       }),
-      () => setSubtasks(before),
+      () => setSubtasks((prev) => revertSubtaskPatch(prev, before, patch)),
     );
     if (saved) setSubtasks((prev) => prev.map((s) => (s.id === id ? saved : s)));
   }
 
   async function remove(id: number) {
-    const before = subtasks;
+    const before = subtasks.find((s) => s.id === id);
+    if (!before) return;
     setSubtasks((prev) => prev.filter((s) => s.id !== id));
-    await write(() => fetch(`/api/subtasks/${id}`, { method: "DELETE" }), () => setSubtasks(before));
+    await write(
+      () => fetch(`/api/subtasks/${id}`, { method: "DELETE" }),
+      () => setSubtasks((prev) => restoreSubtask(prev, before)),
+    );
   }
 
   const doneCount = subtasks.filter((s) => s.done).length;

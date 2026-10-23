@@ -10,6 +10,8 @@ import {
   MAX_SUBTASK_TITLE,
   parseSubtaskCreate,
   parseSubtaskUpdate,
+  revertSubtaskPatch,
+  restoreSubtask,
   subtaskProgress,
 } from "../src/lib/subtasks.js";
 
@@ -83,4 +85,40 @@ test("progress reads done/total, and nothing when a card has no sub-tasks", () =
   assert.equal(subtaskProgress("4", "1"), "1/4");
   assert.equal(subtaskProgress(null, null), null);
   assert.equal(subtaskProgress(undefined, undefined), null);
+});
+
+// The app updates the checklist optimistically. When one write fails, only that
+// write is undone: a later edit that already succeeded must survive.
+const item = (id, title, done, position) => ({ id, card_id: 1, title, done, position, created_at: "", updated_at: "" });
+
+test("a failed update reverts only the fields it changed", () => {
+  const before = item(1, "Schema", true, 0);
+  const list = [item(1, "Schema", false, 0), item(2, "Routes", true, 1)];
+  assert.deepEqual(revertSubtaskPatch(list, before, { done: false }), [item(1, "Schema", true, 0), item(2, "Routes", true, 1)]);
+});
+
+test("a failed update leaves a field alone once a later edit changed it again", () => {
+  const before = item(1, "Schema", true, 0);
+  // done was set false by the failed write, then the title by a later one
+  const list = [item(1, "Schema v2", false, 0)];
+  assert.deepEqual(revertSubtaskPatch(list, before, { done: false, title: "Schema v1" }), [item(1, "Schema v2", true, 0)]);
+  // a later write flipped done again: keep it
+  assert.deepEqual(revertSubtaskPatch([item(1, "Schema", true, 0)], item(1, "Schema", false, 0), { done: false }), [item(1, "Schema", true, 0)]);
+});
+
+test("a failed update of a sub-task that is gone changes nothing", () => {
+  const list = [item(2, "Routes", true, 1)];
+  assert.deepEqual(revertSubtaskPatch(list, item(1, "Schema", true, 0), { done: false }), list);
+});
+
+test("a failed delete puts the sub-task back in position order", () => {
+  const list = [item(1, "a", false, 0), item(3, "c", false, 2)];
+  assert.deepEqual(restoreSubtask(list, item(2, "b", true, 1)).map((s) => s.id), [1, 2, 3]);
+  assert.deepEqual(restoreSubtask([], item(2, "b", true, 1)).map((s) => s.id), [2]);
+  assert.deepEqual(restoreSubtask(list, item(4, "d", false, 3)).map((s) => s.id), [1, 3, 4]);
+});
+
+test("a failed delete does not duplicate a sub-task that came back", () => {
+  const list = [item(1, "a", false, 0), item(2, "b", false, 1)];
+  assert.deepEqual(restoreSubtask(list, item(2, "b", true, 1)), list);
 });

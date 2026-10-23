@@ -108,3 +108,36 @@ export function subtaskProgress(total, done) {
   if (t <= 0) return null;
   return `${Number(done) || 0}/${t}`;
 }
+
+/**
+ * Undo a failed update on one sub-task, for the app's optimistic list. Only
+ * the fields the failed write set are reverted, and only where they still hold
+ * the value it set, so a later edit that already succeeded is kept.
+ * @param {Subtask[]} list
+ * @param {Subtask} before the sub-task as it was before the failed write
+ * @param {{ title?: string, done?: boolean }} patch what the failed write set
+ * @returns {Subtask[]}
+ */
+export function revertSubtaskPatch(list, before, patch) {
+  return list.map((s) => {
+    if (s.id !== before.id) return s;
+    /** @type {Subtask} */
+    const next = { ...s };
+    if (patch.title !== undefined && s.title === patch.title) next.title = before.title;
+    if (patch.done !== undefined && s.done === patch.done) next.done = before.done;
+    return next;
+  });
+}
+
+/**
+ * Put back a sub-task whose delete failed, in position order. A no-op when the
+ * list already has it.
+ * @param {Subtask[]} list
+ * @param {Subtask} item
+ * @returns {Subtask[]}
+ */
+export function restoreSubtask(list, item) {
+  if (list.some((s) => s.id === item.id)) return list;
+  const at = list.findIndex((s) => s.position > item.position);
+  return at === -1 ? [...list, item] : [...list.slice(0, at), item, ...list.slice(at)];
+}
