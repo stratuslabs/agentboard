@@ -126,6 +126,7 @@ export default function KanbanBoard({
   const [columnContextMenu, setColumnContextMenu] = useState<{ columnId: number; x: number; y: number } | null>(null);
   const [renamingColumnId, setRenamingColumnId] = useState<number | null>(null);
   const [renameColumnName, setRenameColumnName] = useState("");
+  const [renameColumnError, setRenameColumnError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -639,7 +640,13 @@ export default function KanbanBoard({
     if (res.ok) {
       setRenamingColumnId(null);
       setRenameColumnName("");
+      setRenameColumnError(null);
       loadColumns();
+    } else {
+      // A name whose slug another column already uses is refused (409), so
+      // say why instead of leaving the input open with no explanation.
+      const data = await res.json().catch(() => null);
+      setRenameColumnError(data?.error || "Couldn't rename this column.");
     }
   }
 
@@ -984,12 +991,14 @@ export default function KanbanBoard({
                       <input
                         type="text"
                         value={renameColumnName}
-                        onChange={(e) => setRenameColumnName(e.target.value)}
+                        onChange={(e) => { setRenameColumnName(e.target.value); setRenameColumnError(null); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleRenameColumn(column.id);
-                          if (e.key === "Escape") { setRenamingColumnId(null); setRenameColumnName(""); }
+                          if (e.key === "Escape") { setRenamingColumnId(null); setRenameColumnName(""); setRenameColumnError(null); }
                         }}
-                        onBlur={() => { setRenamingColumnId(null); setRenameColumnName(""); }}
+                        onBlur={() => { setRenamingColumnId(null); setRenameColumnName(""); setRenameColumnError(null); }}
+                        aria-invalid={renameColumnError ? true : undefined}
+                        aria-describedby={renameColumnError ? `rename-column-error-${column.id}` : undefined}
                         className="h-7 min-w-0 flex-1 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] font-medium text-text-1 focus:border-text-4 focus:outline-none"
                         autoFocus
                       />
@@ -1024,6 +1033,15 @@ export default function KanbanBoard({
                       <Plus className="h-[15px] w-[15px]" />
                     </IconButton>
                   </div>
+                  {renamingColumnId === column.id && renameColumnError && (
+                    <p
+                      id={`rename-column-error-${column.id}`}
+                      role="alert"
+                      className="-mt-1 px-3.5 pb-2 text-[12px] leading-4 text-danger"
+                    >
+                      {renameColumnError}
+                    </p>
+                  )}
 
                   {/* Cards */}
                   <DroppableColumn columnId={column.id}>

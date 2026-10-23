@@ -1,6 +1,7 @@
 import { sql } from "@/lib/sql";
 import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
 import { slugify } from "@/lib/slug";
+import { planColumnReslug } from "@/lib/column-slug";
 
 let initialized = false;
 
@@ -119,6 +120,31 @@ export async function ensureTables() {
         SELECT 1 FROM organizations WHERE id = ${org.id} AND slug = ${org.slug}
       `;
       if (still.length === 0) break;
+    }
+  }
+  // Migration: renaming a column used to keep its old slug, so a column
+  // renamed from "Todo" to "Can't replicate" still answered to
+  // `agentboard status <id> todo`. Slugs now follow names on rename; this
+  // repairs columns renamed before that. Idempotent: once every slug matches
+  // its name, the plan is empty.
+  const { rows: allColumns } = await sql`
+    SELECT id, board_id, name, slug FROM columns ORDER BY board_id, position, id
+  `;
+  const columnsByBoard = new Map<number, { id: number; name: string; slug: string }[]>();
+  for (const c of allColumns) {
+    const list = columnsByBoard.get(c.board_id) ?? [];
+    list.push({ id: c.id, name: c.name, slug: c.slug });
+    columnsByBoard.set(c.board_id, list);
+  }
+  for (const [boardId, boardColumns] of columnsByBoard) {
+    for (const step of planColumnReslug(boardColumns)) {
+      // Guarded the same way as the org move above, in case another instance
+      // is starting up at the same time.
+      await sql`
+        UPDATE columns SET slug = ${step.to}, updated_at = NOW()
+        WHERE id = ${step.id} AND slug = ${step.from}
+          AND NOT EXISTS (SELECT 1 FROM columns WHERE board_id = ${boardId} AND slug = ${step.to})
+      `;
     }
   }
   await sql`
