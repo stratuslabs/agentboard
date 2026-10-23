@@ -182,7 +182,8 @@ export default function Subtasks({ cardId, cardUpdatedAt }: SubtasksProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
       }),
-      () => setNewTitle(title),
+      // Give the title back only if nothing newer was typed meanwhile.
+      () => setNewTitle((current) => (current === "" ? title : current)),
     );
     if (created) setSubtasks((prev) => [...prev, created]);
   }
