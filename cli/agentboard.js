@@ -238,6 +238,34 @@ const STATUS_ALIASES = {
 // A column the board really has wins over the legacy alias table: once a
 // column is named "Doing" its slug is `doing`, and `status <id> doing` must
 // reach it rather than being rewritten to `in-progress`.
+/**
+ * A product's default board, when no board was named:
+ * 1. the default the product has set, if that board still exists;
+ * 2. the only board, when there is exactly one;
+ * 3. on an older server that has no notion of defaults (the field is absent),
+ *    the board slugged `development`, which is what the CLI always assumed.
+ * Never "the first board": reordering boards would silently move every agent.
+ */
+function pickDefaultBoard(product, boards) {
+  if (!boards || boards.length === 0) return null;
+  if (product.default_board_id != null) {
+    const set = boards.find((b) => b.id === product.default_board_id);
+    if (set) return set;
+  }
+  if (boards.length === 1) return boards[0];
+  if (!("default_board_id" in product)) {
+    return boards.find((b) => b.slug === "development") || null;
+  }
+  return null;
+}
+
+function describeBoards(boards) {
+  return [...boards]
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    .map((b) => `${b.slug} (${b.name})`)
+    .join(", ");
+}
+
 function findColumn(cols, input) {
   return (
     cols.find((c) => c.slug === input) ||
@@ -322,7 +350,7 @@ function makeResolvers(req) {
     return org.id;
   }
 
-  async function resolveProductId(slugOrName) {
+  async function resolveProduct(slugOrName) {
     const products = await req("GET", "/api/products");
     // Product slugs are unique per org, not globally — refuse to guess.
     const matches = products.filter((x) => x.slug === slugOrName || x.name === slugOrName);
@@ -330,7 +358,11 @@ function makeResolvers(req) {
     if (matches.length > 1) {
       die(`'${slugOrName}' matches ${matches.length} products in different orgs; rename one to disambiguate`);
     }
-    return matches[0].id;
+    return matches[0];
+  }
+
+  async function resolveProductId(slugOrName) {
+    return (await resolveProduct(slugOrName)).id;
   }
 
   async function resolveBoardId(productId, slugOrName) {
@@ -347,10 +379,24 @@ function makeResolvers(req) {
     return c.id;
   }
 
+  /**
+   * The board a command works on. An explicit board (--board or
+   * AGENTBOARD_BOARD) always wins; otherwise the product's own default board.
+   */
   async function resolveProductAndBoard(productSlug, boardSlug) {
-    const productId = await resolveProductId(productSlug);
-    const boardId = await resolveBoardId(productId, boardSlug);
-    return { productId, boardId };
+    const product = await resolveProduct(productSlug);
+    if (boardSlug) {
+      return { productId: product.id, boardId: await resolveBoardId(product.id, boardSlug) };
+    }
+    const boards = await req("GET", `/api/boards?product_id=${product.id}`);
+    const picked = pickDefaultBoard(product, boards);
+    if (picked) return { productId: product.id, boardId: picked.id };
+    if (!boards || boards.length === 0) die(`Product '${product.slug}' has no boards`);
+    die(
+      `Product '${product.slug}' has no default board. Pick one with --board <slug> or ` +
+        `AGENTBOARD_BOARD, or set the product's default board in Settings. ` +
+        `Available: ${describeBoards(boards)}`
+    );
   }
 
   async function findFirstColumnId(boardId) {
@@ -362,6 +408,7 @@ function makeResolvers(req) {
 
   return {
     resolveOrgId,
+    resolveProduct,
     resolveProductId,
     resolveBoardId,
     resolveColumnId,
@@ -429,7 +476,7 @@ Environment:
   AGENTBOARD_AGENT_NAME  Agent name (auto-registers, used for my-tasks).
                          Ignored where the key already names an agent.
   AGENTBOARD_PRODUCT     Default product slug for simple commands
-  AGENTBOARD_BOARD       Default board slug (default: development)
+  AGENTBOARD_BOARD       Board slug override (default: the product's default board)
 `;
   process.stdout.write(usage);
 }
@@ -457,7 +504,7 @@ async function main() {
   const remoteToken = process.env.AGENTBOARD_TOKEN || "";
   const agentName = process.env.AGENTBOARD_AGENT_NAME || "";
   const envProduct = flags.product || process.env.AGENTBOARD_PRODUCT || "";
-  const envBoard = flags.board || process.env.AGENTBOARD_BOARD || "development";
+  const envBoard = flags.board || process.env.AGENTBOARD_BOARD || "";
 
   if (!remoteUrl) {
     die(

@@ -1,4 +1,5 @@
-import { sql } from "@/lib/sql";
+import { sql, db } from "@/lib/sql";
+import { DEFAULT_BOARD_MIGRATION } from "@/lib/default-board-migration";
 import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
 import { slugify } from "@/lib/slug";
 import { planColumnReslug } from "@/lib/column-slug";
@@ -98,6 +99,10 @@ export async function ensureTables() {
   // so this needs no guard.
   await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  // Migration: a product's default board is where the CLI lands when no board
+  // is named. Products that predate it get their `development` board, once,
+  // atomically with adding the column (see default-board-migration.js).
+  await db.query(DEFAULT_BOARD_MIGRATION);
   // Migration: an organization slugged `c` or `api` is shadowed by the app's
   // own routes (`/c/<id>`, `/api/...`), so none of its product pages can be
   // reached. Move it to `<slug>-org` (or `<slug>-org-2`, ... if that is taken).
@@ -231,6 +236,11 @@ export async function createDefaultBoards(productId: number) {
       RETURNING id
     `;
     const boardId = rows[0].id;
+    // A new product starts with its first default board as the agents' default.
+    // It is stored, so reordering boards later doesn't move it.
+    if (i === 0) {
+      await sql`UPDATE products SET default_board_id = ${boardId} WHERE id = ${productId}`;
+    }
 
     for (let j = 0; j < columns.length; j++) {
       const col = columns[j];

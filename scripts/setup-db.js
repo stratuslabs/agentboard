@@ -5,7 +5,8 @@
 // tables lazily on the first request. This script exists so a fresh deploy can
 // be initialized explicitly (e.g. `vercel env pull .env.local && npm run db:setup`).
 
-const { sql, end } = require("../src/lib/sql");
+const { sql, db, end } = require("../src/lib/sql");
+const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
 
 async function setup() {
   await sql`
@@ -83,6 +84,10 @@ async function setup() {
   // Migration: stamp boards and columns so a client can fetch a delta
   await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  // Migration: a product's default board is where the CLI lands when no board
+  // is named. Products that predate it get their `development` board, once,
+  // atomically with adding the column (see default-board-migration.js).
+  await db.query(DEFAULT_BOARD_MIGRATION);
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,
