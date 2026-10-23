@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import ConfirmModal from "./ConfirmModal";
 import { Avatar, Button, Chip, GithubIcon, IconButton, MenuDivider, MenuItem, MenuPanel, cx } from "./ui";
+import RichText from "./RichText";
 import {
   type Card,
   type Column,
@@ -217,6 +218,7 @@ export default function CardDetail({
   const [newAttachmentContent, setNewAttachmentContent] = useState("");
   const [showAddAttachment, setShowAddAttachment] = useState(false);
   const [editingLabels, setEditingLabels] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -644,20 +646,48 @@ export default function CardDetail({
     />
   );
 
+  // A description shows its formatting until you click into it; an empty one
+  // is the editor straight away. Links in the formatted view open as links.
+  const descriptionText = cx(
+    "-mx-2 rounded-md px-2 py-1 text-text-1",
+    isPage ? "min-h-[3em] text-[15px] leading-[1.7]" : "min-h-[2.5em] text-[14px] leading-[1.65]",
+  );
+  const showFormatted = !editingDescription && description.trim() !== "";
   const descriptionField = (
     <div className="flex flex-col gap-2.5">
       {!isPage && <SectionHead title="Description" />}
+      {showFormatted ? (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Edit description"
+          data-testid="description-view"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("a")) return;
+            if (window.getSelection()?.toString()) return;
+            setEditingDescription(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditingDescription(true); }
+          }}
+          className={cx(descriptionText, "cursor-text transition-colors hover:bg-surface-1 focus-visible:bg-surface-1 focus-visible:outline-none")}
+        >
+          <RichText text={description} />
+        </div>
+      ) : (
       <AutoTextarea
         value={description}
+        autoFocus={editingDescription}
+        onFocus={(e) => { if (editingDescription) { const end = e.currentTarget.value.length; e.currentTarget.setSelectionRange(end, end); } }}
         onChange={(v) => editText("description", v, setDescription)}
-        onBlur={() => void flush()}
+        onBlur={() => { setEditingDescription(false); void flush(); }}
+        onKeyDown={(e) => { if (e.key === "Escape" && editingDescription) { e.stopPropagation(); e.currentTarget.blur(); } }}
         aria-label="Description"
         placeholder="Add a description…"
-        className={cx(
-          "-mx-2 rounded-md px-2 py-1 text-text-1 transition-colors placeholder:text-text-4 hover:bg-surface-1 focus:bg-surface-1",
-          isPage ? "min-h-[3em] text-[15px] leading-[1.7]" : "min-h-[2.5em] text-[14px] leading-[1.65]",
-        )}
+        className={cx(descriptionText, "transition-colors placeholder:text-text-4 hover:bg-surface-1 focus:bg-surface-1")}
       />
+      )}
     </div>
   );
 
