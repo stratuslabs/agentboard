@@ -27,7 +27,9 @@ export async function getCardWithLocation(rawId: string | number) {
       col.slug AS column_slug, col.name AS column_name,
       b.id AS board_id, b.slug AS board_slug, b.name AS board_name,
       p.id AS product_id, p.slug AS product_slug, p.name AS product_name,
-      o.slug AS org_slug
+      o.slug AS org_slug,
+      (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id) AS subtask_total,
+      (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id AND st.done) AS subtask_done
     FROM cards
     JOIN columns col ON col.id = cards.column_id
     JOIN boards b ON b.id = col.board_id

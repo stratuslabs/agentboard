@@ -31,6 +31,7 @@ import {
 import ConfirmModal from "./ConfirmModal";
 import { Avatar, Button, Chip, GithubIcon, IconButton, MenuDivider, MenuItem, MenuPanel, cx } from "./ui";
 import RichText from "./RichText";
+import Subtasks from "./Subtasks";
 import {
   type Card,
   type Column,
@@ -691,6 +692,8 @@ export default function CardDetail({
     </div>
   );
 
+  const subtasksSection = <Subtasks cardId={card.id} cardUpdatedAt={card.updated_at} />;
+
   const attachmentsSection = (
     <div className="flex flex-col gap-2.5">
       <SectionHead title="Attachments" count={attachments.length}>
@@ -784,6 +787,7 @@ export default function CardDetail({
             <div className="flex max-w-[640px] flex-col gap-7">
               {titleField}
               {descriptionField}
+              {subtasksSection}
               {attachmentsSection}
             </div>
           </div>
@@ -840,6 +844,7 @@ export default function CardDetail({
         {properties}
         <div className="h-px shrink-0 bg-border" />
         {descriptionField}
+        {subtasksSection}
         {attachmentsSection}
         <p className="text-xs text-text-3">
           Created {formatDateTime(card.created_at)} · Updated {formatRelative(card.updated_at)}

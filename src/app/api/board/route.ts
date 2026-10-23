@@ -38,7 +38,9 @@ const CARD_COLUMNS = `
   cards.*,
   m.name AS assignee_name,
   m.type AS assignee_type,
-  m.color AS assignee_color
+  m.color AS assignee_color,
+  (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id) AS subtask_total,
+  (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id AND st.done) AS subtask_done
 `;
 
 /**

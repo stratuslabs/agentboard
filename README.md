@@ -152,6 +152,13 @@ agentboard notes <id> --append "More"     # append to notes
 # Toggle attention flag
 agentboard attention <id> on
 agentboard attention <id> off
+
+# Sub-tasks: a checklist on a card
+agentboard subtask add <card-id> "Write the migration"
+agentboard subtask list <card-id>         # [x]/[ ] per item, then "1/3 done"
+agentboard subtask done <subtask-id>      # or: undo
+agentboard subtask rename <subtask-id> "New title"
+agentboard subtask remove <subtask-id>
 ```
 
 ### Output Flags
@@ -160,7 +167,7 @@ agentboard attention <id> off
 - `--quiet` — minimal output (IDs only)
 
 The commands above are the common ones. The CLI also has full CRUD subcommands
-for orgs, products, boards, columns, members, tasks, attachments, settings and
+for orgs, products, boards, columns, members, tasks, sub-tasks, attachments, settings and
 preferences — see [cli/README.md](cli/README.md) for the complete reference.
 
 ## API Reference
@@ -276,6 +283,22 @@ changes from `LISTEN/NOTIFY` or falling back to polling — see
 sends `reconnect` first, so a platform timeout never cuts a response mid-write;
 reconnect and resume from your last cursor.
 
+### Sub-tasks
+
+```
+GET    /api/cards/:id/subtasks
+POST   /api/cards/:id/subtasks     { title, done? }       # added to the end
+GET    /api/subtasks/:id
+PATCH  /api/subtasks/:id           { title?, done? }
+DELETE /api/subtasks/:id
+```
+
+Titles are one line (newlines become spaces), trimmed, and at most 500
+characters; `done` must be a boolean. Unknown fields in a PATCH are a 400.
+Every write bumps the card's `updated_at` and notifies the board, so live
+views pick it up. Board cards and `GET /api/cards/:id` include
+`subtask_total` and `subtask_done`.
+
 ### Attachments
 
 ```
@@ -314,6 +337,7 @@ Organization
                       ├── due_date
                       ├── github_issue_url
                       ├── github_pr_url
+                      ├── Sub-tasks (title, done)
                       └── Attachments
 ```
 
