@@ -119,8 +119,10 @@ export AGENTBOARD_URL=https://your-instance.vercel.app
 export AGENTBOARD_TOKEN=your-password      # if APP_PASSWORD is set
 export AGENTBOARD_AGENT_NAME=MyAgent       # auto-registers as member
 export AGENTBOARD_PRODUCT=my-product       # default product slug
-export AGENTBOARD_BOARD=development        # default board slug (defaults to 'development')
+# export AGENTBOARD_BOARD=ops              # optional: override the product's default board
 ```
+
+Without `AGENTBOARD_BOARD` or `--board`, the CLI uses the product's default board (Settings → Agent default board). A product with a single board needs no default. A product with several boards and no default makes the CLI stop and list them.
 
 ### Commands
 

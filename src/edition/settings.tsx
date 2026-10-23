@@ -3,11 +3,12 @@
  * identical in both editions; the hosted edition's copy of this file adds its
  * team access, API key and billing sections.
  */
-import { Columns3, Palette, Plug, Users } from "lucide-react";
+import { Bot, Columns3, Palette, Plug, Users } from "lucide-react";
 import type { SettingsSectionDef } from "@/components/settings/SettingsShell";
 import BoardMembers from "@/components/settings/BoardMembers";
 import ConnectAgent from "@/components/settings/ConnectAgent";
 import { DefaultBoards, DefaultColumns } from "@/components/settings/DefaultLists";
+import ProductDefaultBoards from "@/components/settings/ProductDefaultBoards";
 
 /** Shown before "/ Settings" in the top bar. */
 export function SettingsScope() {
@@ -31,6 +32,14 @@ export function settingsSections(): SettingsSectionDef[] {
       icon: <Plug />,
       description: "Copy this prompt and paste it to any AI agent to connect it to AgentBoard. It will auto-register as a member and can manage tasks via CLI.",
       content: <ConnectAgent />,
+    },
+    {
+      id: "agent-board",
+      group: "Defaults",
+      label: "Agent default board",
+      icon: <Bot />,
+      description: "The board each product's agents work on when they don't name one. Set per product.",
+      content: <ProductDefaultBoards />,
     },
     {
       id: "default-boards",

@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
     const productId = rows[0].id;
     await createDefaultBoards(productId);
 
-    return NextResponse.json(rows[0], { status: 201 });
+    // Re-read: creating the boards set the product's default board.
+    const { rows: created } = await sql`SELECT * FROM products WHERE id = ${productId}`;
+    return NextResponse.json(created[0], { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     if (msg.includes("unique") || msg.includes("duplicate")) {

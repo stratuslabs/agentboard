@@ -98,6 +98,22 @@ export async function ensureTables() {
   // so this needs no guard.
   await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
   await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  // Migration: a product's default board is where the CLI lands when no board
+  // is named. The CLI used to assume a board slugged `development`, so products
+  // that existed before this get that board as their default, once, when the
+  // column is added. After that a cleared default stays cleared.
+  const { rows: hadDefaultBoard } = await sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'products' AND column_name = 'default_board_id'
+  `;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS default_board_id INTEGER REFERENCES boards(id) ON DELETE SET NULL`;
+  if (hadDefaultBoard.length === 0) {
+    await sql`
+      UPDATE products p SET default_board_id = b.id
+      FROM boards b
+      WHERE b.product_id = p.id AND b.slug = 'development' AND p.default_board_id IS NULL
+    `;
+  }
   // Migration: an organization slugged `c` or `api` is shadowed by the app's
   // own routes (`/c/<id>`, `/api/...`), so none of its product pages can be
   // reached. Move it to `<slug>-org` (or `<slug>-org-2`, ... if that is taken).
@@ -231,6 +247,11 @@ export async function createDefaultBoards(productId: number) {
       RETURNING id
     `;
     const boardId = rows[0].id;
+    // A new product starts with its first default board as the agents' default.
+    // It is stored, so reordering boards later doesn't move it.
+    if (i === 0) {
+      await sql`UPDATE products SET default_board_id = ${boardId} WHERE id = ${productId}`;
+    }
 
     for (let j = 0; j < columns.length; j++) {
       const col = columns[j];

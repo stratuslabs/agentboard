@@ -85,6 +85,9 @@ async function seed() {
         const { rows: existing } = await sql`SELECT id FROM boards WHERE product_id = ${productId} AND slug = ${boardSlug}`;
         boardId = existing[0].id;
       }
+      if (bi === 0) {
+        await sql`UPDATE products SET default_board_id = ${boardId} WHERE id = ${productId} AND default_board_id IS NULL`;
+      }
 
       for (let ci = 0; ci < DEFAULT_COLUMNS.length; ci++) {
         const col = DEFAULT_COLUMNS[ci];
