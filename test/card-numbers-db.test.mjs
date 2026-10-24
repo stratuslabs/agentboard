@@ -17,6 +17,7 @@ import {
   ensureProductKeys,
   changeProductKey,
   keyForNewProduct,
+  createProductWithKey,
   resolveCardRef,
 } from "../src/lib/card-keys.js";
 import { updateProduct } from "../src/lib/product-update.js";
@@ -303,6 +304,37 @@ test("a product update that fails partway changes nothing", { skip }, async () =
   assert.equal(ok.product.key, "OPZ");
   assert.equal(ok.product.name, "Ops Two");
   await withScoped((c) => updateProduct(c, ids.ops.product, { key: "OPS", name: "Ops" }));
+});
+
+// Another request takes the derived key between deriving it and inserting.
+async function insertRacedBy(competitorSlug) {
+  const org = (await query("SELECT org_id FROM products WHERE id = $1", [ids.ops.product])).rows[0].org_id;
+  let raced = false;
+  const insert = async (/** @type {string} */ key) => {
+    if (!raced) {
+      raced = true;
+      await query("INSERT INTO products (org_id, name, slug, key) VALUES ($1, 'Race Rival', $2, $3)", [org, competitorSlug, key]);
+    }
+    const { rows } = await query("INSERT INTO products (org_id, name, slug, key) VALUES ($1, 'Race Car', $2, $3) RETURNING *", [org, `${competitorSlug}-mine`, key]);
+    return rows[0];
+  };
+  return insert;
+}
+
+test("a derived key lost to a concurrent create is derived again", { skip }, async () => {
+  const result = await createProductWithKey(query, "Race Car", undefined, await insertRacedBy("race-rival"));
+  assert.ok(!("error" in result), `expected a product, got ${JSON.stringify(result)}`);
+  assert.equal(result.key, "RC2");
+  assert.equal(result.product.key, "RC2");
+  await query("DELETE FROM products WHERE slug IN ('race-rival', 'race-rival-mine')");
+});
+
+test("a requested key lost to a concurrent create is a conflict", { skip }, async () => {
+  const result = await createProductWithKey(query, "Race Car", "RQ", await insertRacedBy("race-rival-2"));
+  assert.deepEqual(result, { error: "Key RQ is already used by another product", status: 409 });
+  const { rows } = await query("SELECT COUNT(*)::int AS n FROM products WHERE slug = 'race-rival-2-mine'");
+  assert.equal(rows[0].n, 0);
+  await query("DELETE FROM products WHERE slug = 'race-rival-2'");
 });
 
 test("deleting a card or a product leaves no dangling numbers", { skip }, async () => {

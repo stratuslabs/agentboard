@@ -298,6 +298,28 @@ async function keyForNewProduct(query, name, requested) {
 }
 
 /**
+ * Create a product with a key: the one asked for, or one derived from its
+ * name. `insert(key)` writes the row and returns it.
+ *
+ * @template T
+ * @param {Query} query
+ * @param {string} name
+ * @param {unknown} requested `undefined` to derive one
+ * @param {(key: string) => Promise<T>} insert
+ * @returns {Promise<{ product: T, key: string } | { error: string, status: number }>}
+ */
+async function createProductWithKey(query, name, requested, insert) {
+  const key = await keyForNewProduct(query, name, requested);
+  if ("error" in key) return key;
+  try {
+    return { product: await insert(key.key), key: key.key };
+  } catch (err) {
+    if (isKeyConflict(err)) return { error: `Key ${key.key} is already used by another product`, status: 409 };
+    throw err;
+  }
+}
+
+/**
  * Change a product's key. The old key stays the product's, so AB-142 links
  * made before the change still resolve, and the product can take it back.
  * The products_key trigger refuses a key another product has ever had.
@@ -366,6 +388,7 @@ module.exports = {
   formatCardKey,
   ensureProductKeys,
   keyForNewProduct,
+  createProductWithKey,
   changeProductKey,
   isKeyConflict,
   resolveCardRef,
