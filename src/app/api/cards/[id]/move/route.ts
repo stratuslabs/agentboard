@@ -2,18 +2,18 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, boardIdForColumn, notifyBoards } from "@/lib/realtime/notify";
-import { getCardWithLocation } from "@/lib/card-location";
+import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const { id } = await params;
+  const id = await cardIdFromRef((await params).id);
   const { column_id, position } = await request.json();
 
-  const { rows } = await sql`SELECT * FROM cards WHERE id = ${id}`;
-  if (rows.length === 0) {
+  const { rows } = id === null ? { rows: [] } : await sql`SELECT * FROM cards WHERE id = ${id}`;
+  if (id === null || rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

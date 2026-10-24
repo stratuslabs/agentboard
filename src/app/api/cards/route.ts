@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
 import { checkCardText } from "@/lib/card-text";
+import { getCardWithLocation } from "@/lib/card-location";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -112,20 +113,11 @@ export async function POST(request: NextRequest) {
   const { rows } = await sql`
     INSERT INTO cards (column_id, title, description, assignee, assignee_id, priority, labels, github_issue_url, github_pr_url, due_date, position)
     VALUES (${column_id}, ${title}, ${description || ""}, ${assignee || null}, ${assignee_id || null}, ${priority || "medium"}, ${labels || ""}, ${github_issue_url || null}, ${github_pr_url || null}, ${due_date || null}, ${maxRows[0].max + 1})
-    RETURNING *
+    RETURNING id
   `;
-
-  // Return with member info if assignee_id is set
-  if (rows[0].assignee_id) {
-    const { rows: memberRows } = await sql`SELECT name, type, color FROM members WHERE id = ${rows[0].assignee_id}`;
-    if (memberRows.length > 0) {
-      rows[0].assignee_name = memberRows[0].name;
-      rows[0].assignee_type = memberRows[0].type;
-      rows[0].assignee_color = memberRows[0].color;
-    }
-  }
 
   await notifyBoard(await boardIdForColumn(column_id));
 
-  return NextResponse.json(rows[0], { status: 201 });
+  // With member info, location and the readable key the trigger assigned.
+  return NextResponse.json(await getCardWithLocation(rows[0].id), { status: 201 });
 }

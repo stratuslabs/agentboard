@@ -2,7 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
-import { parseCardId } from "@/lib/card-location";
+import { cardIdFromRef } from "@/lib/card-location";
 import { parseSubtaskCreate } from "@/lib/subtasks";
 
 async function cardExists(id: number): Promise<boolean> {
@@ -15,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const id = parseCardId((await params).id);
+  const id = await cardIdFromRef((await params).id);
   if (id === null || !(await cardExists(id))) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
@@ -30,7 +30,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const id = parseCardId((await params).id);
+  const id = await cardIdFromRef((await params).id);
   if (id === null) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
