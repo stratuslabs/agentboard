@@ -239,8 +239,18 @@ test("a changed key keeps the old one as an alias", { skip }, async () => {
   // The owner can take its old key back; AGB then becomes the alias.
   const back = await changeProductKey(query, ids.agentboard.product, "AB");
   assert.equal(back.product.key, "AB");
-  const { rows: aliases } = await query("SELECT key FROM product_key_aliases WHERE product_id = $1 ORDER BY key", [ids.agentboard.product]);
-  assert.deepEqual(aliases.map((a) => a.key), ["AGB"]);
+  const { rows: keys } = await query("SELECT key FROM product_keys WHERE product_id = $1 ORDER BY key", [ids.agentboard.product]);
+  assert.deepEqual(keys.map((a) => a.key), ["AB", "AGB"]);
+
+  // The database refuses it too, whoever writes: not only these helpers.
+  await assert.rejects(
+    query("UPDATE products SET key = 'AGB' WHERE id = $1", [ids.ops.product]),
+    (err) => err.code === "23505" && err.constraint === "product_keys_pkey"
+  );
+  await assert.rejects(
+    query("INSERT INTO products (org_id, name, slug, key) SELECT org_id, 'Thief', 'thief', 'AGB' FROM products WHERE id = $1", [ids.ops.product]),
+    (err) => err.code === "23505"
+  );
   assert.equal(await resolveCardRef(query, "AGB-1"), ids.oldA.id);
 });
 

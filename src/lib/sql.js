@@ -183,6 +183,28 @@ async function readSnapshot(fn) {
   }
 }
 
+/**
+ * Run `fn` with one connection of its own, for a transaction: the pool's
+ * `query` may put each statement on a different connection. A connection
+ * that threw is discarded rather than reused, since it may be mid-transaction.
+ *
+ * @template T
+ * @param {(client: import('pg').PoolClient) => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+async function withClient(fn) {
+  const client = await getPool().connect();
+  let broken = false;
+  try {
+    return await fn(client);
+  } catch (err) {
+    broken = true;
+    throw err;
+  } finally {
+    client.release(broken);
+  }
+}
+
 /** Close the pool so a short-lived script can exit. */
 async function end() {
   if (pool) {
@@ -191,4 +213,4 @@ async function end() {
   }
 }
 
-module.exports = { sql, db, readSnapshot, end, sslConfig, connectionString, CONNECTION_STRING_VARS };
+module.exports = { sql, db, readSnapshot, withClient, end, sslConfig, connectionString, CONNECTION_STRING_VARS };

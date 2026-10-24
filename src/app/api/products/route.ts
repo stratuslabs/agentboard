@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, db } from "@/lib/sql";
 import { initDb, slugify, createDefaultBoards } from "@/lib/db";
 import { suggestEmoji } from "@/lib/emoji-suggest";
-import { keyForNewProduct } from "@/lib/card-keys";
+import { keyForNewProduct, isKeyConflict } from "@/lib/card-keys";
 
 export async function GET(request: NextRequest) {
   await initDb();
@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(created[0], { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    if (msg.includes("products_key_idx")) {
+    // Checked above, but another request can take the key in between.
+    if (isKeyConflict(e)) {
       return NextResponse.json({ error: `Key ${key.key} is already used by another product` }, { status: 409 });
     }
     if (msg.includes("unique") || msg.includes("duplicate")) {

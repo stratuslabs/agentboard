@@ -12,8 +12,8 @@
  *  - a card that moves to another product gets that product's next number,
  *    and its old KEY-N still finds it;
  *  - a card that moves back gets its old number back;
- *  - a product whose key changes keeps the old key as an alias, so links that
- *    used it keep working.
+ *  - a product whose key changes keeps the old one in `product_keys`, so
+ *    links that used it keep working, and no other product can take it.
  *
  * Numbers are assigned by a database trigger, not by the routes, so every way
  * a card is created or moved (API, CLI, a script, the hosted edition) gets
@@ -44,7 +44,7 @@ const DERIVED_MAX = 5;
  * (AB2, AB3, ...).
  *
  * @param {string} name
- * @param {Set<string>} [taken] keys and aliases already in use
+ * @param {Set<string>} [taken] keys any product has or had
  * @returns {string}
  */
 function deriveProductKey(name, taken = new Set()) {
@@ -136,10 +136,42 @@ BEGIN
   ALTER TABLE products ADD COLUMN IF NOT EXISTS key TEXT;
   ALTER TABLE products ADD COLUMN IF NOT EXISTS card_seq INTEGER NOT NULL DEFAULT 0;
   CREATE UNIQUE INDEX IF NOT EXISTS products_key_idx ON products (key);
-  CREATE TABLE IF NOT EXISTS product_key_aliases (
+  -- Every key a product has ever had, its current one included. One table,
+  -- so one primary key keeps a key from ever meaning two products: a
+  -- product's old keys stay its own, and links made with them keep working.
+  CREATE TABLE IF NOT EXISTS product_keys (
     key TEXT PRIMARY KEY,
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE
   );
+  INSERT INTO product_keys (key, product_id)
+    SELECT key, id FROM products WHERE key IS NOT NULL
+    ON CONFLICT (key) DO NOTHING;
+
+  -- products.key is the current key; this records it in product_keys, or
+  -- refuses it when another product has ever had it. ON CONFLICT waits for a
+  -- concurrent writer and then sees its committed row, so two renames racing
+  -- for one key cannot both win.
+  CREATE OR REPLACE FUNCTION agentboard_products_key()
+  RETURNS trigger LANGUAGE plpgsql AS $fn$
+  BEGIN
+    IF NEW.key IS NULL THEN
+      RETURN NULL;
+    END IF;
+    INSERT INTO product_keys (key, product_id) VALUES (NEW.key, NEW.id)
+      ON CONFLICT (key) DO UPDATE SET product_id = EXCLUDED.product_id
+      WHERE product_keys.product_id = EXCLUDED.product_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Key % is already used by another product', NEW.key
+        USING ERRCODE = 'unique_violation', CONSTRAINT = 'product_keys_pkey';
+    END IF;
+    RETURN NULL;
+  END
+  $fn$;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'products_key' AND tgrelid = 'products'::regclass) THEN
+    CREATE TRIGGER products_key AFTER INSERT OR UPDATE OF key ON products
+      FOR EACH ROW EXECUTE FUNCTION agentboard_products_key();
+  END IF;
 
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS number INTEGER;
   -- card_id is checked at commit: the trigger below writes this row in a
@@ -211,11 +243,9 @@ $migration$;
  * @typedef {(text: string, values?: unknown[]) => Promise<{ rows: any[], rowCount?: number | null }>} Query
  */
 
-/** Every key and alias in use. @param {Query} query */
+/** Every key any product has, current or old. @param {Query} query */
 async function takenKeys(query) {
-  const { rows } = await query(
-    "SELECT key FROM products WHERE key IS NOT NULL UNION SELECT key FROM product_key_aliases"
-  );
+  const { rows } = await query("SELECT key FROM product_keys");
   return new Set(rows.map((r) => r.key));
 }
 
@@ -268,9 +298,11 @@ async function keyForNewProduct(query, name, requested) {
 }
 
 /**
- * Change a product's key. The old key becomes an alias, so AB-142 links made
- * before the change still resolve; a product can take back its own old key.
- * One statement, so it applies completely or not at all.
+ * Change a product's key. The old key stays the product's, so AB-142 links
+ * made before the change still resolve, and the product can take it back.
+ * The products_key trigger refuses a key another product has ever had.
+ *
+ * Run it inside the caller's transaction to make it part of a larger change.
  *
  * @param {Query} query
  * @param {number} productId
@@ -281,35 +313,24 @@ async function changeProductKey(query, productId, rawKey) {
   const parsed = normalizeProductKey(rawKey);
   if ("error" in parsed) return { error: parsed.error, status: 400 };
   const { key } = parsed;
-  const conflict = { error: `Key ${key} is already used by another product`, status: 409 };
   try {
-    const { rows } = await query(
-      `WITH old AS (
-         SELECT key FROM products WHERE id = $1
-       ), upd AS (
-         UPDATE products SET key = $2
-         WHERE id = $1
-           AND NOT EXISTS (SELECT 1 FROM product_key_aliases WHERE key = $2 AND product_id <> $1)
-         RETURNING *
-       ), keep_old AS (
-         INSERT INTO product_key_aliases (key, product_id)
-         SELECT old.key, $1 FROM old, upd
-         WHERE old.key IS NOT NULL AND old.key <> $2
-         ON CONFLICT (key) DO NOTHING
-       ), reclaim AS (
-         DELETE FROM product_key_aliases
-         WHERE key = $2 AND product_id = $1 AND EXISTS (SELECT 1 FROM upd)
-       )
-       SELECT * FROM upd`,
-      [productId, key]
-    );
-    if (rows.length > 0) return { product: rows[0] };
+    const { rows } = await query("UPDATE products SET key = $2 WHERE id = $1 RETURNING *", [productId, key]);
+    return rows.length > 0 ? { product: rows[0] } : { error: "Not found", status: 404 };
   } catch (err) {
-    if (isUniqueViolation(err)) return conflict;
+    if (isKeyConflict(err)) return { error: `Key ${key} is already used by another product`, status: 409 };
     throw err;
   }
-  const { rows: exists } = await query("SELECT 1 FROM products WHERE id = $1", [productId]);
-  return exists.length === 0 ? { error: "Not found", status: 404 } : conflict;
+}
+
+/**
+ * Whether an error is a product key that is already taken, as opposed to
+ * some other unique constraint.
+ * @param {unknown} err
+ */
+function isKeyConflict(err) {
+  if (!isUniqueViolation(err)) return false;
+  const constraint = /** @type {any} */ (err).constraint;
+  return constraint === "products_key_idx" || constraint === "product_keys_pkey";
 }
 
 /**
@@ -330,12 +351,7 @@ async function resolveCardRef(query, raw) {
      FROM card_numbers cn
      JOIN cards c ON c.id = cn.card_id
      WHERE cn.number = $2
-       AND cn.product_id IN (
-         SELECT id FROM products WHERE key = $1
-         UNION
-         SELECT product_id FROM product_key_aliases WHERE key = $1
-       )
-     LIMIT 1`,
+       AND cn.product_id = (SELECT product_id FROM product_keys WHERE key = $1)`,
     [ref.key, ref.number]
   );
   return rows.length > 0 ? rows[0].card_id : null;
@@ -351,5 +367,6 @@ module.exports = {
   ensureProductKeys,
   keyForNewProduct,
   changeProductKey,
+  isKeyConflict,
   resolveCardRef,
 };
