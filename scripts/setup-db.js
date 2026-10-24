@@ -8,6 +8,7 @@
 const { sql, db, end } = require("../src/lib/sql");
 const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
 const { ensureDefaultColumnsSetting } = require("../src/lib/default-columns");
+const { CARD_NUMBER_MIGRATION, ensureProductKeys } = require("../src/lib/card-keys");
 
 async function setup() {
   await sql`
@@ -89,6 +90,9 @@ async function setup() {
   // is named. Products that predate it get their `development` board, once,
   // atomically with adding the column (see default-board-migration.js).
   await db.query(DEFAULT_BOARD_MIGRATION);
+  // Migration: per-product card numbers and product keys (see card-keys.js)
+  await db.query(CARD_NUMBER_MIGRATION);
+  await ensureProductKeys((text, values) => db.query(text, values));
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,

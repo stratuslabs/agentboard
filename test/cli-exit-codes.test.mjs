@@ -31,7 +31,8 @@ function argsFor(key) {
   const accepts = COMMAND_FLAGS[key];
   if (accepts.includes("product")) flags.push("--product", "p");
   if (accepts.includes("file")) flags.push("--file", attachment);
-  if (accepts.includes("key")) flags.push("--key", "k", "--value", "v");
+  if (accepts.includes("key")) flags.push("--key", "k");
+  if (accepts.includes("value")) flags.push("--value", "v");
   if (accepts.includes("name")) flags.push("--name", "N");
   if (accepts.includes("ids")) flags.push("--ids", "1,2");
   if (accepts.includes("column") && !accepts.includes("product")) flags.push("--column", "todo");

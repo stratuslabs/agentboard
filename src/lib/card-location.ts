@@ -1,4 +1,5 @@
-import { sql } from "@/lib/sql";
+import { sql, db } from "@/lib/sql";
+import { resolveCardRef } from "@/lib/card-keys";
 
 /** Largest value a Postgres INTEGER (and so a SERIAL card id) can hold. */
 const MAX_CARD_ID = 2147483647;
@@ -16,10 +17,21 @@ export function parseCardId(raw: string | number): number | null {
   return id <= MAX_CARD_ID ? id : null;
 }
 
+/**
+ * The internal id for a card reference from a URL or the CLI: a numeric id,
+ * or a readable key like AB-142 (any case, old keys and pre-move numbers
+ * included). Null when it names no card, so a route can answer 404 without
+ * ever passing the raw text to a query.
+ */
+export async function cardIdFromRef(raw: string | number): Promise<number | null> {
+  return resolveCardRef((text: string, values?: unknown[]) => db.query(text, values), raw);
+}
+
 // A card joined to the column, board, product and org it lives on, so a caller
 // that just moved it can see where it landed without a second request.
+// Accepts a numeric id or a readable key; `key` is the card's current one.
 export async function getCardWithLocation(rawId: string | number) {
-  const id = parseCardId(rawId);
+  const id = await cardIdFromRef(rawId);
   if (id === null) return null;
   const { rows } = await sql`
     SELECT cards.*,
@@ -27,6 +39,9 @@ export async function getCardWithLocation(rawId: string | number) {
       col.slug AS column_slug, col.name AS column_name,
       b.id AS board_id, b.slug AS board_slug, b.name AS board_name,
       p.id AS product_id, p.slug AS product_slug, p.name AS product_name,
+      p.key AS product_key,
+      CASE WHEN p.key IS NOT NULL AND cards.number IS NOT NULL
+        THEN p.key || '-' || cards.number END AS key,
       o.slug AS org_slug,
       (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id) AS subtask_total,
       (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id AND st.done) AS subtask_done

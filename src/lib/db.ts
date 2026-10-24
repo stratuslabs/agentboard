@@ -4,6 +4,7 @@ import { DEFAULT_COLUMNS, ensureDefaultColumnsSetting } from "@/lib/default-colu
 import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
 import { slugify } from "@/lib/slug";
 import { planColumnReslug } from "@/lib/column-slug";
+import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "@/lib/card-keys";
 
 let initialized = false;
 
@@ -153,6 +154,11 @@ export async function ensureTables() {
       `;
     }
   }
+  // Migration: human-readable card ids. Products get a key (AB) and a
+  // counter, cards a per-product number (AB-142), assigned by a trigger and
+  // backfilled for existing cards in one atomic statement (see card-keys.js).
+  await db.query(CARD_NUMBER_MIGRATION);
+  await ensureProductKeys((text, values) => db.query(text, values));
   await sql`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,

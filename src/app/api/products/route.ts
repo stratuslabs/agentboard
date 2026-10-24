@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
+import { sql, db } from "@/lib/sql";
 import { initDb, slugify, createDefaultBoards } from "@/lib/db";
 import { suggestEmoji } from "@/lib/emoji-suggest";
+import { keyForNewProduct } from "@/lib/card-keys";
 
 export async function GET(request: NextRequest) {
   await initDb();
@@ -18,9 +19,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   await initDb();
-  const { org_id, name, emoji } = await request.json();
+  const { org_id, name, emoji, key: requestedKey } = await request.json();
   if (!org_id || !name) {
     return NextResponse.json({ error: "org_id and name are required" }, { status: 400 });
+  }
+  // The prefix for its cards' readable ids (AB-142): the one asked for, or
+  // one derived from the name.
+  const key = await keyForNewProduct((text: string, values?: unknown[]) => db.query(text, values), name, requestedKey);
+  if ("error" in key) {
+    return NextResponse.json({ error: key.error }, { status: key.status });
   }
 
   const slug = slugify(name);
@@ -28,8 +35,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const { rows } = await sql`
-      INSERT INTO products (org_id, name, slug, emoji, position)
-      VALUES (${org_id}, ${name}, ${slug}, ${emoji || suggestEmoji(name)}, ${maxRows[0].max + 1})
+      INSERT INTO products (org_id, name, slug, emoji, position, key)
+      VALUES (${org_id}, ${name}, ${slug}, ${emoji || suggestEmoji(name)}, ${maxRows[0].max + 1}, ${key.key})
       RETURNING *
     `;
 
@@ -41,6 +48,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(created[0], { status: 201 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
+    if (msg.includes("products_key_idx")) {
+      return NextResponse.json({ error: `Key ${key.key} is already used by another product` }, { status: 409 });
+    }
     if (msg.includes("unique") || msg.includes("duplicate")) {
       return NextResponse.json({ error: "Product already exists in this org" }, { status: 409 });
     }

@@ -67,9 +67,9 @@ const COMMAND_FLAGS = {
   "org rename": ["name"],
   "org reorder": ["ids"],
   "product list": ["org"],
-  "product add": ["org", "emoji"],
+  "product add": ["org", "emoji", "key"],
   "product remove": [],
-  "product rename": ["name", "emoji"],
+  "product rename": ["name", "emoji", "key"],
   "product move": ["org"],
   "product reorder": ["ids"],
   "board list": ["product"],
@@ -477,9 +477,15 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   today                                Tasks due today
   past-due                             Overdue tasks
 
+Card ids:
+  <id> is a card's number or its readable key: 142, AB-142 or ab-142.
+  A card that moved to another product still answers to its old key.
+
 Management Commands:
   org list|add|remove|rename|reorder
   product list|add|remove|rename|move|reorder
+    product add --org <slug> <name> [--key <KEY>]   Key prefixes card ids (AB-142)
+    product rename <slug> --key <KEY>               Old key keeps working
   board list|add|remove|rename|reorder|view
   column list|add|remove|rename
   member list|add|remove|update
@@ -816,6 +822,7 @@ async function main() {
             org_id: orgId,
             name,
             emoji: flags.emoji,
+            key: flags.key,
           }),
           flags
         );
@@ -826,12 +833,13 @@ async function main() {
         output(await req("DELETE", `/api/products/${productId}`), flags);
       } else if (sub === "rename") {
         const slug = positional[2];
-        if (!slug) die("Usage: agentboard product rename <slug> [--name <n>] [--emoji <e>]");
+        if (!slug) die("Usage: agentboard product rename <slug> [--name <n>] [--emoji <e>] [--key <KEY>]");
         const productId = await resolve.resolveProductId(slug);
         const body = {};
         if (flags.name) body.name = flags.name;
         if (flags.emoji) body.emoji = flags.emoji;
-        if (Object.keys(body).length === 0) die("Provide --name or --emoji");
+        if (flags.key) body.key = flags.key;
+        if (Object.keys(body).length === 0) die("Provide --name, --emoji or --key");
         output(await req("PATCH", `/api/products/${productId}`, body), flags);
       } else if (sub === "move") {
         const slug = positional[2];

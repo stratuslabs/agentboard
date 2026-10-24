@@ -1,8 +1,9 @@
 import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
+import { sql, db } from "@/lib/sql";
 import { boardIdsUnderProduct, notifyBoards } from "@/lib/realtime/notify";
 import { parseDefaultBoardId } from "@/lib/default-board";
+import { changeProductKey, normalizeProductKey } from "@/lib/card-keys";
 
 export async function PATCH(
   request: NextRequest,
@@ -19,7 +20,11 @@ export async function PATCH(
   if ("error" in defaultBoard) {
     return NextResponse.json({ error: defaultBoard.error }, { status: 400 });
   }
-  if (!body.name && !body.emoji && !defaultBoard.present) {
+  const keyChange = body.key === undefined ? null : normalizeProductKey(body.key);
+  if (keyChange && "error" in keyChange) {
+    return NextResponse.json({ error: keyChange.error }, { status: 400 });
+  }
+  if (!body.name && !body.emoji && !defaultBoard.present && !keyChange) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
   const { rows: existing } = await sql`SELECT id FROM products WHERE id = ${productId}`;
@@ -38,6 +43,14 @@ export async function PATCH(
     }
   }
 
+  // First, since it is the one change that can still be refused (a key in
+  // use). The old key stays an alias, so existing AB-142 links keep working.
+  if (keyChange) {
+    const changed = await changeProductKey((text: string, values?: unknown[]) => db.query(text, values), productId, keyChange.key);
+    if ("error" in changed) {
+      return NextResponse.json({ error: changed.error }, { status: changed.status });
+    }
+  }
   if (body.name) {
     await sql`UPDATE products SET name = ${body.name}, slug = ${slugify(body.name)} WHERE id = ${productId}`;
   }
