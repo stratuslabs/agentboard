@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
 import { getCardWithLocation } from "@/lib/card-location";
+import { checkCardText } from "@/lib/card-text";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -41,6 +42,10 @@ export async function PATCH(
   await initDb();
   const { id } = await params;
   const body = await request.json();
+  const textError = checkCardText(body);
+  if (textError) {
+    return NextResponse.json({ error: textError }, { status: 400 });
+  }
 
   const { rows: existing } = await sql`SELECT * FROM cards WHERE id = ${id}`;
   if (existing.length === 0) {

@@ -2,6 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
+import { checkCardText } from "@/lib/card-text";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
 
@@ -81,6 +82,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   await initDb();
   const body = await request.json();
+  const textError = checkCardText(body);
+  if (textError) {
+    return NextResponse.json({ error: textError }, { status: 400 });
+  }
   const { column_id, title, description, assignee, priority, labels, github_issue_url, github_pr_url, due_date } = body;
   let { assignee_id } = body;
 
