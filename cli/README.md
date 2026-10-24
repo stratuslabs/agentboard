@@ -90,9 +90,9 @@ agentboard org reorder --ids 1,2,3
 
 # Products
 agentboard product list [--org <slug>]
-agentboard product add --org <slug> "My Product" [--emoji "🚀"]
+agentboard product add --org <slug> "My Product" [--emoji "🚀"] [--key MP]
 agentboard product remove <slug>
-agentboard product rename <slug> --name "New Name" [--emoji "🎯"]
+agentboard product rename <slug> --name "New Name" [--emoji "🎯"] [--key NN]
 agentboard product move <slug> --org <new-org-slug>
 agentboard product reorder --ids 1,2,3
 
@@ -149,6 +149,8 @@ agentboard settings --key theme --value dark
 agentboard preferences                    # view all
 agentboard preferences --key key --value val
 ```
+
+Every card has a readable id made of its product's key and a per-product number, like `AB-142`, shown as `key` in `show` and `--json` output. Anywhere a command takes a card `<id>`, the readable id works too, in any case (`show ab-142`), as does the plain number. A product's key is derived from its name when it is created (AgentBoard is `AB`) and can be set with `--key` on `product add` or `product rename`. Old keys keep working after a rename, and a card moved to another product gets a new number there while its old id still finds it.
 
 `task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
 

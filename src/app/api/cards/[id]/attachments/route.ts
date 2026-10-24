@@ -2,6 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
+import { cardIdFromRef } from "@/lib/card-location";
 
 // Attachment bodies are stored inline in Postgres, so cap them to keep a single
 // request from bloating the database.
@@ -13,7 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const { id } = await params;
+  const id = await cardIdFromRef((await params).id);
+  if (id === null) return NextResponse.json([]);
   const { rows } = await sql`SELECT * FROM attachments WHERE card_id = ${id} ORDER BY created_at`;
   return NextResponse.json(rows);
 }
@@ -23,7 +25,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const { id } = await params;
+  const id = await cardIdFromRef((await params).id);
   const { filename, content } = await request.json();
 
   if (!filename || !content) {
@@ -51,8 +53,8 @@ export async function POST(
     );
   }
 
-  const { rows: cardRows } = await sql`SELECT id FROM cards WHERE id = ${id}`;
-  if (cardRows.length === 0) {
+  const { rows: cardRows } = id === null ? { rows: [] } : await sql`SELECT id FROM cards WHERE id = ${id}`;
+  if (id === null || cardRows.length === 0) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 

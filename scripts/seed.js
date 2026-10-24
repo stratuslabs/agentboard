@@ -1,4 +1,5 @@
-const { sql, end } = require("../src/lib/sql");
+const { sql, db, end } = require("../src/lib/sql");
+const { ensureProductKeys } = require("../src/lib/card-keys");
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -93,6 +94,10 @@ async function seed() {
       }
     }
   }
+
+  // Products inserted here have no key (AB) yet, and the app only fills in
+  // missing keys when it starts.
+  await ensureProductKeys((text, values) => db.query(text, values));
 
   console.log("Seed data inserted successfully.");
 }

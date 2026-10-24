@@ -2,7 +2,7 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
-import { getCardWithLocation } from "@/lib/card-location";
+import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
 import { checkCardText } from "@/lib/card-text";
 
 const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
@@ -40,7 +40,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const { id } = await params;
+  // A numeric id or a readable key (AB-142); from here on, the internal id.
+  const id = await cardIdFromRef((await params).id);
+  if (id === null) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await request.json();
   const textError = checkCardText(body);
   if (textError) {
@@ -94,21 +98,13 @@ export async function PATCH(
   values.push(id);
 
   const query = `UPDATE cards SET ${sets.join(", ")} WHERE id = $${paramIdx} RETURNING *`;
-  const { rows } = await pool.query(query, values);
-
-  // Attach member info
-  if (rows[0].assignee_id) {
-    const { rows: memberRows } = await sql`SELECT name, type, color FROM members WHERE id = ${rows[0].assignee_id}`;
-    if (memberRows.length > 0) {
-      rows[0].assignee_name = memberRows[0].name;
-      rows[0].assignee_type = memberRows[0].type;
-      rows[0].assignee_color = memberRows[0].color;
-    }
-  }
+  await pool.query(query, values);
 
   await notifyBoards([boardBefore, await boardIdForCard(id)]);
 
-  return NextResponse.json(rows[0]);
+  // Re-read with member, location and readable key: a column change may have
+  // given the card a new number in another product.
+  return NextResponse.json(await getCardWithLocation(id));
 }
 
 export async function DELETE(
@@ -116,7 +112,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await initDb();
-  const { id } = await params;
+  const id = await cardIdFromRef((await params).id);
+  if (id === null) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   // Resolved first: once the row is gone there is no board left to name.
   const boardId = await boardIdForCard(id);
   const result = await sql`DELETE FROM cards WHERE id = ${id}`;
