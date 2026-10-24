@@ -348,6 +348,27 @@ test("deleting a card or a product leaves no dangling numbers", { skip }, async 
   assert.equal(rows[0].n, 0);
 });
 
+test("a deleted product's keys are never handed out again", { skip }, async () => {
+  // Runs after the test above deleted Ops, which had OPS and OPZ.
+  const { rows: held } = await query("SELECT key, product_id FROM product_keys WHERE key IN ('OPS', 'OPZ') ORDER BY key");
+  assert.deepEqual(held, [{ key: "OPS", product_id: null }, { key: "OPZ", product_id: null }]);
+  assert.equal(await resolveCardRef(query, "OPS-1"), null);
+
+  const org = (await query("SELECT org_id FROM products WHERE id = $1", [ids.agentboard.product])).rows[0].org_id;
+  const insert = async (/** @type {string} */ key) =>
+    (await query("INSERT INTO products (org_id, name, slug, key) VALUES ($1, 'Ops', 'ops', $2) RETURNING *", [org, key])).rows[0];
+  assert.deepEqual(await createProductWithKey(query, "Ops", "OPS", insert), { error: "Key OPS is already used by another product", status: 409 });
+  const again = await createProductWithKey(query, "Ops", undefined, insert);
+  assert.equal(again.key, "OPS2");
+  const board = (await query("INSERT INTO boards (product_id, name, slug) VALUES ($1, 'Dev', 'dev') RETURNING id", [again.product.id])).rows[0];
+  const column = (await query("INSERT INTO columns (board_id, name, slug) VALUES ($1, 'Todo', 'todo') RETURNING id", [board.id])).rows[0];
+  const card = await insertCard(column.id, "new ops card");
+  assert.equal(card.number, 1);
+  assert.equal(await resolveCardRef(query, "OPS-1"), null, "the old key still points at nothing");
+  assert.equal(await resolveCardRef(query, "OPS2-1"), card.id);
+  await query("DELETE FROM products WHERE id = $1", [again.product.id]);
+});
+
 test("a failed insert spends no number", { skip }, async () => {
   const { rows: seq } = await query("SELECT card_seq FROM products WHERE id = $1", [ids.agentboard.product]);
   await assert.rejects(query("INSERT INTO cards (column_id, title) VALUES ($1, NULL)", [ids.agentboard.column]));
