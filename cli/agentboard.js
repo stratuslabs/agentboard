@@ -1241,7 +1241,13 @@ async function main() {
       }[sub];
       if (!usage) die(`Unknown subtask command: ${sub}. Use: list, add, done, undo, rename, remove`);
       if (!id) die(usage);
-      if (!/^[1-9][0-9]*$/.test(id)) die(`${sub === "list" || sub === "add" ? "card" : "subtask"} id must be a number. ${usage}`);
+      // A card is named by its number or readable key (AB-142); a sub-task
+      // only by its number. Catches a title given where the id belongs.
+      const onCard = sub === "list" || sub === "add";
+      const idPattern = onCard ? /^([1-9][0-9]*|[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]*)$/ : /^[1-9][0-9]*$/;
+      if (!idPattern.test(id)) {
+        die(`${onCard ? "card id must be a number or a key like AB-142" : "subtask id must be a number"}. ${usage}`);
+      }
       if ((sub === "add" || sub === "rename") && !rest) die(usage);
 
       if (sub === "list") {
