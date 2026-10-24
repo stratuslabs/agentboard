@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { Button, IconButton, cx } from "../ui";
+import { DEFAULT_COLUMNS } from "@/lib/default-columns";
 
 interface ColumnDef {
   name: string;
@@ -10,13 +11,7 @@ interface ColumnDef {
 }
 
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const FALLBACK_COLUMNS: ColumnDef[] = [
-  { name: "Backlog", color: "#6B7280" },
-  { name: "Todo", color: "#3B82F6" },
-  { name: "In Progress", color: "#F59E0B" },
-  { name: "In Review", color: "#8B5CF6" },
-  { name: "Done", color: "#10B981" },
-];
+const FALLBACK_COLUMNS: ColumnDef[] = DEFAULT_COLUMNS;
 
 function useSetting<T>(key: string, fallback: T) {
   const [value, setValue] = useState<T | null>(null);

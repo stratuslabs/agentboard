@@ -1,5 +1,6 @@
 import { sql, db } from "@/lib/sql";
 import { DEFAULT_BOARD_MIGRATION } from "@/lib/default-board-migration";
+import { DEFAULT_COLUMNS, ensureDefaultColumnsSetting } from "@/lib/default-columns";
 import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
 import { slugify } from "@/lib/slug";
 import { planColumnReslug } from "@/lib/column-slug";
@@ -194,29 +195,14 @@ export async function ensureTables() {
     VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
     ON CONFLICT DO NOTHING
   `;
-  await sql`
-    INSERT INTO settings (key, value)
-    VALUES ('default_columns', ${JSON.stringify([
-      { name: "Backlog", color: "#6B7280" },
-      { name: "Todo", color: "#3B82F6" },
-      { name: "In Progress", color: "#F59E0B" },
-      { name: "In Review", color: "#8B5CF6" },
-      { name: "Done", color: "#10B981" },
-    ])})
-    ON CONFLICT DO NOTHING
-  `;
+  // Fresh installs get the default list; an untouched old default gains Blocked.
+  await ensureDefaultColumnsSetting(sql);
 }
 
 export { slugify };
 
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const FALLBACK_COLUMNS = [
-  { name: "Backlog", color: "#6B7280" },
-  { name: "Todo", color: "#3B82F6" },
-  { name: "In Progress", color: "#F59E0B" },
-  { name: "In Review", color: "#8B5CF6" },
-  { name: "Done", color: "#10B981" },
-];
+const FALLBACK_COLUMNS = DEFAULT_COLUMNS;
 
 export async function createDefaultBoards(productId: number) {
   // Read default boards from settings
