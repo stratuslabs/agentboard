@@ -13,7 +13,9 @@
  *    and its old KEY-N still finds it;
  *  - a card that moves back gets its old number back;
  *  - a product whose key changes keeps the old one in `product_keys`, so
- *    links that used it keep working, and no other product can take it.
+ *    links that used it keep working, and no other product can take it;
+ *  - a deleted product's keys stay taken, owned by nobody, so its old links
+ *    point at nothing instead of at a new product's cards.
  *
  * Numbers are assigned by a database trigger, not by the routes, so every way
  * a card is created or moved (API, CLI, a script, the hosted edition) gets
@@ -139,9 +141,11 @@ BEGIN
   -- Every key a product has ever had, its current one included. One table,
   -- so one primary key keeps a key from ever meaning two products: a
   -- product's old keys stay its own, and links made with them keep working.
+  -- A deleted product's keys stay as tombstones (product_id NULL) that no
+  -- product can take, so AB-1 never comes to mean an unrelated card.
   CREATE TABLE IF NOT EXISTS product_keys (
     key TEXT PRIMARY KEY,
-    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE
+    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL
   );
   INSERT INTO product_keys (key, product_id)
     SELECT key, id FROM products WHERE key IS NOT NULL
