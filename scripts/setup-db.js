@@ -7,6 +7,7 @@
 
 const { sql, db, end } = require("../src/lib/sql");
 const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
+const { ensureDefaultColumnsSetting } = require("../src/lib/default-columns");
 
 async function setup() {
   await sql`
@@ -130,17 +131,8 @@ async function setup() {
     VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
     ON CONFLICT DO NOTHING
   `;
-  await sql`
-    INSERT INTO settings (key, value)
-    VALUES ('default_columns', ${JSON.stringify([
-      { name: "Backlog", color: "#6B7280" },
-      { name: "Todo", color: "#3B82F6" },
-      { name: "In Progress", color: "#F59E0B" },
-      { name: "In Review", color: "#8B5CF6" },
-      { name: "Done", color: "#10B981" },
-    ])})
-    ON CONFLICT DO NOTHING
-  `;
+  // Fresh installs get the default list; an untouched old default gains Blocked.
+  await ensureDefaultColumnsSetting(sql);
 
   console.log("Database setup complete (PostgreSQL).");
 }

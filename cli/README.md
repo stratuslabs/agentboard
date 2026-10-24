@@ -51,6 +51,8 @@ agentboard new "Fix bug" --priority urgent --assignee MyAgent --due 2025-03-15
 
 # Update status (backlog | todo | doing | in-progress | in-review | done | blocked)
 agentboard status <id> doing
+# A board made before Blocked was a default column needs one first:
+#   agentboard column add "Blocked" --color "#EF4444"
 agentboard status <id> done
 
 # View task details

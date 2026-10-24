@@ -5,13 +5,7 @@ function slugify(text) {
 }
 
 const DEFAULT_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const DEFAULT_COLUMNS = [
-  { name: "Backlog", color: "#6B7280" },
-  { name: "Todo", color: "#3B82F6" },
-  { name: "In Progress", color: "#F59E0B" },
-  { name: "In Review", color: "#8B5CF6" },
-  { name: "Done", color: "#10B981" },
-];
+const { DEFAULT_COLUMNS } = require("../src/lib/default-columns");
 
 const seedData = {
   orgs: [

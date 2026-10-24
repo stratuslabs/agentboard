@@ -2,14 +2,8 @@ import { initDb, slugify } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { notifyBoard } from "@/lib/realtime/notify";
+import { DEFAULT_COLUMNS } from "@/lib/default-columns";
 
-const DEFAULT_COLUMNS = [
-  { name: "Backlog", color: "#6B7280" },
-  { name: "Todo", color: "#3B82F6" },
-  { name: "In Progress", color: "#F59E0B" },
-  { name: "In Review", color: "#8B5CF6" },
-  { name: "Done", color: "#10B981" },
-];
 
 export async function GET(request: NextRequest) {
   await initDb();
