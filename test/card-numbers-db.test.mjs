@@ -19,6 +19,7 @@ import {
   keyForNewProduct,
   resolveCardRef,
 } from "../src/lib/card-keys.js";
+import { updateProduct } from "../src/lib/product-update.js";
 
 const require = createRequire(import.meta.url);
 const URL_VAR = "AGENTBOARD_TEST_DATABASE_URL";
@@ -49,6 +50,23 @@ async function query(text, values) {
     // Like pool.query: a client that errored is discarded, not reused.
     client.release(true);
     throw err;
+  }
+}
+
+/** A connection of its own, for a transaction. Release it when done. */
+async function scopedClient() {
+  const client = await pool.connect();
+  await client.query(`SET search_path TO ${SCHEMA}`);
+  scoped.add(client);
+  return client;
+}
+
+async function withScoped(fn) {
+  const client = await scopedClient();
+  try {
+    return await fn(client);
+  } finally {
+    client.release(true);
   }
 }
 
@@ -224,6 +242,57 @@ test("a changed key keeps the old one as an alias", { skip }, async () => {
   const { rows: aliases } = await query("SELECT key FROM product_key_aliases WHERE product_id = $1 ORDER BY key", [ids.agentboard.product]);
   assert.deepEqual(aliases.map((a) => a.key), ["AGB"]);
   assert.equal(await resolveCardRef(query, "AGB-1"), ids.oldA.id);
+});
+
+// Two renames racing: one product hands its key off while another asks for
+// it. Needs two real connections, so not against pglite-socket.
+const concurrent = skip || (Number(process.env.TEST_POOL_MAX || 10) < 2 ? "needs two connections" : false);
+test("a key being handed off can't be taken by a concurrent rename", { skip: concurrent }, async () => {
+  const a = await scopedClient();
+  const b = await scopedClient();
+  let taking;
+  try {
+    await a.query("BEGIN");
+    const moved = await changeProductKey((t, v) => a.query(t, v), ids["agent-builder"].product, "ZED");
+    assert.equal(moved.product.key, "ZED");
+    // Waits on a's uncommitted change, then has to see AB2 is still a's.
+    taking = changeProductKey((t, v) => b.query(t, v), ids.ops.product, "AB2");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await a.query("COMMIT");
+    assert.deepEqual(await taking, { error: "Key AB2 is already used by another product", status: 409 });
+  } finally {
+    await taking?.catch(() => {});
+    a.release(true);
+    b.release(true);
+  }
+  const { rows } = await query("SELECT key FROM products WHERE id = $1", [ids.ops.product]);
+  assert.equal(rows[0].key, "OPS");
+  assert.equal(await resolveCardRef(query, "AB2-1"), ids.oldX.id, "the old key still means its own product");
+  assert.equal(await resolveCardRef(query, "ZED-1"), ids.oldX.id);
+});
+
+test("a product update that fails partway changes nothing", { skip }, async () => {
+  const client = await scopedClient();
+  let result;
+  try {
+    // The key is free; the name's slug belongs to another product.
+    result = await updateProduct(client, ids.ops.product, { key: "NEWK", name: "AgentBoard" });
+  } finally {
+    // Discarded, not reused: pglite-socket desyncs a client after an error.
+    client.release(true);
+  }
+  assert.deepEqual(result, { error: "Product already exists in this org", status: 409 });
+  const { rows } = await query("SELECT key, name FROM products WHERE id = $1", [ids.ops.product]);
+  assert.deepEqual(rows[0], { key: "OPS", name: "Ops" });
+  const ops = await insertCard(ids.ops.column, "probe");
+  assert.equal(await resolveCardRef(query, `NEWK-${ops.number}`), null, "NEWK was not kept as a key");
+  await query("DELETE FROM cards WHERE id = $1", [ops.id]);
+
+  // The same call with nothing in the way applies both.
+  const ok = await withScoped((c) => updateProduct(c, ids.ops.product, { key: "OPZ", name: "Ops Two" }));
+  assert.equal(ok.product.key, "OPZ");
+  assert.equal(ok.product.name, "Ops Two");
+  await withScoped((c) => updateProduct(c, ids.ops.product, { key: "OPS", name: "Ops" }));
 });
 
 test("deleting a card or a product leaves no dangling numbers", { skip }, async () => {
