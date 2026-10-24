@@ -7,8 +7,8 @@
 
 const { sql, db, end } = require("../src/lib/sql");
 const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
-const { ensureDefaultColumnsSetting } = require("../src/lib/default-columns");
 const { CARD_NUMBER_MIGRATION, ensureProductKeys } = require("../src/lib/card-keys");
+const { TENANCY_MIGRATION, ensureDefaultTeam, ensureTeamDefaults } = require("../src/lib/tenancy");
 
 async function setup() {
   await sql`
@@ -90,6 +90,22 @@ async function setup() {
   // is named. Products that predate it get their `development` board, once,
   // atomically with adding the column (see default-board-migration.js).
   await db.query(DEFAULT_BOARD_MIGRATION);
+  await sql`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  // Migration: tenancy, before card numbers (see tenancy.js)
+  await db.query(TENANCY_MIGRATION);
   // Migration: per-product card numbers and product keys (see card-keys.js)
   await db.query(CARD_NUMBER_MIGRATION);
   await ensureProductKeys((text, values) => db.query(text, values));
@@ -116,27 +132,10 @@ async function setup() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
-  await sql`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS user_preferences (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `;
-  await sql`
-    INSERT INTO settings (key, value)
-    VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
-    ON CONFLICT DO NOTHING
-  `;
-  // Fresh installs get the default list; an untouched old default gains Blocked.
-  await ensureDefaultColumnsSetting(sql);
+  // The self-hosted team and its default settings (the app also does this on
+  // its first request). An untouched old default column list gains Blocked.
+  const query = (text, values) => db.query(text, values);
+  await ensureTeamDefaults(query, await ensureDefaultTeam(query));
 
   console.log("Database setup complete (PostgreSQL).");
 }

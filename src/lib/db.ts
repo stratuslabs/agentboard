@@ -1,10 +1,11 @@
 import { sql, db } from "@/lib/sql";
 import { DEFAULT_BOARD_MIGRATION } from "@/lib/default-board-migration";
-import { DEFAULT_COLUMNS, ensureDefaultColumnsSetting } from "@/lib/default-columns";
+import { DEFAULT_COLUMNS } from "@/lib/default-columns";
 import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
 import { slugify } from "@/lib/slug";
 import { planColumnReslug } from "@/lib/column-slug";
 import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "@/lib/card-keys";
+import { TENANCY_MIGRATION } from "@/lib/tenancy";
 
 let initialized = false;
 
@@ -154,6 +155,24 @@ export async function ensureTables() {
       `;
     }
   }
+  await sql`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  // Migration: tenancy. A teams table and team_id on the root tables, an
+  // existing install moved into one default team, uniques per team (see
+  // tenancy.js). Before card numbers, whose product keys are per team.
+  await db.query(TENANCY_MIGRATION);
   // Migration: human-readable card ids. Products get a key (AB) and a
   // counter, cards a per-product number (AB-142), assigned by a trigger and
   // backfilled for existing cards in one atomic statement (see card-keys.js).
@@ -182,27 +201,8 @@ export async function ensureTables() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
-  await sql`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS user_preferences (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW()
-    )
-  `;
-  await sql`
-    INSERT INTO settings (key, value)
-    VALUES ('default_boards', '["Development","Marketing","Sales","Support"]')
-    ON CONFLICT DO NOTHING
-  `;
-  // Fresh installs get the default list; an untouched old default gains Blocked.
-  await ensureDefaultColumnsSetting(sql);
+  // A team's default settings are written when the team is first resolved
+  // (see src/lib/tenant.ts), not here: they belong to a team now.
 }
 
 export { slugify };
@@ -210,13 +210,13 @@ export { slugify };
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
 const FALLBACK_COLUMNS = DEFAULT_COLUMNS;
 
-export async function createDefaultBoards(productId: number) {
-  // Read default boards from settings
-  const { rows: boardSettings } = await sql`SELECT value FROM settings WHERE key = 'default_boards'`;
+export async function createDefaultBoards(teamId: number, productId: number) {
+  // Read the team's default boards from settings
+  const { rows: boardSettings } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_boards'`;
   const boardNames: string[] = boardSettings.length > 0 ? JSON.parse(boardSettings[0].value) : FALLBACK_BOARDS;
 
-  // Read default columns from settings
-  const { rows: colSettings } = await sql`SELECT value FROM settings WHERE key = 'default_columns'`;
+  // Read the team's default columns from settings
+  const { rows: colSettings } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_columns'`;
   const columns: { name: string; color: string }[] = colSettings.length > 0 ? JSON.parse(colSettings[0].value) : FALLBACK_COLUMNS;
 
   for (let i = 0; i < boardNames.length; i++) {

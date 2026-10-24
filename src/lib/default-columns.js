@@ -66,26 +66,31 @@ function upgradeDefaultColumnsSetting(stored) {
 }
 
 /**
- * Stores the default list on a fresh install, and upgrades an install still on
- * the untouched old default. The update compares against the value it read, so
- * an edit saved in between is never overwritten. Shared by `ensureTables()` in
- * src/lib/db.ts and scripts/setup-db.js so the two cannot drift.
- * @param {(strings: TemplateStringsArray, ...values: unknown[]) => Promise<{ rows: { value: string }[] }>} sql
+ * Stores the default list for a team on a fresh install, and upgrades a team
+ * still on the untouched old default. The update compares against the value
+ * it read, so an edit saved in between is never overwritten. Shared by
+ * `ensureTables()` in src/lib/db.ts and scripts/setup-db.js (through
+ * ensureTeamDefaults in tenancy.js) so the two cannot drift.
+ * @param {(text: string, values?: unknown[]) => Promise<{ rows: any[] }>} query
+ * @param {number} teamId
  */
-async function ensureDefaultColumnsSetting(sql) {
-  await sql`
-    INSERT INTO settings (key, value)
-    VALUES ('default_columns', ${JSON.stringify(DEFAULT_COLUMNS)})
-    ON CONFLICT DO NOTHING
-  `;
-  const { rows } = await sql`SELECT value FROM settings WHERE key = 'default_columns'`;
+async function ensureDefaultColumnsSetting(query, teamId) {
+  await query(
+    `INSERT INTO settings (team_id, key, value) VALUES ($1, 'default_columns', $2)
+     ON CONFLICT DO NOTHING`,
+    [teamId, JSON.stringify(DEFAULT_COLUMNS)]
+  );
+  const { rows } = await query(
+    "SELECT value FROM settings WHERE team_id = $1 AND key = 'default_columns'",
+    [teamId]
+  );
   const stored = rows[0] ? rows[0].value : null;
   const upgraded = upgradeDefaultColumnsSetting(stored);
   if (upgraded !== null) {
-    await sql`
-      UPDATE settings SET value = ${upgraded}
-      WHERE key = 'default_columns' AND value = ${stored}
-    `;
+    await query(
+      "UPDATE settings SET value = $1 WHERE team_id = $2 AND key = 'default_columns' AND value = $3",
+      [upgraded, teamId, stored]
+    );
   }
 }
 

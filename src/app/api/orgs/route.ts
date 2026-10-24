@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { initDb } from "@/lib/db";
 import { isReservedOrgSlug, orgSlugFromName } from "@/lib/org-slug";
+import { withTenant } from "@/lib/tenant";
 
-export async function GET() {
+export const GET = withTenant(async (_request, { teamId }) => {
   await initDb();
-  const { rows } = await sql`SELECT * FROM organizations ORDER BY position, name`;
+  const { rows } = await sql`SELECT * FROM organizations WHERE team_id = ${teamId} ORDER BY position, name`;
   return NextResponse.json(rows);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const { name, slug: customSlug } = await request.json();
   if (!name) {
@@ -23,12 +24,12 @@ export async function POST(request: NextRequest) {
     );
   }
   const slug = customSlug || orgSlugFromName(name);
-  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM organizations`;
+  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM organizations WHERE team_id = ${teamId}`;
 
   try {
     const { rows } = await sql`
-      INSERT INTO organizations (name, slug, position)
-      VALUES (${name}, ${slug}, ${maxRows[0].max + 1})
+      INSERT INTO organizations (team_id, name, slug, position)
+      VALUES (${teamId}, ${name}, ${slug}, ${maxRows[0].max + 1})
       RETURNING *
     `;
     return NextResponse.json(rows[0], { status: 201 });
@@ -39,4 +40,4 @@ export async function POST(request: NextRequest) {
     }
     throw e;
   }
-}
+});

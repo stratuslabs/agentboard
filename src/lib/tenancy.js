@@ -106,6 +106,10 @@ END
 $migration$;
 `;
 
+const { ensureDefaultColumnsSetting } = require("./default-columns");
+
+const DEFAULT_BOARDS = ["Development", "Marketing", "Sales", "Support"];
+
 /**
  * @typedef {(text: string, values?: unknown[]) => Promise<{ rows: any[], rowCount?: number | null }>} Query
  */
@@ -125,9 +129,26 @@ async function ensureDefaultTeam(query) {
   return rows[0].id;
 }
 
+/**
+ * A team's settings as a fresh install has them: the boards and columns a new
+ * product starts with. Never overwrites one the team has changed.
+ * @param {Query} query
+ * @param {number} teamId
+ */
+async function ensureTeamDefaults(query, teamId) {
+  await query(
+    `INSERT INTO settings (team_id, key, value) VALUES ($1, 'default_boards', $2)
+     ON CONFLICT DO NOTHING`,
+    [teamId, JSON.stringify(DEFAULT_BOARDS)]
+  );
+  await ensureDefaultColumnsSetting(query, teamId);
+}
+
 module.exports = {
+  DEFAULT_BOARDS,
   DEFAULT_TEAM_SLUG,
   ROOT_TABLES,
   TENANCY_MIGRATION,
   ensureDefaultTeam,
+  ensureTeamDefaults,
 };

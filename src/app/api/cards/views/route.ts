@@ -1,8 +1,11 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { withTenant } from "@/lib/tenant";
 
-export async function GET(request: NextRequest) {
+// Every view joins up to organizations and filters on the team, so a member id
+// from another team, like one that doesn't exist, matches no cards.
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const sp = request.nextUrl.searchParams;
   const view = sp.get("view");
@@ -31,7 +34,8 @@ export async function GET(request: NextRequest) {
       JOIN products p ON b.product_id = p.id
       JOIN organizations o ON p.org_id = o.id
       LEFT JOIN members m ON cards.assignee_id = m.id
-      WHERE cards.assignee_id = ${memberId}
+      WHERE o.team_id = ${teamId}
+        AND cards.assignee_id = ${memberId}
         AND cards.due_date < (NOW() AT TIME ZONE ${tz})::date
         AND LOWER(col.name) != 'done'
       ORDER BY cards.due_date ASC, cards.priority, cards.position
@@ -49,7 +53,11 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*)::int AS count
       FROM cards
       JOIN columns col ON cards.column_id = col.id
-      WHERE cards.assignee_id = ${memberId}
+      JOIN boards b ON col.board_id = b.id
+      JOIN products p ON b.product_id = p.id
+      JOIN organizations o ON p.org_id = o.id
+      WHERE o.team_id = ${teamId}
+        AND cards.assignee_id = ${memberId}
         AND cards.due_date < (NOW() AT TIME ZONE ${tz})::date
         AND LOWER(col.name) != 'done'
     `;
@@ -76,7 +84,8 @@ export async function GET(request: NextRequest) {
       JOIN products p ON b.product_id = p.id
       JOIN organizations o ON p.org_id = o.id
       LEFT JOIN members m ON cards.assignee_id = m.id
-      WHERE cards.due_date = (NOW() AT TIME ZONE ${tz})::date
+      WHERE o.team_id = ${teamId}
+        AND cards.due_date = (NOW() AT TIME ZONE ${tz})::date
       ORDER BY p.name, cards.priority, cards.position
     `;
     return NextResponse.json(rows);
@@ -105,7 +114,8 @@ export async function GET(request: NextRequest) {
       JOIN products p ON b.product_id = p.id
       JOIN organizations o ON p.org_id = o.id
       LEFT JOIN members m ON cards.assignee_id = m.id
-      WHERE cards.assignee_id = ${memberId}
+      WHERE o.team_id = ${teamId}
+        AND cards.assignee_id = ${memberId}
         AND LOWER(col.name) != 'done'
       ORDER BY p.name, cards.priority, cards.position
     `;
@@ -113,4 +123,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ error: "Invalid view. Use 'today' or 'assigned'." }, { status: 400 });
-}
+});

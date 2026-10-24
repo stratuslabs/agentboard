@@ -3,28 +3,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { notifyBoard } from "@/lib/realtime/notify";
 import { DEFAULT_COLUMNS } from "@/lib/default-columns";
+import { assertProduct, found, withTenant } from "@/lib/tenant";
 
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
-  const productId = request.nextUrl.searchParams.get("product_id");
+  const rawProductId = request.nextUrl.searchParams.get("product_id");
 
-  if (!productId) {
+  if (!rawProductId) {
     return NextResponse.json({ error: "product_id is required" }, { status: 400 });
   }
+  // Another team's product has no boards, like one that doesn't exist.
+  const productId = await found(assertProduct(teamId, rawProductId));
+  if (productId === null) return NextResponse.json([]);
 
   const { rows } = await sql`SELECT * FROM boards WHERE product_id = ${productId} ORDER BY position`;
   return NextResponse.json(rows);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const body = await request.json();
-  const { product_id, name } = body;
+  const { name } = body;
 
-  if (!product_id || !name) {
+  if (!body.product_id || !name) {
     return NextResponse.json({ error: "product_id and name are required" }, { status: 400 });
   }
+  const product_id = await assertProduct(teamId, body.product_id);
 
   const slug = slugify(name);
 
@@ -49,7 +54,7 @@ export async function POST(request: NextRequest) {
     `;
   }
 
-  await notifyBoard(board.id);
+  await notifyBoard(teamId, board.id);
 
   return NextResponse.json(board, { status: 201 });
-}
+});

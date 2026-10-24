@@ -2,13 +2,11 @@ import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
+import { assertAttachment, withTenantParams } from "@/lib/tenant";
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
+  const id = await assertAttachment(teamId, (await params).id);
   // The owning card is read before the delete, while the row still points at it.
   const { rows: owner } = await sql`SELECT card_id FROM attachments WHERE id = ${id}`;
   const cardId = owner.length > 0 ? owner[0].card_id : null;
@@ -20,8 +18,8 @@ export async function DELETE(
 
   if (cardId !== null) {
     await sql`UPDATE cards SET updated_at = NOW() WHERE id = ${cardId}`;
-    await notifyBoard(await boardIdForCard(cardId));
+    await notifyBoard(teamId, await boardIdForCard(cardId));
   }
 
   return NextResponse.json({ success: true });
-}
+});

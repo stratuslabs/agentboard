@@ -1,8 +1,9 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
+import { withTenant } from "@/lib/tenant";
 
-export async function PATCH(request: NextRequest) {
+export const PATCH = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const { ids } = await request.json(); // ordered array of org IDs
 
@@ -11,8 +12,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   for (let i = 0; i < ids.length; i++) {
-    await sql`UPDATE organizations SET position = ${i} WHERE id = ${ids[i]}`;
+    // Another team's id, like a deleted one, is skipped.
+    await sql`UPDATE organizations SET position = ${i} WHERE id = ${ids[i]} AND team_id = ${teamId}`;
   }
 
   return NextResponse.json({ success: true });
-}
+});

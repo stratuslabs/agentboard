@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { readSnapshot } from "@/lib/sql";
 import { envInt } from "@/lib/env";
+import { assertProduct, found, withTenant } from "@/lib/tenant";
 
 /**
  * Everything a board screen needs, in one request.
@@ -69,16 +70,20 @@ const CARD_COLUMNS = `
  */
 const DELTA_OVERLAP_MS = envInt("BOARD_DELTA_OVERLAP_MS", 2_000, 0);
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const sp = request.nextUrl.searchParams;
-  const productId = sp.get("product_id");
+  const rawProductId = sp.get("product_id");
   const requestedBoardId = sp.get("board_id");
   const updatedSince = sp.get("updated_since");
 
-  if (!productId) {
+  if (!rawProductId) {
     return NextResponse.json({ error: "product_id is required" }, { status: 400 });
   }
+  // Boards, columns and cards below all hang off this product, so checking it
+  // is the team's scopes the whole response. Another team's product reads as
+  // one with no boards, the same as a product that doesn't exist.
+  const productId = (await found(assertProduct(teamId, rawProductId))) ?? 0;
 
   // One snapshot for the whole response. Read separately, the validator and
   // the rows it describes come from different instants, and a write landing
@@ -219,4 +224,4 @@ export async function GET(request: NextRequest) {
     },
     { headers: { ETag: snap.etag, "Cache-Control": "no-store" } }
   );
-}
+});

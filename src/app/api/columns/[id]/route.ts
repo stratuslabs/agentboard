@@ -3,13 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "@/lib/sql";
 import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
 import { planColumnRename } from "@/lib/column-slug";
+import { assertColumn, withTenantParams } from "@/lib/tenant";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
+  const id = await assertColumn(teamId, (await params).id);
   const body = await request.json();
 
   const { rows: existing } = await sql`SELECT * FROM columns WHERE id = ${id}`;
@@ -58,23 +56,20 @@ export async function PATCH(
     throw err;
   }
 
-  await notifyBoard(existing[0].board_id);
+  await notifyBoard(teamId, existing[0].board_id);
 
   return NextResponse.json(rows[0]);
-}
+});
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
+  const id = await assertColumn(teamId, (await params).id);
   // Resolved before the delete, while the column still knows its board.
   const boardId = await boardIdForColumn(id);
   const result = await sql`DELETE FROM columns WHERE id = ${id}`;
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await notifyBoard(boardId);
+  await notifyBoard(teamId, boardId);
   return NextResponse.json({ success: true });
-}
+});

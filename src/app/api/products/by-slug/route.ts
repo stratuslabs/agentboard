@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { initDb } from "@/lib/db";
+import { withTenant } from "@/lib/tenant";
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const orgSlug = request.nextUrl.searchParams.get("org_slug");
   const productSlug = request.nextUrl.searchParams.get("product_slug");
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     SELECT p.*, o.name as org_name, o.slug as org_slug, o.id as org_id
     FROM products p
     JOIN organizations o ON o.id = p.org_id
-    WHERE o.slug = ${orgSlug} AND p.slug = ${productSlug}
+    WHERE o.team_id = ${teamId} AND o.slug = ${orgSlug} AND p.slug = ${productSlug}
     LIMIT 1
   `;
 
@@ -24,4 +25,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(rows[0]);
-}
+});

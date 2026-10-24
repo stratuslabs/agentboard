@@ -3,26 +3,35 @@ import { sql, db } from "@/lib/sql";
 import { initDb, slugify, createDefaultBoards } from "@/lib/db";
 import { suggestEmoji } from "@/lib/emoji-suggest";
 import { createProductWithKey } from "@/lib/card-keys";
+import { assertOrg, found, withTenant } from "@/lib/tenant";
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const orgId = request.nextUrl.searchParams.get("org_id");
 
   let rows;
   if (orgId) {
-    ({ rows } = await sql`SELECT * FROM products WHERE org_id = ${orgId} ORDER BY position, name`);
+    // Another team's org has no products, like one that doesn't exist.
+    const scoped = await found(assertOrg(teamId, orgId));
+    if (scoped === null) return NextResponse.json([]);
+    ({ rows } = await sql`SELECT * FROM products WHERE org_id = ${scoped} ORDER BY position, name`);
   } else {
-    ({ rows } = await sql`SELECT * FROM products ORDER BY position, name`);
+    ({ rows } = await sql`
+      SELECT p.* FROM products p JOIN organizations o ON o.id = p.org_id
+      WHERE o.team_id = ${teamId}
+      ORDER BY p.position, p.name
+    `);
   }
   return NextResponse.json(rows);
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
-  const { org_id, name, emoji, key: requestedKey } = await request.json();
-  if (!org_id || !name) {
+  const { org_id: rawOrgId, name, emoji, key: requestedKey } = await request.json();
+  if (!rawOrgId || !name) {
     return NextResponse.json({ error: "org_id and name are required" }, { status: 400 });
   }
+  const org_id = await assertOrg(teamId, rawOrgId);
   const slug = slugify(name);
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = ${org_id}`;
 
@@ -31,6 +40,7 @@ export async function POST(request: NextRequest) {
     // one derived from the name, derived again if another request takes it.
     const created = await createProductWithKey(
       (text: string, values?: unknown[]) => db.query(text, values),
+      teamId,
       name,
       requestedKey,
       async (key: string) => {
@@ -47,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     const productId = created.product.id;
-    await createDefaultBoards(productId);
+    await createDefaultBoards(teamId, productId);
 
     // Re-read: creating the boards set the product's default board.
     const { rows: product } = await sql`SELECT * FROM products WHERE id = ${productId}`;
@@ -59,4 +69,4 @@ export async function POST(request: NextRequest) {
     }
     throw e;
   }
-}
+});
