@@ -1164,11 +1164,16 @@ async function main() {
 
     // ---- settings ----
     else if (cmd === "settings") {
-      // Half a write would otherwise fall through to a read and exit 0.
-      if ((flags.key !== undefined) !== (flags.value !== undefined)) {
+      // Half a write, or an empty key, would otherwise fall through to a read
+      // and exit 0. Validation and dispatch use the same condition.
+      const isWrite = flags.key !== undefined || flags.value !== undefined;
+      if (isWrite && (flags.key === undefined || flags.value === undefined)) {
         die("Pass both --key and --value to change a setting, or neither to list them.");
       }
-      if (flags.key && flags.value !== undefined) {
+      if (isWrite && String(flags.key).trim() === "") {
+        die("--key can't be empty.");
+      }
+      if (isWrite) {
         let value = flags.value;
         try {
           value = JSON.parse(value);
@@ -1183,11 +1188,16 @@ async function main() {
 
     // ---- preferences ----
     else if (cmd === "preferences") {
-      // Half a write would otherwise fall through to a read and exit 0.
-      if ((flags.key !== undefined) !== (flags.value !== undefined)) {
+      // Half a write, or an empty key, would otherwise fall through to a read
+      // and exit 0. Validation and dispatch use the same condition.
+      const isWrite = flags.key !== undefined || flags.value !== undefined;
+      if (isWrite && (flags.key === undefined || flags.value === undefined)) {
         die("Pass both --key and --value to change a preference, or neither to list them.");
       }
-      if (flags.key && flags.value !== undefined) {
+      if (isWrite && String(flags.key).trim() === "") {
+        die("--key can't be empty.");
+      }
+      if (isWrite) {
         let value = flags.value;
         try {
           value = JSON.parse(value);

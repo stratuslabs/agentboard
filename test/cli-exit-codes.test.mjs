@@ -35,21 +35,23 @@ function argsFor(key) {
   if (accepts.includes("name")) flags.push("--name", "N");
   if (accepts.includes("ids")) flags.push("--ids", "1,2");
   if (accepts.includes("column") && !accepts.includes("product")) flags.push("--column", "todo");
-  if (accepts.includes("org") && key === "product move") flags.push("--org", "o");
+  if (accepts.includes("org") && key.startsWith("product ")) flags.push("--org", "o");
   if (accepts.includes("pr")) flags.push("--pr", "https://example.com/pr/1");
   // Most commands take an id; the rest take a name or title. Extra
   // positionals are harmless to the ones that don't want them.
-  const positional = key === "status" ? ["1", "done"] : ["1", "x"];
+  const positional = { status: ["1", "done"], attention: ["1", "on"] }[key] ?? ["1", "x"];
   return [...words, ...positional, ...flags];
 }
 
 let mode = "500";
+let requests = 0;
 let server;
 let baseUrl;
 let deadUrl;
 
 before(async () => {
   server = http.createServer((req, res) => {
+    requests++;
     req.resume();
     req.on("end", () => {
       if (mode === "ok") {
@@ -127,6 +129,23 @@ for (const [label, setup] of [
   });
 }
 
+// The audits above pass on any nonzero exit, so they only prove something if
+// argsFor really gets each command past its own checks to a request. A local
+// usage error exits 1 too, and would pass them without testing anything.
+test("argsFor gets every command as far as a request", async () => {
+  mode = "ok";
+  const bad = [];
+  for (const key of commands) {
+    const before = requests;
+    const args = argsFor(key);
+    const r = await run(baseUrl, args);
+    if (requests === before) {
+      bad.push(`agentboard ${args.join(" ")} -> exit ${r.code}, requests ${requests - before}, stderr ${JSON.stringify(r.stderr.trim())}`);
+    }
+  }
+  assert.deepEqual(bad, [], `commands the audit never really exercised:\n${bad.join("\n")}`);
+});
+
 test("a non-JSON 200 says what came back instead of a bare parse error", async () => {
   mode = "html";
   const r = await run(baseUrl, ["show", "1"]);
@@ -160,6 +179,11 @@ test("usage errors exit nonzero", async () => {
     ["settings", "--value", "v"],
     ["preferences", "--key", "k"],
     ["preferences", "--value", "v"],
+    // An empty key (say, an unset shell variable) is not a write either.
+    ["settings", "--key=", "--value", "v"],
+    ["settings", "--key", "", "--value", "v"],
+    ["preferences", "--key=", "--value", "v"],
+    ["preferences", "--key", "", "--value", "v"],
   ];
   mode = "ok";
   const zero = [];
