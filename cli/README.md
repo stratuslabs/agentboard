@@ -158,6 +158,10 @@ A column's slug follows its name. `column rename 12 --name "Can't replicate"` ch
 
 Flags a command doesn't support are errors, not ignored — e.g. `task move 14 --product x` fails instead of printing the card as if it had moved. Flags that take a value always consume the next argument, even one starting with `--`, so `--description "--dry-run is broken"` works; `--description=...` also works.
 
+## Exit Codes
+
+Every command exits `0` on success and `1` on any failure, with the reason on stderr: an HTTP error, a server that can't be reached (the message names the URL and cause, such as `ENOTFOUND`), a response that isn't JSON (usually a login page or the wrong `AGENTBOARD_URL`), or a usage error. Scripts can rely on the exit code. `test/cli-exit-codes.test.mjs` checks this for every command.
+
 ## Output Flags
 
 - `--json` — JSON output

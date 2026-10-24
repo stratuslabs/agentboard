@@ -22,6 +22,12 @@ function describeColumns(cols) {
   return cols.map((c) => (c.name && c.name !== c.slug ? `${c.slug} (${c.name})` : c.slug)).join(", ");
 }
 
+// First line-ish of a response body, enough to recognise a login page.
+function snippet(text, max = 200) {
+  const flat = String(text || "").replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}...` : flat;
+}
+
 function die(msg, code = 1) {
   process.stderr.write(`Error: ${msg}\n`);
   process.exit(code);
@@ -294,7 +300,7 @@ function makeReq(baseUrl, password, agentName) {
     const opts = { method, headers, redirect: "manual" };
     if (body !== undefined) opts.body = JSON.stringify(body);
 
-    let res = await fetch(url, opts);
+    let res = await send(url, opts);
 
     // Follow redirects manually so the auth header survives them — but only
     // while we stay on the origin the user configured. Forwarding the Bearer
@@ -316,23 +322,41 @@ function makeReq(baseUrl, password, agentName) {
       if (body !== undefined) {
         redirectOpts.body = JSON.stringify(body);
       }
-      res = await fetch(nextUrl, redirectOpts);
+      res = await send(nextUrl, redirectOpts);
       redirects++;
     }
 
+    const text = await res.text();
     if (!res.ok) {
-      let msg;
+      let msg = text;
       try {
-        const j = await res.json();
+        const j = JSON.parse(text);
         msg = j.error || JSON.stringify(j);
       } catch {
-        msg = await res.text();
+        // not JSON; show the body as it came
       }
-      die(`HTTP ${res.status}: ${msg}`);
+      die(`HTTP ${res.status}: ${snippet(msg) || res.statusText}`);
     }
-    const text = await res.text();
     if (!text) return {};
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch {
+      // A proxy, login page or wrong AGENTBOARD_URL answers 200 with HTML.
+      die(
+        `Expected JSON from ${method} ${url} but got ${res.headers.get("content-type") || "an unknown content type"}: ${snippet(text)}`
+      );
+    }
+  }
+
+  // fetch() rejects with a bare "fetch failed" when nothing answers; say
+  // which server that was and why, so a wrong URL or DNS failure is obvious.
+  async function send(target, opts) {
+    try {
+      return await fetch(target, opts);
+    } catch (err) {
+      const cause = err.cause && (err.cause.code || err.cause.message);
+      die(`Could not reach ${base}${cause ? ` (${cause})` : ""}: ${err.message}`);
+    }
   }
 
   return req;
@@ -1140,7 +1164,16 @@ async function main() {
 
     // ---- settings ----
     else if (cmd === "settings") {
-      if (flags.key && flags.value !== undefined) {
+      // Half a write, or an empty key, would otherwise fall through to a read
+      // and exit 0. Validation and dispatch use the same condition.
+      const isWrite = flags.key !== undefined || flags.value !== undefined;
+      if (isWrite && (flags.key === undefined || flags.value === undefined)) {
+        die("Pass both --key and --value to change a setting, or neither to list them.");
+      }
+      if (isWrite && String(flags.key).trim() === "") {
+        die("--key can't be empty.");
+      }
+      if (isWrite) {
         let value = flags.value;
         try {
           value = JSON.parse(value);
@@ -1155,7 +1188,16 @@ async function main() {
 
     // ---- preferences ----
     else if (cmd === "preferences") {
-      if (flags.key && flags.value !== undefined) {
+      // Half a write, or an empty key, would otherwise fall through to a read
+      // and exit 0. Validation and dispatch use the same condition.
+      const isWrite = flags.key !== undefined || flags.value !== undefined;
+      if (isWrite && (flags.key === undefined || flags.value === undefined)) {
+        die("Pass both --key and --value to change a preference, or neither to list them.");
+      }
+      if (isWrite && String(flags.key).trim() === "") {
+        die("--key can't be empty.");
+      }
+      if (isWrite) {
         let value = flags.value;
         try {
           value = JSON.parse(value);
@@ -1249,4 +1291,5 @@ module.exports = {
   formatTable,
   output,
   printUsage,
+  COMMAND_FLAGS,
 };
