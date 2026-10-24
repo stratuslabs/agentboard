@@ -15,7 +15,9 @@
  *  - a product whose key changes keeps the old one in `product_keys`, so
  *    links that used it keep working, and no other product can take it;
  *  - a deleted product's keys stay taken, owned by nobody, so its old links
- *    point at nothing instead of at a new product's cards.
+ *    point at nothing instead of at a new product's cards;
+ *  - keys are per team (see tenancy.js): two teams can each have an AB, and
+ *    a reference only ever resolves inside the caller's team.
  *
  * Numbers are assigned by a database trigger, not by the routes, so every way
  * a card is created or moved (API, CLI, a script, the hosted edition) gets
@@ -132,24 +134,50 @@ const CARD_NUMBER_MIGRATION = `
 DO $migration$
 DECLARE
   r RECORD;
+  pk_name TEXT;
+  pk_cols INTEGER;
 BEGIN
   PERFORM pg_advisory_xact_lock(602602);
 
   ALTER TABLE products ADD COLUMN IF NOT EXISTS key TEXT;
   ALTER TABLE products ADD COLUMN IF NOT EXISTS card_seq INTEGER NOT NULL DEFAULT 0;
-  CREATE UNIQUE INDEX IF NOT EXISTS products_key_idx ON products (key);
-  -- Every key a product has ever had, its current one included. One table,
-  -- so one primary key keeps a key from ever meaning two products: a
-  -- product's old keys stay its own, and links made with them keep working.
-  -- A deleted product's keys stay as tombstones (product_id NULL) that no
-  -- product can take, so AB-1 never comes to mean an unrelated card.
+  -- Keys used to be unique per instance; they are unique per team now, which
+  -- product_keys enforces (products has no team_id of its own to index).
+  DROP INDEX IF EXISTS products_key_idx;
+  -- Every key a product in the team has ever had, its current one included.
+  -- One table, so one primary key keeps a key from ever meaning two
+  -- products: a product's old keys stay its own, and links made with them
+  -- keep working. A deleted product's keys stay as tombstones (product_id
+  -- NULL) that no product can take, so AB-1 never comes to mean an unrelated
+  -- card. The tombstone has no product to find its team through, so the row
+  -- carries team_id itself.
   CREATE TABLE IF NOT EXISTS product_keys (
-    key TEXT PRIMARY KEY,
-    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+    CONSTRAINT product_keys_pkey PRIMARY KEY (team_id, key)
   );
-  INSERT INTO product_keys (key, product_id)
-    SELECT key, id FROM products WHERE key IS NOT NULL
-    ON CONFLICT (key) DO NOTHING;
+  -- Upgrade from per-instance keys: every key moves to its product's team,
+  -- and tombstones to the default team, the only one the instance had.
+  ALTER TABLE product_keys ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+  UPDATE product_keys pk SET team_id = o.team_id
+    FROM products p JOIN organizations o ON o.id = p.org_id
+    WHERE pk.product_id = p.id AND pk.team_id IS NULL;
+  IF EXISTS (SELECT 1 FROM product_keys WHERE team_id IS NULL) THEN
+    INSERT INTO teams (name, slug) VALUES ('Default', 'default') ON CONFLICT (slug) DO NOTHING;
+    UPDATE product_keys SET team_id = (SELECT id FROM teams WHERE slug = 'default') WHERE team_id IS NULL;
+  END IF;
+  ALTER TABLE product_keys ALTER COLUMN team_id SET NOT NULL;
+  SELECT conname, array_length(conkey, 1) INTO pk_name, pk_cols
+    FROM pg_constraint WHERE conrelid = 'product_keys'::regclass AND contype = 'p';
+  IF pk_cols = 1 THEN
+    EXECUTE format('ALTER TABLE product_keys DROP CONSTRAINT %I', pk_name);
+    ALTER TABLE product_keys ADD CONSTRAINT product_keys_pkey PRIMARY KEY (team_id, key);
+  END IF;
+  INSERT INTO product_keys (team_id, key, product_id)
+    SELECT o.team_id, p.key, p.id FROM products p JOIN organizations o ON o.id = p.org_id
+    WHERE p.key IS NOT NULL
+    ON CONFLICT (team_id, key) DO NOTHING;
 
   -- products.key is the current key; this records it in product_keys, or
   -- refuses it when another product has ever had it. ON CONFLICT waits for a
@@ -157,12 +185,15 @@ BEGIN
   -- for one key cannot both win.
   CREATE OR REPLACE FUNCTION agentboard_products_key()
   RETURNS trigger LANGUAGE plpgsql AS $fn$
+  DECLARE
+    v_team INTEGER;
   BEGIN
     IF NEW.key IS NULL THEN
       RETURN NULL;
     END IF;
-    INSERT INTO product_keys (key, product_id) VALUES (NEW.key, NEW.id)
-      ON CONFLICT (key) DO UPDATE SET product_id = EXCLUDED.product_id
+    SELECT team_id INTO v_team FROM organizations WHERE id = NEW.org_id;
+    INSERT INTO product_keys (team_id, key, product_id) VALUES (v_team, NEW.key, NEW.id)
+      ON CONFLICT (team_id, key) DO UPDATE SET product_id = EXCLUDED.product_id
       WHERE product_keys.product_id = EXCLUDED.product_id;
     IF NOT FOUND THEN
       RAISE EXCEPTION 'Key % is already used by another product', NEW.key
@@ -247,9 +278,12 @@ $migration$;
  * @typedef {(text: string, values?: unknown[]) => Promise<{ rows: any[], rowCount?: number | null }>} Query
  */
 
-/** Every key any product has, current or old. @param {Query} query */
-async function takenKeys(query) {
-  const { rows } = await query("SELECT key FROM product_keys");
+/**
+ * Every key any product in the team has, current or old.
+ * @param {Query} query @param {number} teamId
+ */
+async function takenKeys(query, teamId) {
+  const { rows } = await query("SELECT key FROM product_keys WHERE team_id = $1", [teamId]);
   return new Set(rows.map((r) => r.key));
 }
 
@@ -266,10 +300,13 @@ function isUniqueViolation(err) {
  * @param {Query} query
  */
 async function ensureProductKeys(query) {
-  const { rows } = await query("SELECT id, name FROM products WHERE key IS NULL ORDER BY id");
+  const { rows } = await query(
+    `SELECT p.id, p.name, o.team_id FROM products p JOIN organizations o ON o.id = p.org_id
+     WHERE p.key IS NULL ORDER BY p.id`
+  );
   for (const product of rows) {
     for (let attempt = 0; attempt < 5; attempt++) {
-      const key = deriveProductKey(product.name, await takenKeys(query));
+      const key = deriveProductKey(product.name, await takenKeys(query, product.team_id));
       try {
         await query("UPDATE products SET key = $1 WHERE id = $2 AND key IS NULL", [key, product.id]);
         break;
@@ -284,12 +321,13 @@ async function ensureProductKeys(query) {
  * A key for a new product: the one asked for, or one derived from its name.
  *
  * @param {Query} query
+ * @param {number} teamId the team the product will belong to
  * @param {string} name
  * @param {unknown} requested `undefined` to derive one
  * @returns {Promise<{ key: string } | { error: string, status: number }>}
  */
-async function keyForNewProduct(query, name, requested) {
-  const taken = await takenKeys(query);
+async function keyForNewProduct(query, teamId, name, requested) {
+  const taken = await takenKeys(query, teamId);
   if (requested === undefined || requested === null || requested === "") {
     return { key: deriveProductKey(name, taken) };
   }
@@ -307,17 +345,18 @@ async function keyForNewProduct(query, name, requested) {
  *
  * @template T
  * @param {Query} query
+ * @param {number} teamId the team the product will belong to
  * @param {string} name
  * @param {unknown} requested `undefined` to derive one
  * @param {(key: string) => Promise<T>} insert
  * @returns {Promise<{ product: T, key: string } | { error: string, status: number }>}
  */
-async function createProductWithKey(query, name, requested, insert) {
+async function createProductWithKey(query, teamId, name, requested, insert) {
   // A derived key someone else took in the meantime is derived again, as
   // ensureProductKeys does; a key that was asked for is that request's 409.
   const derived = requested === undefined || requested === null || requested === "";
   for (let attempt = 1; ; attempt++) {
-    const key = await keyForNewProduct(query, name, requested);
+    const key = await keyForNewProduct(query, teamId, name, requested);
     if ("error" in key) return key;
     try {
       return { product: await insert(key.key), key: key.key };
@@ -370,26 +409,36 @@ function isKeyConflict(err) {
 
 /**
  * The internal id a card reference points at, or null when it points at
- * nothing. KEY-N matches a product's current key or one of its old ones, and
- * a number the card had before it moved to another product.
+ * nothing in the team. KEY-N matches a product's current key or one of its
+ * old ones, and a number the card had before it moved to another product. A
+ * numeric id of another team's card is null too, as if it didn't exist.
  *
  * @param {Query} query
+ * @param {number} teamId
  * @param {unknown} raw
  * @returns {Promise<number | null>}
  */
-async function resolveCardRef(query, raw) {
+async function resolveCardRef(query, teamId, raw) {
   const ref = parseCardRef(raw);
   if (!ref) return null;
-  if ("id" in ref) return ref.id;
-  const { rows } = await query(
-    `SELECT cn.card_id
-     FROM card_numbers cn
-     JOIN cards c ON c.id = cn.card_id
-     WHERE cn.number = $2
-       AND cn.product_id = (SELECT product_id FROM product_keys WHERE key = $1)`,
-    [ref.key, ref.number]
-  );
-  return rows.length > 0 ? rows[0].card_id : null;
+  // Either way the card has to be in the team now, not only once have been.
+  const inTeam = `
+    JOIN columns col ON col.id = c.column_id
+    JOIN boards b ON b.id = col.board_id
+    JOIN products p ON p.id = b.product_id
+    JOIN organizations o ON o.id = p.org_id AND o.team_id = $1`;
+  const { rows } =
+    "id" in ref
+      ? await query(`SELECT c.id FROM cards c ${inTeam} WHERE c.id = $2`, [teamId, ref.id])
+      : await query(
+          `SELECT c.id
+           FROM card_numbers cn
+           JOIN cards c ON c.id = cn.card_id ${inTeam}
+           WHERE cn.number = $3
+             AND cn.product_id = (SELECT product_id FROM product_keys WHERE team_id = $1 AND key = $2)`,
+          [teamId, ref.key, ref.number]
+        );
+  return rows.length > 0 ? rows[0].id : null;
 }
 
 module.exports = {
