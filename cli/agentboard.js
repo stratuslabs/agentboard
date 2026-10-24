@@ -138,7 +138,16 @@ function parseArgs(argv) {
           flags[key] = inline;
           i++;
         } else if (i + 1 < args.length) {
-          flags[key] = args[i + 1];
+          const next = args[i + 1];
+          // `--description --priority high` is a missing value, not a
+          // description that reads "--priority". Taking it as text would
+          // silently drop the flag that follows. Text that merely starts
+          // with "--" ("--dry-run is broken") is still taken as given.
+          const named = /^--([a-z][a-z-]*)$/.exec(next);
+          if (named && (BOOLEAN_FLAGS.has(named[1]) || VALUE_FLAGS.has(named[1]))) {
+            die(`--${key} needs a value, but the next argument is the flag ${next}. To pass '${next}' as the text, write --${key}=${next}`);
+          }
+          flags[key] = next;
           i += 2;
         } else {
           die(`--${key} requires a value`);
