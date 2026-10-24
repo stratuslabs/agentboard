@@ -309,15 +309,24 @@ async function keyForNewProduct(query, name, requested) {
  * @returns {Promise<{ product: T, key: string } | { error: string, status: number }>}
  */
 async function createProductWithKey(query, name, requested, insert) {
-  const key = await keyForNewProduct(query, name, requested);
-  if ("error" in key) return key;
-  try {
-    return { product: await insert(key.key), key: key.key };
-  } catch (err) {
-    if (isKeyConflict(err)) return { error: `Key ${key.key} is already used by another product`, status: 409 };
-    throw err;
+  // A derived key someone else took in the meantime is derived again, as
+  // ensureProductKeys does; a key that was asked for is that request's 409.
+  const derived = requested === undefined || requested === null || requested === "";
+  for (let attempt = 1; ; attempt++) {
+    const key = await keyForNewProduct(query, name, requested);
+    if ("error" in key) return key;
+    try {
+      return { product: await insert(key.key), key: key.key };
+    } catch (err) {
+      if (!isKeyConflict(err)) throw err;
+      if (!derived || attempt >= CREATE_KEY_ATTEMPTS) {
+        return { error: `Key ${key.key} is already used by another product`, status: 409 };
+      }
+    }
   }
 }
+
+const CREATE_KEY_ATTEMPTS = 5;
 
 /**
  * Change a product's key. The old key stays the product's, so AB-142 links
