@@ -8,6 +8,7 @@ import {
   stampCards,
 } from "../../../../lib/realtime/notify";
 import { assertMember, withTenantParams } from "../../../../lib/tenant";
+import { getConfig } from "../../../../configure";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
@@ -30,15 +31,36 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   }
 
   const member = existing[0];
-  const { rows } = await sql`
-    UPDATE members SET
-      name = ${(updates.name as string) ?? member.name},
-      type = ${(updates.type as string) ?? member.type},
-      color = ${(updates.color as string) ?? member.color},
-      avatar_url = ${(updates.avatar_url as string) ?? member.avatar_url}
-    WHERE id = ${id}
-    RETURNING *
-  `;
+  const nextType = (updates.type as string) ?? member.type;
+
+  // A consumer may refuse a type change it has a reason to (the hosted
+  // edition: an agent that still holds API keys can't become a person, or
+  // its keys would file work under someone who didn't do it). It throws a
+  // TenantError with the status to answer.
+  const beforeTypeChange = getConfig().members?.beforeTypeChange;
+  if (beforeTypeChange && nextType !== member.type) {
+    await beforeTypeChange({ teamId, memberId: id, from: member.type, to: nextType });
+  }
+
+  let rows;
+  try {
+    ({ rows } = await sql`
+      UPDATE members SET
+        name = ${(updates.name as string) ?? member.name},
+        type = ${nextType},
+        color = ${(updates.color as string) ?? member.color},
+        avatar_url = ${(updates.avatar_url as string) ?? member.avatar_url}
+      WHERE id = ${id}
+      RETURNING *
+    `);
+  } catch (e) {
+    // Agent names are unique per team (agent-names.js). Without this the
+    // settings editor gets a 500 and closes, losing the edit unexplained.
+    if ((e as { code?: string })?.code === "23505") {
+      return NextResponse.json({ error: "Another agent on this team already uses that name." }, { status: 409 });
+    }
+    throw e;
+  }
 
   // Cards show this member's name, type and colour through a join, so editing
   // one changes what they render without touching a card row. Stamping them is

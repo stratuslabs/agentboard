@@ -9,6 +9,7 @@ const { sql, db, end } = require("../src/lib/sql");
 const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
 const { CARD_NUMBER_MIGRATION, ensureProductKeys } = require("../src/lib/card-keys");
 const { TENANCY_MIGRATION, ensureDefaultTeam, ensureTeamDefaults } = require("../src/lib/tenancy");
+const { AGENT_NAME_MIGRATION } = require("../src/lib/agent-names");
 
 async function setup() {
   await sql`
@@ -106,6 +107,7 @@ async function setup() {
   `;
   // Migration: tenancy, before card numbers (see tenancy.js)
   await db.query(TENANCY_MIGRATION);
+  await db.query(AGENT_NAME_MIGRATION);
   // Migration: per-product card numbers and product keys (see card-keys.js)
   await db.query(CARD_NUMBER_MIGRATION);
   await ensureProductKeys((text, values) => db.query(text, values));

@@ -71,7 +71,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   return NextResponse.json(rows);
 });
 
-export const POST = withTenant(async (request: NextRequest, { teamId }) => {
+export const POST = withTenant(async (request: NextRequest, { teamId, memberId }) => {
   await initDb();
   const body = await request.json();
   const textError = checkCardText(body);
@@ -88,15 +88,22 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   // An assignee from another team is refused, not silently attached.
   if (assignee_id) assignee_id = await assertMember(teamId, assignee_id);
 
-  // Auto-register agent from X-Agent-Name header
-  const agentName = request.headers.get("x-agent-name");
-  if (agentName && !assignee_id) {
-    assignee_id = await resolveAgentMember(teamId, agentName);
-  }
-
-  // Resolve text assignee name to member ID if no assignee_id provided
+  // Who the card is filed under, most explicit first. A named assignee, by id
+  // or by name, is the caller's choice and wins. Without one, the card goes to
+  // whoever is calling: a credential issued to one agent says who that is, and
+  // X-Agent-Name is only a claim, so it counts only when the credential
+  // doesn't name an agent. A name that matches nobody stays as text rather
+  // than being quietly filed under the caller.
   if (!assignee_id && assignee) {
     assignee_id = await memberIdByName(teamId, assignee);
+  }
+  const credentialMember = memberId ?? null;
+  if (!assignee_id && !assignee && credentialMember !== null) {
+    assignee_id = await assertMember(teamId, credentialMember);
+  }
+  const agentName = request.headers.get("x-agent-name");
+  if (!assignee_id && !assignee && agentName && credentialMember === null) {
+    assignee_id = await resolveAgentMember(teamId, agentName);
   }
 
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;

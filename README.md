@@ -242,7 +242,11 @@ GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_i
 ```
 
 Card creation accepts an `X-Agent-Name` header. The named agent is registered
-as a member on first use and assigned to the card.
+as a member on first use and assigned to the card, unless the request names
+an `assignee` or `assignee_id`, which always wins. Agent names are unique per
+team in any case, so `claude` and `Claude` are one agent, and registering an
+agent that exists (`POST /api/members` with `type: "agent"`) returns it with
+`200` instead of adding another. People may share a name.
 
 ### Live updates
 
@@ -429,7 +433,11 @@ export async function register() {
 }
 ```
 
+A resolver may also return `memberId`, the agent member the caller's credential belongs to (an API key issued to one agent). A new card with no assignee is filed under it, and `X-Agent-Name` is ignored for that caller, since the credential already says who it is, on updates too. A named `assignee` or `assignee_id` still wins. Updates never reassign a card to the credential's agent.
+
 Every query the core runs is scoped to the `teamId` this returns, and it is the only place a team comes from. Throw a `TenantError` to refuse a request with that status (401, 402 for a lapsed subscription, 403); the route never runs. Teams are rows in the core's `teams` table, which your app creates (`ensureTeamDefaults` from `lib/tenancy` gives a new one the default boards and columns).
+
+`configure({ members: { beforeTypeChange } })` runs before a member changes between agent and human, with `{ teamId, memberId, from, to }`. Throw a `TenantError` to refuse it (for example, 409 while the agent still holds API keys).
 
 Without `configure()`, every request acts for the single self-hosted team, which is what self-hosted AgentBoard is. For a multi-team app that means a missed `configure()` fails open, so test that an unauthenticated request is refused. The self-hosted password check lives in `src/middleware.ts` and is not part of `configure()`; a consuming app authenticates in its resolver.
 

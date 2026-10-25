@@ -154,6 +154,7 @@
     "./configure": "./src/configure.ts",
     "./contexts/PreferencesContext": "./src/contexts/PreferencesContext.tsx",
     "./contexts/SidebarContext": "./src/contexts/SidebarContext.tsx",
+    "./lib/agent-names": "./src/lib/agent-names.js",
     "./lib/agent-prompt": "./src/lib/agent-prompt.ts",
     "./lib/auth": "./src/lib/auth.ts",
     "./lib/card-keys": "./src/lib/card-keys.js",

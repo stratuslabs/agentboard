@@ -22,6 +22,13 @@ import { configure, getConfig } from "../configure";
 export type TenantContext = {
   teamId: number;
   userId: number | null;
+  /**
+   * The agent member the caller's credential belongs to, when it names one
+   * (the hosted edition's per-agent API keys). A new card with no assignee is
+   * filed under it, and the X-Agent-Name header, which is only a claim, is
+   * ignored. Self-hosted has no such credential: undefined.
+   */
+  memberId?: number | null;
 };
 
 const TENANT_ERROR = Symbol.for("@stratuslabs/agentboard-core/TenantError");

@@ -91,3 +91,14 @@ test("a TenantError from another module instance is still a TenantError", async 
   assert.equal(new Error("x") instanceof catcher.TenantError, false);
   assert.equal(Object.assign(new Error("x"), { status: 401 }) instanceof catcher.TenantError, false);
 });
+
+test("configure() takes a members.beforeTypeChange hook, and only that", async () => {
+  const { configure, getConfig } = await fresh("configure.ts");
+  const hook = async () => {};
+  configure({ members: { beforeTypeChange: hook } });
+  assert.equal(getConfig().members.beforeTypeChange, hook);
+  assert.equal(getConfig().tenant, undefined);
+  assert.throws(() => configure({ members: { beforeTypeChange: 1 } }), /members\.beforeTypeChange must be a function/);
+  assert.throws(() => configure({ members: { afterTypeChange: hook } }), /Unknown members hook: afterTypeChange/);
+  assert.throws(() => configure({ members: null }), /members must be an object/);
+});

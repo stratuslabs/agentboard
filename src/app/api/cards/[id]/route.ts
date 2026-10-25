@@ -17,7 +17,7 @@ export const GET = withTenantParams<{ id: string }>(async (_request, { teamId },
   return NextResponse.json(card);
 });
 
-export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId, memberId: credentialMember }, { params }) => {
   await initDb();
   // A numeric id or a readable key (AB-142), in the team; from here on, the
   // internal id.
@@ -47,18 +47,19 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   // whose watchers also need to hear that it left.
   const boardBefore = await boardIdForCard(id);
 
-  // Auto-register agent from X-Agent-Name header
-  const agentName = request.headers.get("x-agent-name");
-  if (agentName && body.assignee_id === undefined) {
-    body.assignee_id = await resolveAgentMember(teamId, agentName);
+  // A named assignee is the caller's choice, so it's resolved first.
+  if (body.assignee && body.assignee_id === undefined) {
+    const named = await memberIdByName(teamId, body.assignee);
+    if (named !== null) {
+      body.assignee_id = named;
+    }
   }
 
-  // Resolve text assignee name to member ID if no assignee_id provided
-  if (body.assignee && body.assignee_id === undefined) {
-    const memberId = await memberIdByName(teamId, body.assignee);
-    if (memberId !== null) {
-      body.assignee_id = memberId;
-    }
+  // Auto-register agent from X-Agent-Name header. The header is only a claim:
+  // a caller whose credential already names its agent is not reassigned by it.
+  const agentName = request.headers.get("x-agent-name");
+  if (agentName && body.assignee_id === undefined && !body.assignee && (credentialMember ?? null) === null) {
+    body.assignee_id = await resolveAgentMember(teamId, agentName);
   }
 
   const allowedFields = [
