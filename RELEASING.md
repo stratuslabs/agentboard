@@ -28,7 +28,9 @@ The workflow then:
 
 If any check fails, nothing is published. Fix it, delete the tag (`git push --delete origin cli-v0.10.0 && git tag -d cli-v0.10.0`) and tag again.
 
-If the run fails after the checks (a network error while publishing or creating the release), re-run the failed jobs from the Actions tab. A version already on npm isn't published again, and an existing GitHub release is left alone.
+If the run fails after the checks (a network error while publishing or creating the release), re-run the failed jobs from the Actions tab. A version already on npm isn't published again, and an existing GitHub release is left alone. If npm can't be read at all, the job fails before publishing rather than guessing a dist-tag.
+
+Publishes run one at a time, even for tags pushed together, and each waits until npm serves its new dist-tag before the next starts. GitHub keeps only one run waiting, so if you push three or more tags at once, a waiting run can show as cancelled; re-run it once the others finish.
 
 ### Dry run
 
@@ -41,6 +43,8 @@ Run the **Release** workflow by hand from the Actions tab (any branch). It runs 
 | Stable, above the current `latest` | `latest`, what `npm install -g agentboard` gets |
 | Prerelease, e.g. `cli-v1.0.0-beta.1` | `next`, and marked as a prerelease on GitHub |
 | Stable, below the current `latest` (a fix to an older line) | `maintenance`, so it doesn't replace `latest` |
+
+A release never moves a tag backward. A prerelease older than the current `next`, or an older-line fix below the current `maintenance`, fails before publishing. If you really mean to publish one, do it by hand under a tag of its own, e.g. `npm publish --tag beta-1.0` from `cli/`.
 
 The rules live in [`scripts/cli-release.mjs`](scripts/cli-release.mjs) and are tested in `test/cli-release.test.mjs`.
 
