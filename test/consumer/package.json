@@ -1,0 +1,9 @@
+{
+  "name": "agentboard-core-consumer-fixture",
+  "private": true,
+  "description": "A minimal Next app that consumes @stratuslabs/agentboard-core the way the hosted edition does. Installed and run by scripts/verify-consumer.mjs; not part of the self-hosted app.",
+  "scripts": {
+    "build": "next build",
+    "start": "next start"
+  }
+}

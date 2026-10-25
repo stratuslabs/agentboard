@@ -72,5 +72,9 @@ test("name, peer dependencies and published files", () => {
     assert.equal(pkg.dependencies?.[dep], undefined, `${dep} is not a direct dependency`);
     assert.ok(pkg.devDependencies?.[dep], `${dep} is a dev dependency for local runs`);
   }
+  // The core ships its stylesheet as Tailwind source; the consumer compiles it.
+  for (const dep of ["tailwindcss", "@tailwindcss/postcss"]) {
+    assert.ok(pkg.peerDependencies?.[dep], `${dep} is a peer dependency`);
+  }
   assert.ok(pkg.files.includes("src"));
 });

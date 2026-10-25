@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 /*
+ * Scan the core's own source for classes. Tailwind's automatic detection skips
+ * node_modules, so without this an app consuming the core as a package would
+ * compile this file with none of the board's classes in it.
+ */
+@source "../";
+
+/*
  * Design tokens. Warm near-black neutrals with an ivory primary; every colour in
  * the UI should come from here so the palette changes in one place.
  */

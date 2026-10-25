@@ -378,6 +378,63 @@ should deploy it:
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
+## Using the core in another Next app
+
+The app is also a package, `@stratuslabs/agentboard-core`, that another Next app can mount: its pages, API routes and components, with that app deciding which team a request acts for. This is how a hosted edition is built on the same code instead of a copy. It is early: not published to npm, and the import paths below are the source layout, not a stable API yet.
+
+**Install** a commit of this repository (npm installs it with `npm pack`, so you get `src/` as TypeScript):
+
+```bash
+npm install "github:stratuslabs/agentboard#<commit>" next@^16.4.3 react@^19.3.1 react-dom@^19.3.1 tailwindcss@^4.3.3 @tailwindcss/postcss@^4.3.3
+```
+
+`next`, `react`, `react-dom`, `tailwindcss` and `@tailwindcss/postcss` are peer dependencies: the core ships source, and your app compiles it.
+
+**Build settings.** In `next.config.ts`, `transpilePackages: ["@stratuslabs/agentboard-core"]`. Add a `postcss.config.mjs` with the `@tailwindcss/postcss` plugin. Some of the core's modules are JavaScript with JSDoc types, so your `tsconfig.json` needs `"allowJs": true` and `"maxNodeModuleJsDepth": 10` for `next build`'s type-check to see them.
+
+**Mount what you need** by re-exporting it from your own `app/` directory. Each module is importable at its path under `src/`, without the extension:
+
+```ts
+// app/layout.tsx: the core's root layout, with its stylesheet and fonts
+export { default, metadata } from "@stratuslabs/agentboard-core/app/layout";
+
+// app/(board)/[orgSlug]/[productSlug]/page.tsx
+export { default } from "@stratuslabs/agentboard-core/app/(board)/[orgSlug]/[productSlug]/page";
+
+// app/api/cards/route.ts
+export { GET, POST } from "@stratuslabs/agentboard-core/app/api/cards/route";
+```
+
+Route segment options (`runtime`, `dynamic`, `maxDuration`) can't be re-exported; Next reads them from your file, so copy them. `app/api/stream/route.ts` is the one route that has them. Files in `public/` (the logo and icons) aren't part of the package either.
+
+**Tell the core who is asking** with `configure()`, once, from `instrumentation.ts`:
+
+```ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { configure } = await import("@stratuslabs/agentboard-core/configure");
+  const { TenantError } = await import("@stratuslabs/agentboard-core/lib/tenant");
+  configure({
+    tenant: {
+      // Route handlers: from the request's session or API key.
+      fromRequest: async (request) => {
+        const team = await yourAuth(request);
+        if (!team) throw new TenantError(401, "Unauthorized");
+        return { teamId: team.id, userId: team.userId ?? null };
+      },
+      // Server components, which have no Request: read next/headers or cookies.
+      fromPage: async () => { /* same, from headers() */ },
+    },
+  });
+}
+```
+
+Every query the core runs is scoped to the `teamId` this returns, and it is the only place a team comes from. Throw a `TenantError` to refuse a request with that status (401, 402 for a lapsed subscription, 403); the route never runs. Teams are rows in the core's `teams` table, which your app creates (`ensureTeamDefaults` from `lib/tenancy` gives a new one the default boards and columns).
+
+Without `configure()`, every request acts for the single self-hosted team, which is what self-hosted AgentBoard is. For a multi-team app that means a missed `configure()` fails open, so test that an unauthenticated request is refused. The self-hosted password check lives in `src/middleware.ts` and is not part of `configure()`; a consuming app authenticates in its resolver.
+
+[test/consumer](test/consumer) is a working example, and CI builds and drives it (`scripts/verify-consumer.mjs`) against the lowest and newest supported Next 16.
+
 ## Roadmap
 
 What is planned, what stays free, and where the line with the hosted edition
