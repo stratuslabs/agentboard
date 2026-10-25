@@ -17,6 +17,9 @@
 //     404s for the other one, through configure()'s fromPage
 //   - the re-exported board page renders, with the core's Tailwind classes
 //     compiled into its stylesheet
+//   - the consumer's own layout and settings page fill the core's UI slots:
+//     a sidebar footer item, the settings scope, an extra settings section
+//     and a default section left out
 //
 // The database must be one this run may create tables in. Team slugs are
 // unique per run, so a database other runs used is fine.
@@ -87,6 +90,8 @@ try {
     "react-dom": pkg.devDependencies["react-dom"],
     tailwindcss: pkg.devDependencies.tailwindcss,
     "@tailwindcss/postcss": pkg.devDependencies["@tailwindcss/postcss"],
+    // The fixture's own components use the same icon set.
+    "lucide-react": pkg.dependencies["lucide-react"],
   };
   fixture.devDependencies = {
     typescript: pkg.devDependencies.typescript,
@@ -180,6 +185,25 @@ try {
     page.status === 200 && typeof page.data === "string" && page.data.includes("<title>AgentBoard</title>"),
     `${page.status} ${String(page.data).slice(0, 200)}`,
   );
+
+  const html = String(page.data);
+  check(
+    "the consumer's sidebar footer slot renders in the core's sidebar",
+    html.includes('data-consumer-slot="sidebar-footer"') && html.includes("Consumer Team") && html.includes(">Settings<"),
+    html.slice(0, 200),
+  );
+
+  const settings = await call(teamA, "/settings");
+  const settingsHtml = String(settings.data);
+  check(
+    "the settings page shows the consumer's scope and its own section next to the core's",
+    settings.status === 200 &&
+      settingsHtml.includes('data-consumer-slot="settings-scope"') &&
+      settingsHtml.includes("Consumer billing") &&
+      settingsHtml.includes("Default columns"),
+    `${settings.status} ${settingsHtml.slice(0, 200)}`,
+  );
+  check("a section the consumer left out is not rendered", !settingsHtml.includes("Agent default board"), "found Agent default board");
 
   // Tailwind skips node_modules unless told otherwise, so check the compiled
   // stylesheet has a class only the core's components use.

@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,6 +58,17 @@ test("the package exposes routes, pages, the layout and configure()", () => {
     "./configure",
     "./middleware",
   ]) {
+    assert.ok(pkg.exports[key], key);
+  }
+});
+
+test("the UI is adapted by composition, not by an edition file", () => {
+  // A consuming app passes its sidebar slots and settings sections as props
+  // to these components; there is no per-edition module to copy and edit.
+  assert.equal(existsSync(join(ROOT, "src", "edition")), false, "src/edition is gone");
+  const offenders = sources.filter((file) => /from\s+["'][^"']*\/edition(\/|["'])/.test(readFileSync(file, "utf8")));
+  assert.deepEqual(offenders.map((f) => relative(ROOT, f)), []);
+  for (const key of ["./components/BoardLayout", "./components/settings/SettingsShell", "./components/settings/sections"]) {
     assert.ok(pkg.exports[key], key);
   }
 });
