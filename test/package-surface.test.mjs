@@ -89,3 +89,33 @@ test("name, peer dependencies and published files", () => {
   }
   assert.ok(pkg.files.includes("src"));
 });
+
+// The consumer fixture is the working example a hosted wrapper copies, so it
+// mounts every API route the core's UI calls, with the same methods. A
+// section kept in the UI whose route isn't mounted fails with a 404 that the
+// UI can't show (Codex on #58: settings and member edit/remove). Login and
+// logout are left out: a consumer brings its own auth.
+const CONSUMER_OWNS = new Set(["./app/api/auth/login/route", "./app/api/auth/logout/route"]);
+const methodsOf = (text) =>
+  new Set([
+    ...[...text.matchAll(/export (?:async function|const) (GET|POST|PUT|PATCH|DELETE)\b/g)].map((m) => m[1]),
+    ...[...text.matchAll(/export \{([^}]*)\} from/g)].flatMap((m) => m[1].split(",").map((s) => s.trim())),
+  ].filter((m) => /^(GET|POST|PUT|PATCH|DELETE)$/.test(m)));
+
+test("the consumer fixture mounts every core API route with the same methods", () => {
+  const problems = [];
+  for (const [key, target] of Object.entries(pkg.exports)) {
+    if (!/^\.\/app\/api\/.*\/route$/.test(key) || CONSUMER_OWNS.has(key)) continue;
+    const fixture = join(ROOT, "test", "consumer", key.slice(2) + ".ts");
+    if (!existsSync(fixture)) {
+      problems.push(`${key}: no ${relative(ROOT, fixture)}`);
+      continue;
+    }
+    const want = [...methodsOf(readFileSync(join(ROOT, target), "utf8"))].sort().join(",");
+    const text = readFileSync(fixture, "utf8");
+    const got = [...methodsOf(text)].sort().join(",");
+    if (want !== got) problems.push(`${key}: fixture exports ${got || "nothing"}, core exports ${want}`);
+    if (!text.includes(`"@stratuslabs/agentboard-core/${key.slice(2)}"`)) problems.push(`${key}: fixture does not re-export from the package`);
+  }
+  assert.deepEqual(problems, []);
+});
