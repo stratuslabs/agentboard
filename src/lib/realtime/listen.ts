@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { Client } from "pg";
-import { connectionString, sslConfig } from "../sql";
+import { connectionString, sql, sslConfig } from "../sql";
 import { REALTIME_CHANNEL, type BoardChange } from "./notify";
 import { envInt } from "../env";
 
@@ -136,10 +136,11 @@ async function start(): Promise<boolean> {
     return false;
   }
 
-  // Prove it. A pooler that accepted the LISTEN but handed the backend to
-  // somebody else answers this by never delivering, which is exactly the
+  // Prove it, from the pool rather than from this connection. A pooler that
+  // accepted the LISTEN but handed the backend to somebody else answers a
+  // cross-connection notification by never delivering it, which is exactly the
   // silent failure the caller cannot otherwise detect.
-  if (!(await probe(next))) {
+  if (!(await probe())) {
     console.error(
       "realtime: LISTEN was accepted but no notification arrived — the " +
         "connection is probably pooled. Falling back to polling; set " +
@@ -157,14 +158,24 @@ async function start(): Promise<boolean> {
 }
 
 /**
- * Send ourselves a notification and wait for it to come back.
+ * Send a notification from where real ones come from, and wait for it here.
  *
- * Sent down the same connection that is listening, so it tests the exact
- * property every stream depends on. The payload carries no `board_id`, so even
- * if it reached another process it would be ignored there rather than being
- * mistaken for a board change.
+ * Sent through the **pool**, not down the listening connection. Every real
+ * notification is a `pg_notify` issued by a write route on a pooled
+ * connection, and what has to be proved is that one of those reaches this idle
+ * listener. Probing down the listener itself proves only that a connection can
+ * talk to itself, and on a transaction pooler it can pass for exactly the wrong
+ * reason: issuing the notify may hand that connection back the backend that ran
+ * the `LISTEN`, which is released again the moment the query ends.
+ *
+ * It also tests the deployed pair: the pool follows `POSTGRES_URL` while the
+ * listener may follow `DIRECT_POSTGRES_URL`.
+ *
+ * The payload carries neither a `board_id` nor a `team_id`, so even if it
+ * reached another process it would be ignored there rather than being mistaken
+ * for a board change.
  */
-async function probe(candidate: Client): Promise<boolean> {
+async function probe(): Promise<boolean> {
   const token = `probe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const roundTrip = new Promise<boolean>((resolve) => {
@@ -185,10 +196,7 @@ async function probe(candidate: Client): Promise<boolean> {
   });
 
   try {
-    await candidate.query("SELECT pg_notify($1, $2)", [
-      REALTIME_CHANNEL,
-      JSON.stringify({ probe: token }),
-    ]);
+    await sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify({ probe: token })})`;
   } catch {
     pendingProbe = null;
     return false;
