@@ -385,7 +385,7 @@ sits: [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). CLI releases are published to npm from `cli-v*` tags; see [RELEASING.md](RELEASING.md).
 
 ## License
 

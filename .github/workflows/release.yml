@@ -1,0 +1,101 @@
+name: Release
+
+# Publishes the CLI (npm package `agentboard`, in cli/) when a cli-v* tag is
+# pushed from main, e.g.
+#   npm version 0.10.0 --prefix cli --no-git-tag-version   # then commit via PR
+#   git tag cli-v0.10.0 && git push origin cli-v0.10.0
+# Run it by hand from the Actions tab for a dry run that publishes nothing.
+# See RELEASING.md.
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One group per tag, so tags pushed together each get their own run.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # npm 11.5.1+ is needed for trusted publishing.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+
+      - name: Check the tag
+        id: tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version=$(node scripts/cli-release.mjs check-tag "$GITHUB_REF_NAME")
+            # Only commits reviewed onto main get released.
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+              exit 1
+            fi
+          else
+            version=$(node -p "require('./cli/package.json').version")
+            echo "Dry run of $version from $GITHUB_REF_NAME: nothing will be published"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the packed CLI
+        run: node scripts/smoke-cli-pack.mjs
+
+      # Safe to re-run: a version already on npm is skipped, since npm never
+      # accepts the same version twice.
+      - name: Publish to npm
+        working-directory: cli
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          # Unused once trusted publishing is set up; see RELEASING.md.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "$(npm view "agentboard@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "agentboard@$VERSION is already on npm; skipping publish"
+            exit 0
+          fi
+          latest=$(npm view agentboard dist-tags.latest 2>/dev/null || true)
+          dist_tag=$(node ../scripts/cli-release.mjs dist-tag "$VERSION" "$latest")
+          echo "Publishing agentboard@$VERSION as \"$dist_tag\" (latest is ${latest:-none})"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            npm publish --provenance --tag "$dist_tag"
+          else
+            npm publish --dry-run --tag "$dist_tag"
+          fi
+
+      # Also safe to re-run: an existing release is left as it is.
+      - name: Create the GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*-*) flags=--prerelease ;; esac
+          previous=$(git tag --list 'cli-v*' --sort=-v:refname --merged "$GITHUB_SHA" | grep -vx "$GITHUB_REF_NAME" | grep -v -- '-.*-' | head -n 1 || true)
+          if [ -n "$previous" ]; then flags="$flags --notes-start-tag $previous"; fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --title "CLI ${GITHUB_REF_NAME#cli-}" $flags
