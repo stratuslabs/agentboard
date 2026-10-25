@@ -1,0 +1,123 @@
+name: Release
+
+# Publishes the CLI (npm package `agentboard`, in cli/) when a cli-v* tag is
+# pushed from main, e.g.
+#   npm version 0.10.0 --prefix cli --no-git-tag-version   # then commit via PR
+#   git tag cli-v0.10.0 && git push origin cli-v0.10.0
+# Run it by hand from the Actions tab for a dry run that publishes nothing.
+# See RELEASING.md.
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-latest
+    # Real publishes run one at a time across all tags: each reads npm's
+    # dist-tags and then moves one, so two at once could both pick latest.
+    # Dry runs publish nothing and get their own group, so they never queue
+    # behind or bump a release. GitHub keeps one pending run per group; if a
+    # third tag cancels a waiting one, re-run it. See RELEASING.md.
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'release-cli-npm' || format('release-dry-run-{0}', github.run_id) }}
+      cancel-in-progress: false
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # npm 11.5.1+ is needed for trusted publishing.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+
+      - name: Check the tag
+        id: tag
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version=$(node scripts/cli-release.mjs check-tag "$GITHUB_REF_NAME")
+            # Only commits reviewed onto main get released.
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main"
+              exit 1
+            fi
+          else
+            version=$(node -p "require('./cli/package.json').version")
+            echo "Dry run of $version from $GITHUB_REF_NAME: nothing will be published"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the packed CLI
+        run: node scripts/smoke-cli-pack.mjs
+
+      # Safe to re-run: a version already on npm is skipped, since npm never
+      # accepts the same version twice. If npm can't be read, the job fails
+      # rather than guessing a dist-tag.
+      - name: Publish to npm
+        working-directory: cli
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          # Unused once trusted publishing is set up; see RELEASING.md.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! registry=$(npm view agentboard dist-tags versions --json); then
+            echo "::error::Couldn't read agentboard's versions and dist-tags from npm; nothing was published. Re-run the job."
+            exit 1
+          fi
+          plan=$(node ../scripts/cli-release.mjs plan "$VERSION" <<< "$registry")
+          case "$plan" in
+            skip | latest | next | maintenance) ;;
+            *) echo "::error::Unexpected publish plan \"$plan\""; exit 1 ;;
+          esac
+          if [ "$plan" = skip ]; then
+            echo "agentboard@$VERSION is already on npm; skipping publish"
+            exit 0
+          fi
+          echo "Publishing agentboard@$VERSION as \"$plan\""
+          if [ "$GITHUB_EVENT_NAME" != push ]; then
+            npm publish --dry-run --tag "$plan"
+            exit 0
+          fi
+          npm publish --provenance --tag "$plan"
+          # Hold the release group until npm serves the new tag, so the next
+          # queued release reads it instead of a stale one.
+          for attempt in $(seq 1 30); do
+            if [ "$(npm view agentboard "dist-tags.$plan" 2>/dev/null)" = "$VERSION" ]; then
+              echo "npm now serves agentboard@$plan = $VERSION"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Published agentboard@$VERSION, but npm still doesn't show it as \"$plan\" after 5 minutes. Check npm before releasing anything else."
+          exit 1
+
+      # Also safe to re-run: an existing release is left as it is.
+      - name: Create the GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*-*) flags=--prerelease ;; esac
+          previous=$(git tag --list 'cli-v*' --sort=-v:refname --merged "$GITHUB_SHA" | grep -vx "$GITHUB_REF_NAME" | grep -v -- '-.*-' | head -n 1 || true)
+          if [ -n "$previous" ]; then flags="$flags --notes-start-tag $previous"; fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes \
+            --title "CLI ${GITHUB_REF_NAME#cli-}" $flags
