@@ -4,11 +4,11 @@
  * team access, API key and billing sections.
  */
 import { Bot, Columns3, Palette, Plug, Users } from "lucide-react";
-import type { SettingsSectionDef } from "@/components/settings/SettingsShell";
-import BoardMembers from "@/components/settings/BoardMembers";
-import ConnectAgent from "@/components/settings/ConnectAgent";
-import { DefaultBoards, DefaultColumns } from "@/components/settings/DefaultLists";
-import ProductDefaultBoards from "@/components/settings/ProductDefaultBoards";
+import type { SettingsSectionDef } from "../components/settings/SettingsShell";
+import BoardMembers from "../components/settings/BoardMembers";
+import ConnectAgent from "../components/settings/ConnectAgent";
+import { DefaultBoards, DefaultColumns } from "../components/settings/DefaultLists";
+import ProductDefaultBoards from "../components/settings/ProductDefaultBoards";
 
 /** Shown before "/ Settings" in the top bar. */
 export function SettingsScope() {

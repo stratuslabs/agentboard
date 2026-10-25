@@ -1,8 +1,8 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { notifyBoards } from "@/lib/realtime/notify";
-import { withTenant } from "@/lib/tenant";
+import { sql } from "../../../../lib/sql";
+import { notifyBoards } from "../../../../lib/realtime/notify";
+import { withTenant } from "../../../../lib/tenant";
 
 export const PATCH = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();

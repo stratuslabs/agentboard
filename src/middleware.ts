@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionCookieName, isAuthenticatedFromRequest } from "@/lib/auth";
-import { clientKey, FailureThrottle } from "@/lib/rate-limit";
+import { getSessionCookieName, isAuthenticatedFromRequest } from "./lib/auth";
+import { clientKey, FailureThrottle } from "./lib/rate-limit";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

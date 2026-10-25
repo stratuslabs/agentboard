@@ -9,7 +9,7 @@ import {
   restoreSubtask,
   revertSubtaskPatch,
   subtaskProgress,
-} from "@/lib/subtasks";
+} from "../lib/subtasks";
 
 interface SubtasksProps {
   cardId: number;

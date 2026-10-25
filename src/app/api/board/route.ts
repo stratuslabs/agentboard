@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import { readSnapshot } from "@/lib/sql";
-import { envInt } from "@/lib/env";
-import { assertProduct, found, withTenant } from "@/lib/tenant";
+import { readSnapshot } from "../../../lib/sql";
+import { envInt } from "../../../lib/env";
+import { assertProduct, found, withTenant } from "../../../lib/tenant";
 
 /**
  * Everything a board screen needs, in one request.

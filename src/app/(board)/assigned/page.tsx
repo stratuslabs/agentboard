@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CircleUserRound } from "lucide-react";
-import ListView, { type ViewCard } from "@/components/ListView";
-import { useSidebar } from "@/contexts/SidebarContext";
+import ListView, { type ViewCard } from "../../../components/ListView";
+import { useSidebar } from "../../../contexts/SidebarContext";
 
 
 export default function AssignedPage() {

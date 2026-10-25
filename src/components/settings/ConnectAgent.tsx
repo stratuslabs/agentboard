@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Check, Copy, FileText } from "lucide-react";
 import { Avatar, Button } from "../ui";
-import { agentSetupPrompt } from "@/lib/agent-prompt";
+import { agentSetupPrompt } from "../../lib/agent-prompt";
 import { useBoardMembers } from "./BoardMembers";
 
 const STEPS = ["Register itself as a team member", "Set up the CLI", "Check for assigned tasks", "Start working"];

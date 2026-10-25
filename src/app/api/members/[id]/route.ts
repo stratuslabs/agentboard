@@ -1,13 +1,13 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
+import { sql } from "../../../../lib/sql";
 import {
   boardIdsForCards,
   cardIdsForMember,
   notifyBoards,
   stampCards,
-} from "@/lib/realtime/notify";
-import { assertMember, withTenantParams } from "@/lib/tenant";
+} from "../../../../lib/realtime/notify";
+import { assertMember, withTenantParams } from "../../../../lib/tenant";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { initDb } from "@/lib/db";
-import { withTenant } from "@/lib/tenant";
+import { sql } from "../../../lib/sql";
+import { initDb } from "../../../lib/db";
+import { withTenant } from "../../../lib/tenant";
 
 export const GET = withTenant(async (_request, { teamId }) => {
   await initDb();

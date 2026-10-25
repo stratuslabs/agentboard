@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
-import { cardIdFromRef } from "@/lib/card-location";
-import { withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../../lib/sql";
+import { boardIdForCard, notifyBoard } from "../../../../../lib/realtime/notify";
+import { cardIdFromRef } from "../../../../../lib/card-location";
+import { withTenantParams } from "../../../../../lib/tenant";
 
 // Attachment bodies are stored inline in Postgres, so cap them to keep a single
 // request from bloating the database.

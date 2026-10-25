@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePreferences } from "@/contexts/PreferencesContext";
+import { usePreferences } from "../../contexts/PreferencesContext";
 import { Columns3 } from "lucide-react";
-import { useSidebar } from "@/contexts/SidebarContext";
-import { EmptyState, PageLoader } from "@/components/ui";
+import { useSidebar } from "../../contexts/SidebarContext";
+import { EmptyState, PageLoader } from "../../components/ui";
 
 export default function HomePage() {
   const router = useRouter();

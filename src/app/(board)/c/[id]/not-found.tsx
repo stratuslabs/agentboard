@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { SearchX } from "lucide-react";
-import { Button, EmptyState } from "@/components/ui";
+import { Button, EmptyState } from "../../../../components/ui";
 
 export default function CardNotFound() {
   const router = useRouter();

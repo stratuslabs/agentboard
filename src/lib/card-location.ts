@@ -1,5 +1,5 @@
-import { sql, db } from "@/lib/sql";
-import { resolveCardRef } from "@/lib/card-keys";
+import { sql, db } from "./sql";
+import { resolveCardRef } from "./card-keys";
 
 /** Largest value a Postgres INTEGER (and so a SERIAL card id) can hold. */
 const MAX_CARD_ID = 2147483647;

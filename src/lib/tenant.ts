@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db } from "@/lib/sql";
-import { initDb } from "@/lib/db";
-import { ensureDefaultTeam, ensureTeamDefaults, SELF_HOSTED_USER_ID } from "@/lib/tenancy";
+import { sql, db } from "./sql";
+import { initDb } from "./db";
+import { ensureDefaultTeam, ensureTeamDefaults, SELF_HOSTED_USER_ID } from "./tenancy";
+import { configure, getConfig } from "../configure";
 
 /**
  * Which team a request acts for.
@@ -10,8 +11,8 @@ import { ensureDefaultTeam, ensureTeamDefaults, SELF_HOSTED_USER_ID } from "@/li
  * from here and only from here: never from a body, query string or header the
  * caller chooses. Self-hosted AgentBoard has one team, so every request
  * resolves to it. The hosted edition swaps in its own resolver (signed-in
- * user's active team, or the team an API key belongs to) with
- * setTenantResolver.
+ * user's active team, or the team an API key belongs to) with configure()
+ * (src/configure.ts).
  *
  * userId is who is acting, for what is kept per person (preferences). Null
  * when the caller is the team rather than a person: the hosted edition's API
@@ -23,12 +24,28 @@ export type TenantContext = {
   userId: number | null;
 };
 
-/** Thrown by the guards below; withTenant turns it into a response. */
+const TENANT_ERROR = Symbol.for("@stratuslabs/agentboard-core/TenantError");
+
+/**
+ * Thrown by the guards below and by a configured resolver; withTenant turns it
+ * into a response.
+ *
+ * instanceof is by brand, not by class: a consumer's resolver is built in its
+ * instrumentation bundle, so it throws that bundle's copy of this class, and
+ * the route catching it has its own.
+ */
 export class TenantError extends Error {
   status: number;
+  readonly [TENANT_ERROR] = true;
   constructor(status: number, message: string) {
     super(message);
+    this.name = "TenantError";
     this.status = status;
+  }
+  static [Symbol.hasInstance](value: unknown): boolean {
+    // A subclass keeps ordinary instanceof.
+    if (this !== TenantError) return Function.prototype[Symbol.hasInstance].call(this, value);
+    return typeof value === "object" && value !== null && (value as { [TENANT_ERROR]?: unknown })[TENANT_ERROR] === true;
   }
 }
 
@@ -68,25 +85,36 @@ const selfHosted: TenantResolver = {
   fromPage: () => selfHostedTeam(),
 };
 
-let resolver: TenantResolver = selfHosted;
+/**
+ * The resolver in force: what configure() supplied, with the self-hosted
+ * default for anything it left out.
+ */
+export function tenantResolver(): TenantResolver {
+  const configured = getConfig().tenant;
+  if (!configured) return selfHosted;
+  return {
+    fromRequest: configured.fromRequest ?? selfHosted.fromRequest,
+    fromPage: configured.fromPage ?? selfHosted.fromPage,
+  };
+}
 
 /**
- * Replace how the team is resolved. For the hosted edition, and for tests that
- * need two teams; self-hosted never calls it.
+ * Replace how the team is resolved: configure({ tenant }) for code that has
+ * a resolver but no other configuration (tests that need two teams).
  */
 export function setTenantResolver(next: Partial<TenantResolver> | null) {
-  resolver = next ? { ...selfHosted, ...next } : selfHosted;
+  configure({ ...getConfig(), tenant: next ?? undefined });
 }
 
 export async function resolveTenant(request: Request): Promise<TenantContext> {
   await initDb();
-  return resolver.fromRequest(request);
+  return tenantResolver().fromRequest(request);
 }
 
 /** The team for a server component. */
 export async function pageTenant(): Promise<TenantContext> {
   await initDb();
-  return resolver.fromPage();
+  return tenantResolver().fromPage();
 }
 
 function tenantErrorResponse(e: unknown): Response {

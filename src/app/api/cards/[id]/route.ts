@@ -1,11 +1,11 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db as pool } from "@/lib/sql";
-import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
-import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
-import { checkCardText } from "@/lib/card-text";
-import { memberIdByName, resolveAgentMember } from "@/lib/members";
-import { assertColumn, assertMember, withTenantParams } from "@/lib/tenant";
+import { sql, db as pool } from "../../../../lib/sql";
+import { boardIdForCard, notifyBoards } from "../../../../lib/realtime/notify";
+import { cardIdFromRef, getCardWithLocation } from "../../../../lib/card-location";
+import { checkCardText } from "../../../../lib/card-text";
+import { memberIdByName, resolveAgentMember } from "../../../../lib/members";
+import { assertColumn, assertMember, withTenantParams } from "../../../../lib/tenant";
 
 export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();

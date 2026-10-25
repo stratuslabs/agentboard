@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db as pool } from "@/lib/sql";
-import { boardIdForColumn, notifyBoard } from "@/lib/realtime/notify";
-import { planColumnRename } from "@/lib/column-slug";
-import { assertColumn, withTenantParams } from "@/lib/tenant";
+import { sql, db as pool } from "../../../../lib/sql";
+import { boardIdForColumn, notifyBoard } from "../../../../lib/realtime/notify";
+import { planColumnRename } from "../../../../lib/column-slug";
+import { assertColumn, withTenantParams } from "../../../../lib/tenant";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();

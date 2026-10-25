@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { parseRichText, type Block, type Inline, type Line } from "@/lib/rich-text";
+import { parseRichText, type Block, type Inline, type Line } from "../lib/rich-text";
 import { cx } from "./ui";
 
 function Inlines({ nodes }: { nodes: Line }) {

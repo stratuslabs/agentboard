@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
-import { orgSlugFromName } from "@/lib/org-slug";
+import { initDb } from "../../../../lib/db";
+import { orgSlugFromName } from "../../../../lib/org-slug";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { boardIdsUnderOrgs, notifyBoards } from "@/lib/realtime/notify";
-import { assertOrg, withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../lib/sql";
+import { boardIdsUnderOrgs, notifyBoards } from "../../../../lib/realtime/notify";
+import { assertOrg, withTenantParams } from "../../../../lib/tenant";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();

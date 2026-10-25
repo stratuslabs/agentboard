@@ -2,9 +2,9 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import AuthLayout, { FormError } from "@/components/auth/AuthLayout";
-import PasswordInput from "@/components/auth/PasswordInput";
-import { Button, Field } from "@/components/ui";
+import AuthLayout, { FormError } from "../../components/auth/AuthLayout";
+import PasswordInput from "../../components/auth/PasswordInput";
+import { Button, Field } from "../../components/ui";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
