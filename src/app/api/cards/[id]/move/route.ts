@@ -3,26 +3,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/sql";
 import { boardIdForCard, boardIdForColumn, notifyBoards } from "@/lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
+import { assertColumn, found, withTenantParams } from "@/lib/tenant";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const id = await cardIdFromRef((await params).id);
-  const { column_id, position } = await request.json();
+  const id = await cardIdFromRef(teamId, (await params).id);
+  const { column_id: rawColumnId, position } = await request.json();
 
   const { rows } = id === null ? { rows: [] } : await sql`SELECT * FROM cards WHERE id = ${id}`;
   if (id === null || rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (!column_id) {
+  if (!rawColumnId) {
     return NextResponse.json({ error: "column_id is required" }, { status: 400 });
   }
 
-  const { rows: colRows } = await sql`SELECT id FROM columns WHERE id = ${column_id}`;
-  if (colRows.length === 0) {
+  // Another team's column is as missing as a deleted one.
+  const column_id = await found(assertColumn(teamId, rawColumnId));
+  if (column_id === null) {
     return NextResponse.json({ error: "Column not found" }, { status: 404 });
   }
 
@@ -39,8 +38,8 @@ export async function PATCH(
     WHERE id = ${id}
   `;
 
-  await notifyBoards([boardBefore, await boardIdForColumn(column_id)]);
+  await notifyBoards(teamId, [boardBefore, await boardIdForColumn(column_id)]);
 
   // Includes product/board so a caller can confirm where the card landed.
-  return NextResponse.json(await getCardWithLocation(id));
-}
+  return NextResponse.json(await getCardWithLocation(teamId, id));
+});

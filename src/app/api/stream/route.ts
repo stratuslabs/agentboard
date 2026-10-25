@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { sql } from "@/lib/sql";
 import { ensureListening, onBoardChange } from "@/lib/realtime/listen";
 import { envInt } from "@/lib/env";
+import { assertBoard, withTenant } from "@/lib/tenant";
 
 /**
  * Live board updates over Server-Sent Events.
@@ -13,8 +14,12 @@ import { envInt } from "@/lib/env";
  * makes a live update and a reconnect catch-up the same code path, so dropping
  * the connection costs nothing but a round trip.
  *
- *   GET /api/stream            — every board (the sidebar's past-due badge)
+ *   GET /api/stream            — every board on the team (the past-due badge)
  *   GET /api/stream?board_id=4 — one board
+ *
+ * Board ids are global, so a requested board is checked against the team
+ * before anything is subscribed, and every event is filtered by team on the
+ * way out: one team never learns that another team's board moved.
  */
 
 export const runtime = "nodejs";
@@ -61,16 +66,30 @@ const RECONCILE_MS = envInt("SSE_RECONCILE_MS", 30_000, 0);
  */
 const STAMP_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS.US';
 
-async function stampFor(boardId: number | null): Promise<string> {
+async function stampFor(teamId: number, boardId: number | null): Promise<string> {
   if (boardId === null) {
+    // Scoped to the team, or a quiet team would be woken by every other
+    // team's writes.
     const { rows } = await sql`
+      WITH team_boards AS (
+        SELECT b.id, b.updated_at FROM boards b
+          JOIN products p ON p.id = b.product_id
+          JOIN organizations o ON o.id = p.org_id
+         WHERE o.team_id = ${teamId}
+      ),
+      team_columns AS (
+        SELECT c.id, c.updated_at FROM columns c JOIN team_boards tb ON tb.id = c.board_id
+      ),
+      team_cards AS (
+        SELECT cd.updated_at FROM cards cd JOIN team_columns tc ON tc.id = cd.column_id
+      )
       SELECT
-        to_char((SELECT MAX(updated_at) FROM cards), ${STAMP_FORMAT})   AS cm,
-        (SELECT COUNT(*) FROM cards)                                    AS cc,
-        to_char((SELECT MAX(updated_at) FROM columns), ${STAMP_FORMAT}) AS lm,
-        (SELECT COUNT(*) FROM columns)                                  AS lc,
-        to_char((SELECT MAX(updated_at) FROM boards), ${STAMP_FORMAT})  AS bm,
-        (SELECT COUNT(*) FROM boards)                                   AS bc
+        to_char((SELECT MAX(updated_at) FROM team_cards), ${STAMP_FORMAT})   AS cm,
+        (SELECT COUNT(*) FROM team_cards)                                    AS cc,
+        to_char((SELECT MAX(updated_at) FROM team_columns), ${STAMP_FORMAT}) AS lm,
+        (SELECT COUNT(*) FROM team_columns)                                  AS lc,
+        to_char((SELECT MAX(updated_at) FROM team_boards), ${STAMP_FORMAT})  AS bm,
+        (SELECT COUNT(*) FROM team_boards)                                   AS bc
     `;
     const r = rows[0];
     return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}|${r.bc}`;
@@ -93,11 +112,12 @@ async function stampFor(boardId: number | null): Promise<string> {
   return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}`;
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
 
+  // Checked before anything is subscribed: another team's board is a 404.
   const raw = request.nextUrl.searchParams.get("board_id");
-  const boardId = raw !== null && raw !== "" && Number.isFinite(Number(raw)) ? Number(raw) : null;
+  const boardId = raw !== null && raw !== "" ? await assertBoard(teamId, raw) : null;
 
   const encoder = new TextEncoder();
 
@@ -178,8 +198,9 @@ export async function GET(request: NextRequest) {
       // the same way.
       if (live) {
         unsubscribe = onBoardChange((changed) => {
-          if (boardId === null || changed === boardId) {
-            event("change", { board_id: changed });
+          if (changed.team_id !== teamId) return;
+          if (boardId === null || changed.board_id === boardId) {
+            event("change", { board_id: changed.board_id });
           }
         });
       }
@@ -200,7 +221,7 @@ export async function GET(request: NextRequest) {
       // only cost a redundant `change`, and the event carries no data.
       if (interval > 0) {
         try {
-          last = await stampFor(boardId);
+          last = await stampFor(teamId, boardId);
         } catch (err) {
           console.error("realtime: initial stamp failed", err);
         }
@@ -214,7 +235,7 @@ export async function GET(request: NextRequest) {
         const tick = async () => {
           if (closed) return;
           try {
-            const next = await stampFor(boardId);
+            const next = await stampFor(teamId, boardId);
             if (last !== null && next !== last) event("change", { board_id: boardId });
             last = next;
           } catch (err) {
@@ -252,4 +273,4 @@ export async function GET(request: NextRequest) {
       "X-Accel-Buffering": "no",
     },
   });
-}
+});

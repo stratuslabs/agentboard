@@ -20,18 +20,19 @@ export function parseCardId(raw: string | number): number | null {
 /**
  * The internal id for a card reference from a URL or the CLI: a numeric id,
  * or a readable key like AB-142 (any case, old keys and pre-move numbers
- * included). Null when it names no card, so a route can answer 404 without
- * ever passing the raw text to a query.
+ * included). Null when it names no card in the team, so a route can answer
+ * 404 without ever passing the raw text to a query, and another team's card
+ * looks exactly like one that doesn't exist.
  */
-export async function cardIdFromRef(raw: string | number): Promise<number | null> {
-  return resolveCardRef((text: string, values?: unknown[]) => db.query(text, values), raw);
+export async function cardIdFromRef(teamId: number, raw: string | number): Promise<number | null> {
+  return resolveCardRef((text: string, values?: unknown[]) => db.query(text, values), teamId, raw);
 }
 
 // A card joined to the column, board, product and org it lives on, so a caller
 // that just moved it can see where it landed without a second request.
 // Accepts a numeric id or a readable key; `key` is the card's current one.
-export async function getCardWithLocation(rawId: string | number) {
-  const id = await cardIdFromRef(rawId);
+export async function getCardWithLocation(teamId: number, rawId: string | number) {
+  const id = await cardIdFromRef(teamId, rawId);
   if (id === null) return null;
   const { rows } = await sql`
     SELECT cards.*,
@@ -51,7 +52,7 @@ export async function getCardWithLocation(rawId: string | number) {
     JOIN products p ON p.id = b.product_id
     JOIN organizations o ON o.id = p.org_id
     LEFT JOIN members m ON cards.assignee_id = m.id
-    WHERE cards.id = ${id}
+    WHERE cards.id = ${id} AND o.team_id = ${teamId}
   `;
   return rows[0] ?? null;
 }

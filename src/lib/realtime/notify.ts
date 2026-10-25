@@ -11,7 +11,11 @@ import { sql } from "@/lib/sql";
 
 export const REALTIME_CHANNEL = "agentboard";
 
-export type BoardChange = { board_id: number };
+/**
+ * Board ids are global, so the team rides along: a stream only passes on its
+ * own team's changes, and one team never learns another's board moved.
+ */
+export type BoardChange = { board_id: number; team_id: number };
 
 /**
  * Announce a change. Never throws.
@@ -20,14 +24,18 @@ export type BoardChange = { board_id: number };
  * client polls as a fallback and would pick the change up regardless, so a
  * broken NOTIFY should cost freshness, never data.
  */
-export async function notifyBoard(boardId: number | string | null | undefined): Promise<void> {
+export async function notifyBoard(
+  teamId: number,
+  boardId: number | string | null | undefined
+): Promise<void> {
   if (boardId === null || boardId === undefined) return;
   const id = Number(boardId);
   if (!Number.isFinite(id)) return;
+  const change: BoardChange = { board_id: id, team_id: teamId };
   try {
     // pg_notify() rather than NOTIFY so the channel and payload bind as
     // parameters; NOTIFY takes an identifier and cannot be parameterised.
-    await sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify({ board_id: id })})`;
+    await sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify(change)})`;
   } catch (err) {
     console.error("realtime: notify failed", err);
   }
@@ -35,14 +43,16 @@ export async function notifyBoard(boardId: number | string | null | undefined): 
 
 /** Announce several boards at once, skipping repeats. */
 export async function notifyBoards(
+  teamId: number,
   boardIds: (number | string | null | undefined)[]
 ): Promise<void> {
   const unique = new Set<number>();
   for (const raw of boardIds) {
+    if (raw === null || raw === undefined) continue;
     const id = Number(raw);
     if (Number.isFinite(id)) unique.add(id);
   }
-  await Promise.all([...unique].map(notifyBoard));
+  await Promise.all([...unique].map((id) => notifyBoard(teamId, id)));
 }
 
 /**
@@ -113,43 +123,26 @@ export async function stampCards(cardIds: number[]): Promise<void> {
 }
 
 /**
- * Every board under a product, by id or slug.
+ * Every board under a product.
  *
  * Deleting a product cascades through boards, columns and cards without any of
  * those routes running, so anyone watching one of those boards hears nothing
- * and keeps rendering rows that no longer exist. Resolve before the delete.
+ * and keeps rendering rows that no longer exist. Resolve before the delete,
+ * with ids already checked against the team.
  */
-export async function boardIdsUnderProduct(idOrSlug: string): Promise<number[]> {
-  const numId = parseInt(idOrSlug, 10);
-  const { rows } = Number.isNaN(numId)
-    ? await sql`
-        SELECT b.id FROM boards b
-          JOIN products p ON p.id = b.product_id
-         WHERE p.slug = ${idOrSlug}
-      `
-    : await sql`
-        SELECT b.id FROM boards b
-          JOIN products p ON p.id = b.product_id
-         WHERE p.id = ${numId} OR p.slug = ${idOrSlug}
-      `;
+export async function boardIdsUnderProducts(productIds: number[]): Promise<number[]> {
+  if (productIds.length === 0) return [];
+  const { rows } = await sql`SELECT id FROM boards WHERE product_id = ANY(${productIds})`;
   return rows.map((r) => r.id);
 }
 
-/** Every board under an organization, by id or slug. Same reasoning as above. */
-export async function boardIdsUnderOrg(idOrSlug: string): Promise<number[]> {
-  const numId = parseInt(idOrSlug, 10);
-  const { rows } = Number.isNaN(numId)
-    ? await sql`
-        SELECT b.id FROM boards b
-          JOIN products p ON p.id = b.product_id
-          JOIN organizations o ON o.id = p.org_id
-         WHERE o.slug = ${idOrSlug}
-      `
-    : await sql`
-        SELECT b.id FROM boards b
-          JOIN products p ON p.id = b.product_id
-          JOIN organizations o ON o.id = p.org_id
-         WHERE o.id = ${numId} OR o.slug = ${idOrSlug}
-      `;
+/** Every board under some organizations. Same reasoning as above. */
+export async function boardIdsUnderOrgs(orgIds: number[]): Promise<number[]> {
+  if (orgIds.length === 0) return [];
+  const { rows } = await sql`
+    SELECT b.id FROM boards b
+      JOIN products p ON p.id = b.product_id
+     WHERE p.org_id = ANY(${orgIds})
+  `;
   return rows.map((r) => r.id);
 }

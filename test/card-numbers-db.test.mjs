@@ -21,6 +21,7 @@ import {
   resolveCardRef,
 } from "../src/lib/card-keys.js";
 import { updateProduct } from "../src/lib/product-update.js";
+import { TENANCY_MIGRATION } from "../src/lib/tenancy.js";
 
 const require = createRequire(import.meta.url);
 const URL_VAR = "AGENTBOARD_TEST_DATABASE_URL";
@@ -95,6 +96,9 @@ const BASE_SCHEMA = `
     title TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
   );
+  CREATE TABLE members (id SERIAL PRIMARY KEY, name TEXT NOT NULL);
+  CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE user_preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
 
 /** Ids of what the tests use, filled in by `before`. */
@@ -143,7 +147,10 @@ after(async () => {
 });
 
 test("the migration numbers existing cards per product in creation order and gives products keys", { skip }, async () => {
+  // Tenancy first, as ensureTables() runs them: product keys are per team.
+  await query(TENANCY_MIGRATION);
   await query(CARD_NUMBER_MIGRATION);
+  ids.team = (await query("SELECT id FROM teams")).rows[0].id;
   await ensureProductKeys(query);
 
   assert.equal(await numberOf(ids.oldA.id), 1);
@@ -189,21 +196,21 @@ test("concurrent creates in one product never share a number", { skip }, async (
 });
 
 test("KEY-N resolves in any case; numeric ids still work; unknown refs are null", { skip }, async () => {
-  assert.equal(await resolveCardRef(query, "AB-1"), ids.oldA.id);
-  assert.equal(await resolveCardRef(query, "ab-3"), ids.oldC.id);
-  assert.equal(await resolveCardRef(query, "AB2-1"), ids.oldX.id);
-  assert.equal(await resolveCardRef(query, String(ids.oldB.id)), ids.oldB.id);
-  assert.equal(await resolveCardRef(query, "AB-9999"), null);
-  assert.equal(await resolveCardRef(query, "ZZ-1"), null);
-  assert.equal(await resolveCardRef(query, "AB-1; DROP TABLE cards"), null);
+  assert.equal(await resolveCardRef(query, ids.team, "AB-1"), ids.oldA.id);
+  assert.equal(await resolveCardRef(query, ids.team, "ab-3"), ids.oldC.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AB2-1"), ids.oldX.id);
+  assert.equal(await resolveCardRef(query, ids.team, String(ids.oldB.id)), ids.oldB.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AB-9999"), null);
+  assert.equal(await resolveCardRef(query, ids.team, "ZZ-1"), null);
+  assert.equal(await resolveCardRef(query, ids.team, "AB-1; DROP TABLE cards"), null);
 });
 
 test("a moved card gets a number in its new product, and its old key still finds it", { skip }, async () => {
   const card = ids.oldB; // AB-2
   await query("UPDATE cards SET column_id = $1 WHERE id = $2", [ids.ops.column, card.id]);
   assert.equal(await numberOf(card.id), 2, "OPS-2: ops already had one card");
-  assert.equal(await resolveCardRef(query, "OPS-2"), card.id);
-  assert.equal(await resolveCardRef(query, "AB-2"), card.id, "old key redirects");
+  assert.equal(await resolveCardRef(query, ids.team, "OPS-2"), card.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AB-2"), card.id, "old key redirects");
 
   await query("UPDATE cards SET column_id = $1 WHERE id = $2", [ids.agentboard.column, card.id]);
   assert.equal(await numberOf(card.id), 2, "moving back restores AB-2");
@@ -221,8 +228,8 @@ test("updating other fields or the same column keeps the number", { skip }, asyn
 test("a changed key keeps the old one as an alias", { skip }, async () => {
   const result = await changeProductKey(query, ids.agentboard.product, "agb");
   assert.equal(result.product.key, "AGB");
-  assert.equal(await resolveCardRef(query, "AGB-1"), ids.oldA.id);
-  assert.equal(await resolveCardRef(query, "AB-1"), ids.oldA.id, "old key still resolves");
+  assert.equal(await resolveCardRef(query, ids.team, "AGB-1"), ids.oldA.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AB-1"), ids.oldA.id, "old key still resolves");
 
   // Nobody else can take the alias, or a key in use.
   assert.deepEqual(await changeProductKey(query, ids.ops.product, "AB"), {
@@ -230,8 +237,8 @@ test("a changed key keeps the old one as an alias", { skip }, async () => {
     status: 409,
   });
   assert.equal((await changeProductKey(query, ids.ops.product, "AB2")).status, 409);
-  assert.equal((await keyForNewProduct(query, "Whatever", "ab")).status, 409);
-  assert.equal((await keyForNewProduct(query, "AgentBoard", undefined)).key, "AB3");
+  assert.equal((await keyForNewProduct(query, ids.team, "Whatever", "ab")).status, 409);
+  assert.equal((await keyForNewProduct(query, ids.team, "AgentBoard", undefined)).key, "AB3");
   assert.equal((await changeProductKey(query, ids.ops.product, "x")).status, 400);
   assert.equal((await changeProductKey(query, 999999, "NEW")).status, 404);
   const { rows } = await query("SELECT key FROM products WHERE id = $1", [ids.ops.product]);
@@ -252,7 +259,7 @@ test("a changed key keeps the old one as an alias", { skip }, async () => {
     query("INSERT INTO products (org_id, name, slug, key) SELECT org_id, 'Thief', 'thief', 'AGB' FROM products WHERE id = $1", [ids.ops.product]),
     (err) => err.code === "23505"
   );
-  assert.equal(await resolveCardRef(query, "AGB-1"), ids.oldA.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AGB-1"), ids.oldA.id);
 });
 
 // Two renames racing: one product hands its key off while another asks for
@@ -278,8 +285,8 @@ test("a key being handed off can't be taken by a concurrent rename", { skip: con
   }
   const { rows } = await query("SELECT key FROM products WHERE id = $1", [ids.ops.product]);
   assert.equal(rows[0].key, "OPS");
-  assert.equal(await resolveCardRef(query, "AB2-1"), ids.oldX.id, "the old key still means its own product");
-  assert.equal(await resolveCardRef(query, "ZED-1"), ids.oldX.id);
+  assert.equal(await resolveCardRef(query, ids.team, "AB2-1"), ids.oldX.id, "the old key still means its own product");
+  assert.equal(await resolveCardRef(query, ids.team, "ZED-1"), ids.oldX.id);
 });
 
 test("a product update that fails partway changes nothing", { skip }, async () => {
@@ -296,7 +303,7 @@ test("a product update that fails partway changes nothing", { skip }, async () =
   const { rows } = await query("SELECT key, name FROM products WHERE id = $1", [ids.ops.product]);
   assert.deepEqual(rows[0], { key: "OPS", name: "Ops" });
   const ops = await insertCard(ids.ops.column, "probe");
-  assert.equal(await resolveCardRef(query, `NEWK-${ops.number}`), null, "NEWK was not kept as a key");
+  assert.equal(await resolveCardRef(query, ids.team, `NEWK-${ops.number}`), null, "NEWK was not kept as a key");
   await query("DELETE FROM cards WHERE id = $1", [ops.id]);
 
   // The same call with nothing in the way applies both.
@@ -322,7 +329,7 @@ async function insertRacedBy(competitorSlug) {
 }
 
 test("a derived key lost to a concurrent create is derived again", { skip }, async () => {
-  const result = await createProductWithKey(query, "Race Car", undefined, await insertRacedBy("race-rival"));
+  const result = await createProductWithKey(query, ids.team, "Race Car", undefined, await insertRacedBy("race-rival"));
   assert.ok(!("error" in result), `expected a product, got ${JSON.stringify(result)}`);
   assert.equal(result.key, "RC2");
   assert.equal(result.product.key, "RC2");
@@ -330,7 +337,7 @@ test("a derived key lost to a concurrent create is derived again", { skip }, asy
 });
 
 test("a requested key lost to a concurrent create is a conflict", { skip }, async () => {
-  const result = await createProductWithKey(query, "Race Car", "RQ", await insertRacedBy("race-rival-2"));
+  const result = await createProductWithKey(query, ids.team, "Race Car", "RQ", await insertRacedBy("race-rival-2"));
   assert.deepEqual(result, { error: "Key RQ is already used by another product", status: 409 });
   const { rows } = await query("SELECT COUNT(*)::int AS n FROM products WHERE slug = 'race-rival-2-mine'");
   assert.equal(rows[0].n, 0);
@@ -341,7 +348,7 @@ test("deleting a card or a product leaves no dangling numbers", { skip }, async 
   const card = await insertCard(ids.ops.column, "short-lived");
   const ref = `OPS-${card.number}`;
   await query("DELETE FROM cards WHERE id = $1", [card.id]);
-  assert.equal(await resolveCardRef(query, ref), null);
+  assert.equal(await resolveCardRef(query, ids.team, ref), null);
 
   await query("DELETE FROM products WHERE id = $1", [ids.ops.product]);
   const { rows } = await query("SELECT COUNT(*)::int AS n FROM card_numbers WHERE product_id = $1", [ids.ops.product]);
@@ -352,20 +359,20 @@ test("a deleted product's keys are never handed out again", { skip }, async () =
   // Runs after the test above deleted Ops, which had OPS and OPZ.
   const { rows: held } = await query("SELECT key, product_id FROM product_keys WHERE key IN ('OPS', 'OPZ') ORDER BY key");
   assert.deepEqual(held, [{ key: "OPS", product_id: null }, { key: "OPZ", product_id: null }]);
-  assert.equal(await resolveCardRef(query, "OPS-1"), null);
+  assert.equal(await resolveCardRef(query, ids.team, "OPS-1"), null);
 
   const org = (await query("SELECT org_id FROM products WHERE id = $1", [ids.agentboard.product])).rows[0].org_id;
   const insert = async (/** @type {string} */ key) =>
     (await query("INSERT INTO products (org_id, name, slug, key) VALUES ($1, 'Ops', 'ops', $2) RETURNING *", [org, key])).rows[0];
-  assert.deepEqual(await createProductWithKey(query, "Ops", "OPS", insert), { error: "Key OPS is already used by another product", status: 409 });
-  const again = await createProductWithKey(query, "Ops", undefined, insert);
+  assert.deepEqual(await createProductWithKey(query, ids.team, "Ops", "OPS", insert), { error: "Key OPS is already used by another product", status: 409 });
+  const again = await createProductWithKey(query, ids.team, "Ops", undefined, insert);
   assert.equal(again.key, "OPS2");
   const board = (await query("INSERT INTO boards (product_id, name, slug) VALUES ($1, 'Dev', 'dev') RETURNING id", [again.product.id])).rows[0];
   const column = (await query("INSERT INTO columns (board_id, name, slug) VALUES ($1, 'Todo', 'todo') RETURNING id", [board.id])).rows[0];
   const card = await insertCard(column.id, "new ops card");
   assert.equal(card.number, 1);
-  assert.equal(await resolveCardRef(query, "OPS-1"), null, "the old key still points at nothing");
-  assert.equal(await resolveCardRef(query, "OPS2-1"), card.id);
+  assert.equal(await resolveCardRef(query, ids.team, "OPS-1"), null, "the old key still points at nothing");
+  assert.equal(await resolveCardRef(query, ids.team, "OPS2-1"), card.id);
   await query("DELETE FROM products WHERE id = $1", [again.product.id]);
 });
 

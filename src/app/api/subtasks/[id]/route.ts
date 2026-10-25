@@ -4,34 +4,35 @@ import { sql } from "@/lib/sql";
 import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
 import { parseCardId } from "@/lib/card-location";
 import { parseSubtaskUpdate } from "@/lib/subtasks";
+import { assertSubtask, found, withTenantParams } from "@/lib/tenant";
 
-// Sub-task ids are SERIAL integers like card ids, so the same strict parse
-// applies: "1.0" or "12abc" is not a sub-task.
-const parseSubtaskId = parseCardId;
-
-async function touchCard(cardId: number) {
-  await sql`UPDATE cards SET updated_at = NOW() WHERE id = ${cardId}`;
-  await notifyBoard(await boardIdForCard(cardId));
+/**
+ * The sub-task's id when it is one of the team's, else null. Sub-task ids are
+ * SERIAL integers like card ids, so the same strict parse applies: "1.0" or
+ * "12abc" is not a sub-task, and answers 404 like any other.
+ */
+async function subtaskId(teamId: number, raw: string): Promise<number | null> {
+  const id = parseCardId(raw);
+  return id === null ? null : found(assertSubtask(teamId, id));
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+async function touchCard(teamId: number, cardId: number) {
+  await sql`UPDATE cards SET updated_at = NOW() WHERE id = ${cardId}`;
+  await notifyBoard(teamId, await boardIdForCard(cardId));
+}
+
+export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const id = parseSubtaskId((await params).id);
+  const id = await subtaskId(teamId, (await params).id);
   if (id === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { rows } = await sql`SELECT * FROM subtasks WHERE id = ${id}`;
   if (rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(rows[0]);
-}
+});
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const id = parseSubtaskId((await params).id);
+  const id = await subtaskId(teamId, (await params).id);
   if (id === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   let body: unknown;
@@ -55,21 +56,18 @@ export async function PATCH(
   `;
   if (rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await touchCard(rows[0].card_id);
+  await touchCard(teamId, rows[0].card_id);
   return NextResponse.json(rows[0]);
-}
+});
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const id = parseSubtaskId((await params).id);
+  const id = await subtaskId(teamId, (await params).id);
   if (id === null) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { rows } = await sql`DELETE FROM subtasks WHERE id = ${id} RETURNING card_id`;
   if (rows.length === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  await touchCard(rows[0].card_id);
+  await touchCard(teamId, rows[0].card_id);
   return NextResponse.json({ success: true });
-}
+});

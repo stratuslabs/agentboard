@@ -25,8 +25,9 @@ const eslintConfig = [
     // Plain CommonJS consumed by node directly, not by the bundler: the CLI,
     // its compatibility wrapper, the database scripts, and src/lib/sql.js,
     // which the Next app and the scripts share so there is one implementation
-    // of the connection and TLS handling rather than two that can drift.
-    files: ["src/lib/sql.js", "cli/**/*.js", "bin/**/*.js", "scripts/**/*.js"],
+    // of the connection and TLS handling rather than two that can drift, and
+    // src/lib/tenancy.js, shared the same way for the tenancy migration.
+    files: ["src/lib/sql.js", "src/lib/tenancy.js", "cli/**/*.js", "bin/**/*.js", "scripts/**/*.js"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },

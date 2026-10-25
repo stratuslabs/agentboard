@@ -1,18 +1,15 @@
 import { initDb } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, withClient } from "@/lib/sql";
-import { boardIdsUnderProduct, notifyBoards } from "@/lib/realtime/notify";
+import { boardIdsUnderProducts, notifyBoards } from "@/lib/realtime/notify";
+import { assertProduct, withTenantParams } from "@/lib/tenant";
 import { parseDefaultBoardId } from "@/lib/default-board";
 import { normalizeProductKey } from "@/lib/card-keys";
 import { updateProduct } from "@/lib/product-update";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
-  const productId = parseInt(id, 10);
+  const productId = await assertProduct(teamId, (await params).id);
   const body = await request.json();
 
   // Validate everything before writing anything, so a bad request changes
@@ -27,10 +24,6 @@ export async function PATCH(
   }
   if (!body.name && !body.emoji && !defaultBoard.present && !keyChange) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-  }
-  const { rows: existing } = await sql`SELECT id FROM products WHERE id = ${productId}`;
-  if (existing.length === 0) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (defaultBoard.present && defaultBoard.value !== null) {
     const { rows: board } = await sql`
@@ -58,33 +51,37 @@ export async function PATCH(
     return NextResponse.json({ error: updated.error }, { status: updated.status });
   }
   return NextResponse.json(updated.product);
-}
+});
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
   const { id } = await params;
   const numId = parseInt(id, 10);
 
+  // By id or slug, only ever among the team's products.
+  const { rows: products } = Number.isNaN(numId)
+    ? await sql`
+        SELECT p.id FROM products p JOIN organizations o ON o.id = p.org_id
+        WHERE o.team_id = ${teamId} AND p.slug = ${id}`
+    : await sql`
+        SELECT p.id FROM products p JOIN organizations o ON o.id = p.org_id
+        WHERE o.team_id = ${teamId} AND (p.id = ${numId} OR p.slug = ${id})`;
+  const productIds: number[] = products.map((p) => p.id);
+
   // The delete cascades through boards, columns and cards without any of those
   // routes running, so nothing else would announce it. Resolved while the rows
   // still exist.
-  const boardIds = await boardIdsUnderProduct(id);
+  const boardIds = await boardIdsUnderProducts(productIds);
 
-  let result;
-  if (!isNaN(numId)) {
-    result = await sql`DELETE FROM products WHERE id = ${numId} OR slug = ${id}`;
-  } else {
-    result = await sql`DELETE FROM products WHERE slug = ${id}`;
-  }
+  const result = productIds.length === 0
+    ? { rowCount: 0 }
+    : await sql`DELETE FROM products WHERE id = ANY(${productIds})`;
 
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await notifyBoards(boardIds);
+  await notifyBoards(teamId, boardIds);
 
   return NextResponse.json({ success: true });
-}
+});

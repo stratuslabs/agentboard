@@ -4,18 +4,16 @@ import { sql } from "@/lib/sql";
 import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
 import { cardIdFromRef } from "@/lib/card-location";
 import { parseSubtaskCreate } from "@/lib/subtasks";
+import { withTenantParams } from "@/lib/tenant";
 
 async function cardExists(id: number): Promise<boolean> {
   const { rows } = await sql`SELECT 1 FROM cards WHERE id = ${id}`;
   return rows.length > 0;
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const id = await cardIdFromRef((await params).id);
+  const id = await cardIdFromRef(teamId, (await params).id);
   if (id === null || !(await cardExists(id))) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
@@ -23,14 +21,11 @@ export async function GET(
     SELECT * FROM subtasks WHERE card_id = ${id} ORDER BY position, id
   `;
   return NextResponse.json(rows);
-}
+});
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const id = await cardIdFromRef((await params).id);
+  const id = await cardIdFromRef(teamId, (await params).id);
   if (id === null) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
@@ -61,7 +56,7 @@ export async function POST(
   `;
 
   await sql`UPDATE cards SET updated_at = NOW() WHERE id = ${id}`;
-  await notifyBoard(await boardIdForCard(id));
+  await notifyBoard(teamId, await boardIdForCard(id));
 
   return NextResponse.json(rows[0], { status: 201 });
-}
+});

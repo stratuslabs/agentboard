@@ -102,8 +102,11 @@ async function start(): Promise<boolean> {
         if (pendingProbe && parsed.probe === pendingProbe.token) pendingProbe.seen();
         return;
       }
-      if (typeof parsed.board_id === "number") {
-        emitter.emit(BOARD_CHANGE, parsed.board_id);
+      // Without a team the change can't be routed to anyone safely (an older
+      // process mid-deploy sends none), so it is dropped: the sweep still
+      // catches it, which costs freshness and never leaks it.
+      if (typeof parsed.board_id === "number" && typeof parsed.team_id === "number") {
+        emitter.emit(BOARD_CHANGE, { board_id: parsed.board_id, team_id: parsed.team_id });
       }
     } catch {
       // A payload we cannot parse is not worth taking the listener down for.
@@ -209,8 +212,11 @@ export async function ensureListening(): Promise<boolean> {
   return starting;
 }
 
-/** Subscribe to board changes. Returns an unsubscribe function. */
-export function onBoardChange(handler: (boardId: number) => void): () => void {
+/**
+ * Subscribe to board changes, every team's: the subscriber filters by its own
+ * team. Returns an unsubscribe function.
+ */
+export function onBoardChange(handler: (change: BoardChange) => void): () => void {
   emitter.on(BOARD_CHANGE, handler);
   return () => {
     emitter.off(BOARD_CHANGE, handler);

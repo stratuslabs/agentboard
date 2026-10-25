@@ -1,5 +1,6 @@
 const { sql, db, end } = require("../src/lib/sql");
 const { ensureProductKeys } = require("../src/lib/card-keys");
+const { ensureDefaultTeam } = require("../src/lib/tenancy");
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -22,20 +23,23 @@ const seedData = {
 };
 
 async function seed() {
+  // Everything goes in the self-hosted team. Run `npm run db:setup` first.
+  const teamId = await ensureDefaultTeam((text, values) => db.query(text, values));
+
   // Insert orgs
   const orgMap = {};
   for (let i = 0; i < seedData.orgs.length; i++) {
     const org = seedData.orgs[i];
     const { rows } = await sql`
-      INSERT INTO organizations (name, slug, position)
-      VALUES (${org.name}, ${org.slug}, ${i})
-      ON CONFLICT (slug) DO NOTHING
+      INSERT INTO organizations (team_id, name, slug, position)
+      VALUES (${teamId}, ${org.name}, ${org.slug}, ${i})
+      ON CONFLICT (team_id, slug) DO NOTHING
       RETURNING id
     `;
     if (rows.length > 0) {
       orgMap[org.slug] = rows[0].id;
     } else {
-      const { rows: existing } = await sql`SELECT id FROM organizations WHERE slug = ${org.slug}`;
+      const { rows: existing } = await sql`SELECT id FROM organizations WHERE team_id = ${teamId} AND slug = ${org.slug}`;
       orgMap[org.slug] = existing[0].id;
     }
   }

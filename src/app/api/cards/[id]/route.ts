@@ -4,44 +4,24 @@ import { sql, db as pool } from "@/lib/sql";
 import { boardIdForCard, notifyBoards } from "@/lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
 import { checkCardText } from "@/lib/card-text";
+import { memberIdByName, resolveAgentMember } from "@/lib/members";
+import { assertColumn, assertMember, withTenantParams } from "@/lib/tenant";
 
-const AGENT_COLORS = ['#EF4444','#F97316','#EAB308','#22C55E','#06B6D4','#3B82F6','#8B5CF6','#EC4899','#6B7280'];
-
-async function resolveAgentMember(agentName: string): Promise<number> {
-  const { rows: existing } = await sql`
-    SELECT id FROM members WHERE name = ${agentName} AND type = 'agent'
-  `;
-  if (existing.length > 0) return existing[0].id;
-
-  const color = AGENT_COLORS[Math.floor(Math.random() * AGENT_COLORS.length)];
-  const { rows: created } = await sql`
-    INSERT INTO members (name, type, color)
-    VALUES (${agentName}, 'agent', ${color})
-    RETURNING id
-  `;
-  return created[0].id;
-}
-
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
   const { id } = await params;
-  const card = await getCardWithLocation(id);
+  const card = await getCardWithLocation(teamId, id);
   if (!card) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   return NextResponse.json(card);
-}
+});
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  // A numeric id or a readable key (AB-142); from here on, the internal id.
-  const id = await cardIdFromRef((await params).id);
+  // A numeric id or a readable key (AB-142), in the team; from here on, the
+  // internal id.
+  const id = await cardIdFromRef(teamId, (await params).id);
   if (id === null) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -56,6 +36,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // A card can only move to a column, or be assigned to a member, of its own
+  // team.
+  if (body.column_id !== undefined) body.column_id = await assertColumn(teamId, body.column_id);
+  if (body.assignee_id !== undefined && body.assignee_id !== null) {
+    body.assignee_id = await assertMember(teamId, body.assignee_id);
+  }
+
   // Resolved before the update: a column change can move the card to a board
   // whose watchers also need to hear that it left.
   const boardBefore = await boardIdForCard(id);
@@ -63,14 +50,14 @@ export async function PATCH(
   // Auto-register agent from X-Agent-Name header
   const agentName = request.headers.get("x-agent-name");
   if (agentName && body.assignee_id === undefined) {
-    body.assignee_id = await resolveAgentMember(agentName);
+    body.assignee_id = await resolveAgentMember(teamId, agentName);
   }
 
   // Resolve text assignee name to member ID if no assignee_id provided
   if (body.assignee && body.assignee_id === undefined) {
-    const { rows: memberMatch } = await sql`SELECT id FROM members WHERE LOWER(name) = LOWER(${body.assignee}) LIMIT 1`;
-    if (memberMatch.length > 0) {
-      body.assignee_id = memberMatch[0].id;
+    const memberId = await memberIdByName(teamId, body.assignee);
+    if (memberId !== null) {
+      body.assignee_id = memberId;
     }
   }
 
@@ -100,19 +87,16 @@ export async function PATCH(
   const query = `UPDATE cards SET ${sets.join(", ")} WHERE id = $${paramIdx} RETURNING *`;
   await pool.query(query, values);
 
-  await notifyBoards([boardBefore, await boardIdForCard(id)]);
+  await notifyBoards(teamId, [boardBefore, await boardIdForCard(id)]);
 
   // Re-read with member, location and readable key: a column change may have
   // given the card a new number in another product.
-  return NextResponse.json(await getCardWithLocation(id));
-}
+  return NextResponse.json(await getCardWithLocation(teamId, id));
+});
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const id = await cardIdFromRef((await params).id);
+  const id = await cardIdFromRef(teamId, (await params).id);
   if (id === null) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -122,6 +106,6 @@ export async function DELETE(
   if (result.rowCount === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  await notifyBoards([boardId]);
+  await notifyBoards(teamId, [boardId]);
   return NextResponse.json({ success: true });
-}
+});

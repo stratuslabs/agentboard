@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { initDb } from "@/lib/db";
 import { getCardWithLocation } from "@/lib/card-location";
+import { pageTenant } from "@/lib/tenant";
 
 /**
  * The permanent link to a card: `/c/<id>`. Boards, products and orgs can be
@@ -17,7 +18,8 @@ export default async function CardPermalinkPage({
 }) {
   const { id } = await params;
   await initDb();
-  const card = await getCardWithLocation(id);
+  const { teamId } = await pageTenant();
+  const card = await getCardWithLocation(teamId, id);
   if (!card) notFound();
 
   const path = `/${encodeURIComponent(card.org_slug)}/${encodeURIComponent(card.product_slug)}`;

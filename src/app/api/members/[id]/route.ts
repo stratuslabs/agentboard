@@ -7,13 +7,11 @@ import {
   notifyBoards,
   stampCards,
 } from "@/lib/realtime/notify";
+import { assertMember, withTenantParams } from "@/lib/tenant";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
+  const id = await assertMember(teamId, (await params).id);
   const body = await request.json();
 
   const { rows: existing } = await sql`SELECT * FROM members WHERE id = ${id}`;
@@ -47,17 +45,14 @@ export async function PATCH(
   // what puts them in the next delta.
   const cardIds = await cardIdsForMember(id);
   await stampCards(cardIds);
-  await notifyBoards(await boardIdsForCards(cardIds));
+  await notifyBoards(teamId, await boardIdsForCards(cardIds));
 
   return NextResponse.json(rows[0]);
-}
+});
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();
-  const { id } = await params;
+  const id = await assertMember(teamId, (await params).id);
 
   // Captured first: deleting the member sets assignee_id to NULL on these
   // cards, and afterwards there is nothing left to find them by. The cards
@@ -71,7 +66,7 @@ export async function DELETE(
   }
 
   await stampCards(cardIds);
-  await notifyBoards(boardIds);
+  await notifyBoards(teamId, boardIds);
 
   return NextResponse.json({ success: true });
-}
+});
