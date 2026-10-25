@@ -2,9 +2,9 @@
 
 import { useMemo } from "react";
 import SettingsShell from "../../components/settings/SettingsShell";
-import { SettingsScope, settingsSections } from "../../edition/settings";
+import { defaultSettingsSections } from "../../components/settings/sections";
 
 export default function SettingsPage() {
-  const sections = useMemo(() => settingsSections(), []);
-  return <SettingsShell scope={<SettingsScope />} sections={sections} />;
+  const sections = useMemo(() => defaultSettingsSections(), []);
+  return <SettingsShell scope="AgentBoard" sections={sections} />;
 }
