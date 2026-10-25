@@ -71,7 +71,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   return NextResponse.json(rows);
 });
 
-export const POST = withTenant(async (request: NextRequest, { teamId }) => {
+export const POST = withTenant(async (request: NextRequest, { teamId, memberId }) => {
   await initDb();
   const body = await request.json();
   const textError = checkCardText(body);
@@ -88,9 +88,16 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   // An assignee from another team is refused, not silently attached.
   if (assignee_id) assignee_id = await assertMember(teamId, assignee_id);
 
-  // Auto-register agent from X-Agent-Name header
+  // Attribution, in order of how far the server trusts it. A credential issued
+  // to one agent says who is calling. X-Agent-Name is only a claim, so it's
+  // the fallback when the credential doesn't name an agent, and it's ignored
+  // when it does. (Updates never reassign from either; see cards/[id].)
+  const credentialMember = memberId ?? null;
+  if (!assignee_id && credentialMember !== null) {
+    assignee_id = await assertMember(teamId, credentialMember);
+  }
   const agentName = request.headers.get("x-agent-name");
-  if (agentName && !assignee_id) {
+  if (agentName && !assignee_id && credentialMember === null) {
     assignee_id = await resolveAgentMember(teamId, agentName);
   }
 

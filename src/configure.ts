@@ -22,16 +22,35 @@
  */
 import type { TenantResolver } from "./lib/tenant";
 
+/** A member's type is about to change. */
+export type MemberTypeChange = {
+  teamId: number;
+  memberId: number;
+  from: string;
+  to: string;
+};
+
 export type AgentBoardConfig = {
   /**
    * Which team, and which user, a request acts for. Either half may be left
    * out to keep the self-hosted behavior for it.
    */
   tenant?: Partial<TenantResolver>;
+  /** Hooks into member changes. */
+  members?: {
+    /**
+     * Runs before a member's type changes (agent to human or back). Throw a
+     * TenantError to refuse it with that status; the member is left as it
+     * was.
+     */
+    beforeTypeChange?: (change: MemberTypeChange) => void | Promise<void>;
+  };
 };
 
 const STORE = Symbol.for("@stratuslabs/agentboard-core/config");
+const OPTIONS = ["tenant", "members"] as const;
 const TENANT_KEYS = ["fromRequest", "fromPage"] as const;
+const MEMBER_HOOKS = ["beforeTypeChange"] as const;
 
 type Store = { config: Readonly<AgentBoardConfig> };
 
@@ -41,27 +60,44 @@ function store(): Store {
   return global[STORE];
 }
 
+/** An object of functions, every key one of `allowed`, frozen; undefined stays undefined. */
+function functions<T extends object>(
+  value: unknown,
+  allowed: readonly string[],
+  name: string,
+  shape: string,
+  unknownLabel: string,
+): Readonly<T> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") {
+    throw new TypeError(`${name} must be an object with ${shape}`);
+  }
+  for (const [key, fn] of Object.entries(value)) {
+    if (!allowed.includes(key)) throw new TypeError(`${unknownLabel}: ${key}`);
+    if (fn !== undefined && typeof fn !== "function") {
+      throw new TypeError(`${name}.${key} must be a function`);
+    }
+  }
+  return Object.freeze({ ...value }) as Readonly<T>;
+}
+
 function validate(config: AgentBoardConfig): Readonly<AgentBoardConfig> {
   if (config === null || typeof config !== "object") {
     throw new TypeError("configure() takes an options object");
   }
   for (const key of Object.keys(config)) {
-    if (key !== "tenant") throw new TypeError(`Unknown configure() option: ${key}`);
+    if (!(OPTIONS as readonly string[]).includes(key)) throw new TypeError(`Unknown configure() option: ${key}`);
   }
-  const tenant = config.tenant;
-  if (tenant === undefined) return Object.freeze({});
-  if (tenant === null || typeof tenant !== "object") {
-    throw new TypeError("tenant must be an object with fromRequest and/or fromPage");
-  }
-  for (const [key, value] of Object.entries(tenant)) {
-    if (!(TENANT_KEYS as readonly string[]).includes(key)) {
-      throw new TypeError(`Unknown tenant resolver: ${key}`);
-    }
-    if (value !== undefined && typeof value !== "function") {
-      throw new TypeError(`tenant.${key} must be a function`);
-    }
-  }
-  return Object.freeze({ tenant: Object.freeze({ ...tenant }) });
+  const tenant = functions<NonNullable<AgentBoardConfig["tenant"]>>(
+    config.tenant, TENANT_KEYS, "tenant", "fromRequest and/or fromPage", "Unknown tenant resolver",
+  );
+  const members = functions<NonNullable<AgentBoardConfig["members"]>>(
+    config.members, MEMBER_HOOKS, "members", "beforeTypeChange", "Unknown members hook",
+  );
+  const result: AgentBoardConfig = {};
+  if (tenant) result.tenant = tenant;
+  if (members) result.members = members;
+  return Object.freeze(result);
 }
 
 /** Replace the configuration. Calling it again (a dev reload) replaces it, not merges. */

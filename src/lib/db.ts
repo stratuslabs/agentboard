@@ -6,6 +6,7 @@ import { slugify } from "./slug";
 import { planColumnReslug } from "./column-slug";
 import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "./card-keys";
 import { TENANCY_MIGRATION } from "./tenancy";
+import { AGENT_NAME_MIGRATION } from "./agent-names";
 
 let initialized = false;
 
@@ -173,6 +174,9 @@ export async function ensureTables() {
   // existing install moved into one default team, uniques per team (see
   // tenancy.js). Before card numbers, whose product keys are per team.
   await db.query(TENANCY_MIGRATION);
+  // Migration: one agent per name per team, so an agent registering again
+  // lands on its own row (see agent-names.js). Needs members.team_id.
+  await db.query(AGENT_NAME_MIGRATION);
   // Migration: human-readable card ids. Products get a key (AB) and a
   // counter, cards a per-product number (AB-142), assigned by a trigger and
   // backfilled for existing cards in one atomic statement (see card-keys.js).
