@@ -17,6 +17,11 @@
 //     404s for the other one, through configure()'s fromPage
 //   - the re-exported board page renders, with the core's Tailwind classes
 //     compiled into its stylesheet
+//   - the consumer's own layout and settings page fill the core's UI slots:
+//     a sidebar footer item, the settings scope, an extra settings section
+//     and a default section left out
+//   - the default-columns setting saves and reads back, and a member is renamed
+//     and removed (and another team can't remove it), through the mounted routes
 //
 // The database must be one this run may create tables in. Team slugs are
 // unique per run, so a database other runs used is fine.
@@ -87,6 +92,8 @@ try {
     "react-dom": pkg.devDependencies["react-dom"],
     tailwindcss: pkg.devDependencies.tailwindcss,
     "@tailwindcss/postcss": pkg.devDependencies["@tailwindcss/postcss"],
+    // The fixture's own components use the same icon set.
+    "lucide-react": pkg.dependencies["lucide-react"],
   };
   fixture.devDependencies = {
     typescript: pkg.devDependencies.typescript,
@@ -179,6 +186,50 @@ try {
     "the board page renders with the core's layout",
     page.status === 200 && typeof page.data === "string" && page.data.includes("<title>AgentBoard</title>"),
     `${page.status} ${String(page.data).slice(0, 200)}`,
+  );
+
+  const bySlug = await call(teamA, `/api/products/by-slug?org_slug=${org.data.slug}&product_slug=${product.data.slug}`);
+  check("the board page's product lookup finds team A's product", bySlug.status === 200 && bySlug.data?.id === product.data.id, JSON.stringify(bySlug));
+
+  const html = String(page.data);
+  check(
+    "the consumer's sidebar footer slot renders in the core's sidebar",
+    html.includes('data-consumer-slot="sidebar-footer"') && html.includes("Consumer Team") && html.includes(">Settings<"),
+    html.slice(0, 200),
+  );
+
+  const settings = await call(teamA, "/settings");
+  const settingsHtml = String(settings.data);
+  check(
+    "the settings page shows the consumer's scope and its own section next to the core's",
+    settings.status === 200 &&
+      settingsHtml.includes('data-consumer-slot="settings-scope"') &&
+      settingsHtml.includes("Consumer billing") &&
+      settingsHtml.includes("Default columns"),
+    `${settings.status} ${settingsHtml.slice(0, 200)}`,
+  );
+  check("a section the consumer left out is not rendered", !settingsHtml.includes("Agent default board"), "found Agent default board");
+
+  // The settings sections and the members section the consumer keeps call
+  // these routes; a fixture that doesn't mount them 404s behind the UI.
+  const saved = await call(teamA, "/api/settings", { method: "PATCH", body: { key: "default_columns", value: ["Todo", "Doing", "Done"] } });
+  const settingsBack = await call(teamA, "/api/settings");
+  check(
+    "a default-columns setting saves and reads back through the consumer",
+    saved.status === 200 && JSON.stringify(settingsBack.data?.default_columns) === JSON.stringify(["Todo", "Doing", "Done"]),
+    `${saved.status} ${JSON.stringify(settingsBack.data)}`,
+  );
+  const member = await call(teamA, "/api/members", { method: "POST", body: { name: `Consumer Agent ${suffix}`, type: "agent" } });
+  const renamed = await call(teamA, `/api/members/${member.data?.id}`, { method: "PATCH", body: { name: `Renamed Agent ${suffix}` } });
+  check("a member is renamed through the consumer", member.status === 201 && renamed.status === 200 && renamed.data?.name === `Renamed Agent ${suffix}`, `${member.status} ${renamed.status} ${JSON.stringify(renamed.data)}`);
+  const otherRemove = await call(teamB, `/api/members/${member.data?.id}`, { method: "DELETE" });
+  check("team B cannot remove team A's member", otherRemove.status === 404, String(otherRemove.status));
+  const removed = await call(teamA, `/api/members/${member.data?.id}`, { method: "DELETE" });
+  const membersAfter = await call(teamA, "/api/members");
+  check(
+    "a member is removed through the consumer",
+    removed.status === 200 && Array.isArray(membersAfter.data) && !membersAfter.data.some((m) => m.id === member.data?.id),
+    `${removed.status} ${JSON.stringify(membersAfter.data)}`,
   );
 
   // Tailwind skips node_modules unless told otherwise, so check the compiled

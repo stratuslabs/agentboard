@@ -1,21 +1,21 @@
 /**
- * Settings sections for this edition. The page and the shared sections are
- * identical in both editions; the hosted edition's copy of this file adds its
- * team access, API key and billing sections.
+ * The settings screen's sections, in order. src/app/settings/page.tsx shows
+ * them as they are. An app that consumes the core builds its own list from
+ * these, by id, and passes it to SettingsShell: add a billing section, swap
+ * "members" for its own, leave one out.
+ *
+ * Ids are also the page anchors (/settings#members): members, connect,
+ * agent-board, default-boards, default-columns.
  */
 import { Bot, Columns3, Palette, Plug, Users } from "lucide-react";
-import type { SettingsSectionDef } from "../components/settings/SettingsShell";
-import BoardMembers from "../components/settings/BoardMembers";
-import ConnectAgent from "../components/settings/ConnectAgent";
-import { DefaultBoards, DefaultColumns } from "../components/settings/DefaultLists";
-import ProductDefaultBoards from "../components/settings/ProductDefaultBoards";
+import type { SettingsSectionDef } from "./SettingsShell";
+import BoardMembers from "./BoardMembers";
+import ConnectAgent from "./ConnectAgent";
+import { DefaultBoards, DefaultColumns } from "./DefaultLists";
+import ProductDefaultBoards from "./ProductDefaultBoards";
 
-/** Shown before "/ Settings" in the top bar. */
-export function SettingsScope() {
-  return <>AgentBoard</>;
-}
-
-export function settingsSections(): SettingsSectionDef[] {
+/** A new list each call, so a caller can change it freely. */
+export function defaultSettingsSections(): SettingsSectionDef[] {
   return [
     {
       id: "members",

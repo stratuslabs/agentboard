@@ -47,7 +47,6 @@ import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { agentSetupPrompt } from "../lib/agent-prompt";
-import { SidebarFooterSlot, SidebarRailSlot } from "../edition";
 import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
@@ -79,6 +78,10 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   isMobile?: boolean;
+  /** Rendered above Settings in the expanded sidebar footer. */
+  footerSlot?: React.ReactNode;
+  /** Rendered above Settings in the collapsed sidebar rail. */
+  railSlot?: React.ReactNode;
 }
 
 const INLINE_INPUT =
@@ -290,7 +293,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct } = usePreferences();
@@ -579,7 +582,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
           <Logo size={32} />
         </button>
         <div className="flex-1" />
-        <SidebarRailSlot />
+        {railSlot}
         <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
           <Settings className="h-4 w-4" />
         </IconButton>
@@ -711,9 +714,9 @@ export default function Sidebar({ collapsed, onToggle, isMobile }: SidebarProps)
         </div>
       </div>
 
-      {/* Footer: edition slot, settings & logout */}
+      {/* Footer: the consuming app's slot, settings & logout */}
       <div className="flex shrink-0 flex-col gap-px border-t border-border px-3 py-2">
-        <SidebarFooterSlot />
+        {footerSlot}
         <NavButton onClick={() => router.push("/settings")} icon={<Settings />} label="Settings" />
         <NavButton onClick={handleLogout} icon={<LogOut />} label="Logout" />
       </div>
