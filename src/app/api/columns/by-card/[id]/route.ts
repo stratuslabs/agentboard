@@ -1,8 +1,8 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { cardIdFromRef } from "@/lib/card-location";
-import { withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../../lib/sql";
+import { cardIdFromRef } from "../../../../../lib/card-location";
+import { withTenantParams } from "../../../../../lib/tenant";
 
 // GET /api/columns/by-card/:cardId
 // Returns all columns for the board that contains the given card

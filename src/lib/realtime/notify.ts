@@ -1,4 +1,4 @@
-import { sql } from "@/lib/sql";
+import { sql } from "../sql";
 
 /**
  * Telling connected clients that a board moved.

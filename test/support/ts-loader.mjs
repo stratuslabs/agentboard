@@ -26,6 +26,9 @@ function withExtension(url) {
   return url;
 }
 
+/** A file URL's path part: a test may add `?copy=N` to load a second instance. */
+const pathOf = (url) => url.replace(/[?#].*$/, "");
+
 export function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith("@/")) {
     return nextResolve(withExtension(SRC + specifier.slice(2)), context);
@@ -35,7 +38,7 @@ export function resolve(specifier, context, nextResolve) {
   if (/^next\/[a-z-]+$/.test(specifier)) {
     return nextResolve(`${specifier}.js`, context);
   }
-  if (specifier.startsWith(".") && /\.tsx?$/.test(context.parentURL ?? "")) {
+  if (specifier.startsWith(".") && /\.tsx?$/.test(pathOf(context.parentURL ?? ""))) {
     return nextResolve(withExtension(new URL(specifier, context.parentURL).href), context);
   }
   return nextResolve(specifier, context);
@@ -46,10 +49,10 @@ export async function load(url, context, nextLoad) {
   if (url.endsWith(".json")) {
     return nextLoad(url, { ...context, importAttributes: { ...context.importAttributes, type: "json" } });
   }
-  if (!/\.tsx?$/.test(url)) return nextLoad(url, context);
-  const source = await readFile(new URL(url), "utf8");
+  if (!/\.tsx?$/.test(pathOf(url))) return nextLoad(url, context);
+  const source = await readFile(new URL(pathOf(url)), "utf8");
   const { outputText } = ts.transpileModule(source, {
-    fileName: fileURLToPath(url),
+    fileName: fileURLToPath(pathOf(url)),
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
       target: ts.ScriptTarget.ES2022,

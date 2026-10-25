@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useBoardStream } from "@/lib/useBoardStream";
+import { useBoardStream } from "../lib/useBoardStream";
 import {
   DndContext,
   closestCorners,
@@ -28,11 +28,11 @@ import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, L
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
-import { pageTitle, useDocumentTitle } from "@/lib/page-title";
+import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
-import { usePreferences } from "@/contexts/PreferencesContext";
-import { type Card, type Member, readCardParam, writeCardParam } from "@/lib/cards";
+import { usePreferences } from "../contexts/PreferencesContext";
+import { type Card, type Member, readCardParam, writeCardParam } from "../lib/cards";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });

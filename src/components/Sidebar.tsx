@@ -42,12 +42,12 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useBoardStream } from "@/lib/useBoardStream";
+import { useBoardStream } from "../lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
-import { usePreferences } from "@/contexts/PreferencesContext";
-import { agentSetupPrompt } from "@/lib/agent-prompt";
-import { SidebarFooterSlot, SidebarRailSlot } from "@/edition";
+import { usePreferences } from "../contexts/PreferencesContext";
+import { agentSetupPrompt } from "../lib/agent-prompt";
+import { SidebarFooterSlot, SidebarRailSlot } from "../edition";
 import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), {

@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { boardIdForCard, boardIdForColumn, notifyBoards } from "@/lib/realtime/notify";
-import { cardIdFromRef, getCardWithLocation } from "@/lib/card-location";
-import { assertColumn, found, withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../../lib/sql";
+import { boardIdForCard, boardIdForColumn, notifyBoards } from "../../../../../lib/realtime/notify";
+import { cardIdFromRef, getCardWithLocation } from "../../../../../lib/card-location";
+import { assertColumn, found, withTenantParams } from "../../../../../lib/tenant";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();

@@ -1,10 +1,10 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
-import { cardIdFromRef } from "@/lib/card-location";
-import { parseSubtaskCreate } from "@/lib/subtasks";
-import { withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../../lib/sql";
+import { boardIdForCard, notifyBoard } from "../../../../../lib/realtime/notify";
+import { cardIdFromRef } from "../../../../../lib/card-location";
+import { parseSubtaskCreate } from "../../../../../lib/subtasks";
+import { withTenantParams } from "../../../../../lib/tenant";
 
 async function cardExists(id: number): Promise<boolean> {
   const { rows } = await sql`SELECT 1 FROM cards WHERE id = ${id}`;

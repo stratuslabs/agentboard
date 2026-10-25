@@ -1,8 +1,8 @@
 "use client";
 
-import Sidebar from "@/components/Sidebar";
-import ProfileSetup from "@/components/ProfileSetup";
-import { SidebarProvider, useSidebar } from "@/contexts/SidebarContext";
+import Sidebar from "../../components/Sidebar";
+import ProfileSetup from "../../components/ProfileSetup";
+import { SidebarProvider, useSidebar } from "../../contexts/SidebarContext";
 import { usePathname } from "next/navigation";
 
 function BoardLayoutInner({ children }: { children: React.ReactNode }) {

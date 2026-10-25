@@ -1,10 +1,10 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { boardIdForCard, notifyBoard } from "@/lib/realtime/notify";
-import { parseCardId } from "@/lib/card-location";
-import { parseSubtaskUpdate } from "@/lib/subtasks";
-import { assertSubtask, found, withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../lib/sql";
+import { boardIdForCard, notifyBoard } from "../../../../lib/realtime/notify";
+import { parseCardId } from "../../../../lib/card-location";
+import { parseSubtaskUpdate } from "../../../../lib/subtasks";
+import { assertSubtask, found, withTenantParams } from "../../../../lib/tenant";
 
 /**
  * The sub-task's id when it is one of the team's, else null. Sub-task ids are

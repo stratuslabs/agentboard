@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { initDb, slugify } from "@/lib/db";
-import { notifyBoard } from "@/lib/realtime/notify";
-import { assertBoard, found, withTenant } from "@/lib/tenant";
+import { sql } from "../../../lib/sql";
+import { initDb, slugify } from "../../../lib/db";
+import { notifyBoard } from "../../../lib/realtime/notify";
+import { assertBoard, found, withTenant } from "../../../lib/tenant";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();

@@ -2,8 +2,8 @@
 
 import { Bot, Calendar, CircleDot, GitPullRequest, ListChecks } from "lucide-react";
 import { Avatar, Chip, PriorityDot, cx } from "./ui";
-import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, githubRef, parseLabels } from "@/lib/cards";
-import { subtaskProgress } from "@/lib/subtasks";
+import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, githubRef, parseLabels } from "../lib/cards";
+import { subtaskProgress } from "../lib/subtasks";
 
 interface KanbanCardProps {
   card: Card;

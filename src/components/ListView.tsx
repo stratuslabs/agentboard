@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Calendar } from "lucide-react";
 import CardDetail from "./CardDetail";
 import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
-import { pageTitle, useDocumentTitle } from "@/lib/page-title";
-import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "@/lib/cards";
+import { pageTitle, useDocumentTitle } from "../lib/page-title";
+import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
 
 export interface ViewCard extends Card {
   org_name: string;

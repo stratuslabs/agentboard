@@ -1,9 +1,9 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../lib/db";
 import { NextRequest } from "next/server";
-import { sql } from "@/lib/sql";
-import { ensureListening, onBoardChange } from "@/lib/realtime/listen";
-import { envInt } from "@/lib/env";
-import { assertBoard, withTenant } from "@/lib/tenant";
+import { sql } from "../../../lib/sql";
+import { ensureListening, onBoardChange } from "../../../lib/realtime/listen";
+import { envInt } from "../../../lib/env";
+import { assertBoard, withTenant } from "../../../lib/tenant";
 
 /**
  * Live board updates over Server-Sent Events.

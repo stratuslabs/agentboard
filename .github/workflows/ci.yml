@@ -54,3 +54,38 @@ jobs:
 
       - name: Smoke test the packed CLI
         run: node scripts/smoke-cli-pack.mjs
+
+  # The core consumed as a package by another Next app (test/consumer), the
+  # way the hosted edition uses it: packed, installed, built and driven over
+  # HTTP. Run against the lowest Next the peer range allows and the newest 16.x.
+  consumer:
+    name: consumer (next ${{ matrix.next }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        next: ["16.4.3", "16"]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build and drive the consumer fixture
+        run: node scripts/verify-consumer.mjs --next "${{ matrix.next }}"
+        env:
+          POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres

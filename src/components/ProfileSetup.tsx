@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { UserRound } from "lucide-react";
-import { usePreferences } from "@/contexts/PreferencesContext";
+import { usePreferences } from "../contexts/PreferencesContext";
 import { Avatar, Button, ColorSwatches, Dialog, Field, Input, PRESET_COLORS } from "./ui";
 
 

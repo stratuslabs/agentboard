@@ -1,9 +1,9 @@
-import { initDb, slugify } from "@/lib/db";
+import { initDb, slugify } from "../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { notifyBoard } from "@/lib/realtime/notify";
-import { DEFAULT_COLUMNS } from "@/lib/default-columns";
-import { assertProduct, found, withTenant } from "@/lib/tenant";
+import { sql } from "../../../lib/sql";
+import { notifyBoard } from "../../../lib/realtime/notify";
+import { DEFAULT_COLUMNS } from "../../../lib/default-columns";
+import { assertProduct, found, withTenant } from "../../../lib/tenant";
 
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {

@@ -46,7 +46,7 @@ import {
   githubRef,
   parseLabels,
   priorityLabel,
-} from "@/lib/cards";
+} from "../lib/cards";
 
 interface Attachment {
   id: number;

@@ -1,8 +1,8 @@
-import { initDb, slugify } from "@/lib/db";
+import { initDb, slugify } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { notifyBoard } from "@/lib/realtime/notify";
-import { assertBoard, withTenantParams } from "@/lib/tenant";
+import { sql } from "../../../../lib/sql";
+import { notifyBoard } from "../../../../lib/realtime/notify";
+import { assertBoard, withTenantParams } from "../../../../lib/tenant";
 
 export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
   await initDb();

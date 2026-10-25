@@ -1,7 +1,7 @@
-import { sql } from "@/lib/sql";
+import { sql } from "../../../lib/sql";
 import { NextRequest, NextResponse } from "next/server";
-import { initDb } from "@/lib/db";
-import { withTenant } from "@/lib/tenant";
+import { initDb } from "../../../lib/db";
+import { withTenant } from "../../../lib/tenant";
 
 // Preferences are per user within a team. A caller with no user (the hosted
 // edition's API keys) has none to read or write. Self-hosted requests always

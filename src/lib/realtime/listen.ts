@@ -1,8 +1,8 @@
 import { EventEmitter } from "node:events";
 import { Client } from "pg";
-import { connectionString, sslConfig } from "@/lib/sql";
+import { connectionString, sslConfig } from "../sql";
 import { REALTIME_CHANNEL, type BoardChange } from "./notify";
-import { envInt } from "@/lib/env";
+import { envInt } from "../env";
 
 /**
  * One LISTEN connection per process, fanned out to every open stream.

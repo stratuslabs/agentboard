@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { Button, IconButton, cx } from "../ui";
-import { DEFAULT_COLUMNS } from "@/lib/default-columns";
+import { DEFAULT_COLUMNS } from "../../lib/default-columns";
 
 interface ColumnDef {
   name: string;

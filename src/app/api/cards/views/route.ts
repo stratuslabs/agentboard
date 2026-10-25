@@ -1,7 +1,7 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/sql";
-import { withTenant } from "@/lib/tenant";
+import { sql } from "../../../../lib/sql";
+import { withTenant } from "../../../../lib/tenant";
 
 // Every view joins up to organizations and filters on the team, so a member id
 // from another team, like one that doesn't exist, matches no cards.

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db } from "@/lib/sql";
-import { initDb, slugify, createDefaultBoards } from "@/lib/db";
-import { suggestEmoji } from "@/lib/emoji-suggest";
-import { createProductWithKey } from "@/lib/card-keys";
-import { assertOrg, found, withTenant } from "@/lib/tenant";
+import { sql, db } from "../../../lib/sql";
+import { initDb, slugify, createDefaultBoards } from "../../../lib/db";
+import { suggestEmoji } from "../../../lib/emoji-suggest";
+import { createProductWithKey } from "../../../lib/card-keys";
+import { assertOrg, found, withTenant } from "../../../lib/tenant";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();

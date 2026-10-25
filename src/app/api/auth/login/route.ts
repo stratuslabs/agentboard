@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deriveSessionToken, getSessionCookieName, verifyPassword } from "@/lib/auth";
-import { clientKey, FailureThrottle } from "@/lib/rate-limit";
+import { deriveSessionToken, getSessionCookieName, verifyPassword } from "../../../../lib/auth";
+import { clientKey, FailureThrottle } from "../../../../lib/rate-limit";
 
 // The middleware keeps its own counter for Bearer/cookie guesses at the auth
 // boundary. Route handlers run in a different runtime than Edge middleware and

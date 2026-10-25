@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { usePreferences } from "@/contexts/PreferencesContext";
+import { usePreferences } from "../../../../contexts/PreferencesContext";
 import { SearchX } from "lucide-react";
-import { useSidebar } from "@/contexts/SidebarContext";
-import { Button, EmptyState, PageLoader } from "@/components/ui";
+import { useSidebar } from "../../../../contexts/SidebarContext";
+import { Button, EmptyState, PageLoader } from "../../../../components/ui";
 
-const KanbanBoard = dynamic(() => import("@/components/KanbanBoard"), {
+const KanbanBoard = dynamic(() => import("../../../../components/KanbanBoard"), {
   ssr: false,
   loading: () => <PageLoader />,
 });

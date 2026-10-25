@@ -1,11 +1,11 @@
-import { sql, db } from "@/lib/sql";
-import { DEFAULT_BOARD_MIGRATION } from "@/lib/default-board-migration";
-import { DEFAULT_COLUMNS } from "@/lib/default-columns";
-import { SHADOWED_ORG_SLUGS } from "@/lib/org-slug";
-import { slugify } from "@/lib/slug";
-import { planColumnReslug } from "@/lib/column-slug";
-import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "@/lib/card-keys";
-import { TENANCY_MIGRATION } from "@/lib/tenancy";
+import { sql, db } from "./sql";
+import { DEFAULT_BOARD_MIGRATION } from "./default-board-migration";
+import { DEFAULT_COLUMNS } from "./default-columns";
+import { SHADOWED_ORG_SLUGS } from "./org-slug";
+import { slugify } from "./slug";
+import { planColumnReslug } from "./column-slug";
+import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "./card-keys";
+import { TENANCY_MIGRATION } from "./tenancy";
 
 let initialized = false;
 

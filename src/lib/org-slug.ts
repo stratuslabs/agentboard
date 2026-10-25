@@ -1,4 +1,4 @@
-import { slugify } from "@/lib/slug";
+import { slugify } from "./slug";
 
 /**
  * Top-level paths the app itself owns. An organization lives at

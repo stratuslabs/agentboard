@@ -1,11 +1,11 @@
-import { initDb } from "@/lib/db";
+import { initDb } from "../../../../lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { sql, withClient } from "@/lib/sql";
-import { boardIdsUnderProducts, notifyBoards } from "@/lib/realtime/notify";
-import { assertProduct, withTenantParams } from "@/lib/tenant";
-import { parseDefaultBoardId } from "@/lib/default-board";
-import { normalizeProductKey } from "@/lib/card-keys";
-import { updateProduct } from "@/lib/product-update";
+import { sql, withClient } from "../../../../lib/sql";
+import { boardIdsUnderProducts, notifyBoards } from "../../../../lib/realtime/notify";
+import { assertProduct, withTenantParams } from "../../../../lib/tenant";
+import { parseDefaultBoardId } from "../../../../lib/default-board";
+import { normalizeProductKey } from "../../../../lib/card-keys";
+import { updateProduct } from "../../../../lib/product-update";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();

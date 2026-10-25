@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import KanbanCard from "./KanbanCard";
-import type { Card } from "@/lib/cards";
+import type { Card } from "../lib/cards";
 
 interface SortableCardProps {
   card: Card;

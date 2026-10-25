@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
-import { initDb } from "@/lib/db";
-import { getCardWithLocation } from "@/lib/card-location";
-import { pageTenant } from "@/lib/tenant";
+import { initDb } from "../../../../lib/db";
+import { getCardWithLocation } from "../../../../lib/card-location";
+import { pageTenant } from "../../../../lib/tenant";
 
 /**
  * The permanent link to a card: `/c/<id>`. Boards, products and orgs can be
