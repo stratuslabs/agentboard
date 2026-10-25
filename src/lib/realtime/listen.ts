@@ -221,6 +221,30 @@ export async function ensureListening(): Promise<boolean> {
 }
 
 /**
+ * Close the listener and cancel any pending retry, so a process that is done
+ * (a test file, a script, a graceful shutdown) can exit: the listener holds a
+ * socket of its own that nothing else will close. Safe to call more than once.
+ * A later `ensureListening` starts over.
+ */
+export async function stopListening(): Promise<void> {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  // A start in flight would otherwise install its client after this returns.
+  const inFlight = starting;
+  if (inFlight) await inFlight.catch(() => false);
+  retryMs = 1_000;
+  if (!client) return;
+  const dying = client;
+  client = null;
+  dying.removeAllListeners();
+  await dying.end().catch(() => {
+    // Already gone.
+  });
+}
+
+/**
  * Subscribe to board changes, every team's: the subscriber filters by its own
  * team. Returns an unsubscribe function.
  */

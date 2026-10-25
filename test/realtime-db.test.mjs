@@ -16,6 +16,10 @@ const URL_VAR = "AGENTBOARD_TEST_DATABASE_URL";
 const url = process.env[URL_VAR];
 const skip = url ? false : `set ${URL_VAR} to run`;
 const SCHEMA = `realtime_test_${process.pid}`;
+// LISTEN/NOTIFY channels are database-wide, while every other DB test file
+// runs concurrently in a schema of its own whose team ids start at 1. A team id
+// none of them will reach keeps their writes out of this file's streams.
+const TEAM_ID = 2_000_000_000 + (process.pid % 100_000_000);
 
 // Read when the route module loads: a sweep fast enough to watch, and no
 // self-terminate inside a test.
@@ -28,6 +32,7 @@ process.env.SSE_PROBE_TIMEOUT_MS = "1000";
 
 let api;
 let listen;
+let REALTIME_CHANNEL;
 let configure;
 let db;
 let end;
@@ -133,6 +138,7 @@ before(async () => {
   const tenant = await import(new URL("../src/lib/tenant.ts", import.meta.url).href);
   ({ configure } = await import(new URL("../src/configure.ts", import.meta.url).href));
   listen = await import(new URL("../src/lib/realtime/listen.ts", import.meta.url).href);
+  ({ REALTIME_CHANNEL } = await import(new URL("../src/lib/realtime/notify.ts", import.meta.url).href));
   api = {
     next: require("next/server.js"),
     orgs: await load("orgs"),
@@ -141,7 +147,10 @@ before(async () => {
     stream: await load("stream"),
   };
 
-  team.id = (await tenant.resolveTenant(new Request("http://localhost/"))).teamId;
+  // Creates the tables (and the default team, which these tests do not use).
+  await tenant.resolveTenant(new Request("http://localhost/"));
+  await db.query("INSERT INTO teams (id, name, slug) VALUES ($1, 'Realtime', $2)", [TEAM_ID, `realtime-${TEAM_ID}`]);
+  team.id = TEAM_ID;
   configure({ tenant: resolver });
   const org = await call(api.orgs.POST, "/api/orgs", { method: "POST", body: { name: "Acme" } });
   const product = await call(api.products.POST, "/api/products", {
@@ -153,6 +162,8 @@ before(async () => {
 after(async () => {
   if (skip || !end) return;
   configure({});
+  // The listener holds a socket of its own; left open, the file never exits.
+  await listen.stopListening();
   await db.query(`DROP SCHEMA ${SCHEMA} CASCADE`);
   await end();
 });
@@ -172,6 +183,9 @@ test("an idle stream with a good baseline sends no change", { skip }, async () =
   const stream = await openStream();
   try {
     assert.equal(await stream.next(5_000), "hello");
+    // What a concurrent test file writing in its own schema looks like from
+    // here: same channel, a low team id. It must not reach this team's stream.
+    await db.query("SELECT pg_notify($1, $2)", [REALTIME_CHANNEL, JSON.stringify({ board_id: 1, team_id: 1 })]);
     assert.equal(await stream.next(1_000), null, "five sweeps over an unchanged board stay quiet");
   } finally {
     await stream.close();
@@ -196,4 +210,19 @@ test("a stream whose baseline failed reports a change once the database answers"
   } finally {
     await stream.close();
   }
+});
+
+test("stopListening closes the listener's connection", { skip }, async (t) => {
+  if (!(await listen.ensureListening())) {
+    t.skip("this database cannot deliver across connections, so there is no listener to close");
+    return;
+  }
+  const listeners = async () => Number((await db.query(
+    "SELECT count(*)::int AS n FROM pg_stat_activity WHERE query ILIKE $1 AND pid <> pg_backend_pid()",
+    [`LISTEN ${REALTIME_CHANNEL}`],
+  )).rows[0].n);
+  assert.ok((await listeners()) >= 1, "a live listener shows up as a backend");
+  await listen.stopListening();
+  for (let i = 0; i < 50 && (await listeners()) > 0; i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(await listeners(), 0, "and is gone once stopped");
 });
