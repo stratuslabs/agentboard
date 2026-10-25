@@ -88,22 +88,22 @@ export const POST = withTenant(async (request: NextRequest, { teamId, memberId }
   // An assignee from another team is refused, not silently attached.
   if (assignee_id) assignee_id = await assertMember(teamId, assignee_id);
 
-  // Attribution, in order of how far the server trusts it. A credential issued
-  // to one agent says who is calling. X-Agent-Name is only a claim, so it's
-  // the fallback when the credential doesn't name an agent, and it's ignored
-  // when it does. (Updates never reassign from either; see cards/[id].)
+  // Who the card is filed under, most explicit first. A named assignee, by id
+  // or by name, is the caller's choice and wins. Without one, the card goes to
+  // whoever is calling: a credential issued to one agent says who that is, and
+  // X-Agent-Name is only a claim, so it counts only when the credential
+  // doesn't name an agent. A name that matches nobody stays as text rather
+  // than being quietly filed under the caller.
+  if (!assignee_id && assignee) {
+    assignee_id = await memberIdByName(teamId, assignee);
+  }
   const credentialMember = memberId ?? null;
-  if (!assignee_id && credentialMember !== null) {
+  if (!assignee_id && !assignee && credentialMember !== null) {
     assignee_id = await assertMember(teamId, credentialMember);
   }
   const agentName = request.headers.get("x-agent-name");
-  if (agentName && !assignee_id && credentialMember === null) {
+  if (!assignee_id && !assignee && agentName && credentialMember === null) {
     assignee_id = await resolveAgentMember(teamId, agentName);
-  }
-
-  // Resolve text assignee name to member ID if no assignee_id provided
-  if (!assignee_id && assignee) {
-    assignee_id = await memberIdByName(teamId, assignee);
   }
 
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM cards WHERE column_id = ${column_id}`;

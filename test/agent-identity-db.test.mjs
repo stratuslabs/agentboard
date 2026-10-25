@@ -217,6 +217,68 @@ test("updating a card never reassigns it from the credential", { skip }, async (
   assert.equal(patched.data.assignee_id, owner.data.id);
 });
 
+test("a named assignee wins over the caller's credential and header", { skip }, async () => {
+  const caller = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Caller", type: "agent" } });
+  const named = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Named", type: "agent" } });
+
+  // Hosted: a per-agent credential, and `--assignee Named` sent as text.
+  const hosted = await newCard(A, { assignee: "named" }, { member: caller.data.id });
+  assert.equal(hosted.status, 201, JSON.stringify(hosted.data));
+  assert.equal(hosted.data.assignee_id, named.data.id, "the credential is a fallback, not an override");
+
+  // Self-hosted: the CLI sends X-Agent-Name on every create.
+  const selfHosted = await newCard(A, { assignee: "Named" }, { headers: { "x-agent-name": "Caller" } });
+  assert.equal(selfHosted.data.assignee_id, named.data.id, "the header is a fallback, not an override");
+
+  // A name that matches nobody isn't quietly filed under the caller instead.
+  const unknown = await newCard(A, { assignee: "Nobody Here" }, { member: caller.data.id });
+  assert.equal(unknown.status, 201, JSON.stringify(unknown.data));
+  assert.equal(unknown.data.assignee_id, null);
+  assert.equal(unknown.data.assignee, "Nobody Here");
+});
+
+test("a credentialed update ignores X-Agent-Name", { skip }, async () => {
+  const owner = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Holder", type: "agent" } });
+  const caller = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Patcher", type: "agent" } });
+  const card = await newCard(A, { assignee_id: owner.data.id });
+
+  const patched = await call(A, api.card.PATCH, `/api/cards/${card.data.id}`, {
+    method: "PATCH", id: card.data.id, body: { priority: "low" },
+    member: caller.data.id, headers: { "x-agent-name": "Claimant" },
+  });
+  assert.equal(patched.status, 200, JSON.stringify(patched.data));
+  assert.equal(patched.data.assignee_id, owner.data.id);
+  const { rows } = await db.query("SELECT 1 FROM members WHERE team_id = $1 AND name = 'Claimant'", [A.id]);
+  assert.equal(rows.length, 0, "an ignored header registers nobody");
+});
+
+test("re-registering an agent keeps a color it didn't send", { skip }, async () => {
+  const first = await call(A, api.members.POST, "/api/members", {
+    method: "POST", body: { name: "Painter", type: "agent", color: "#EF4444" },
+  });
+  const again = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Painter", type: "agent" } });
+  assert.equal(again.status, 200, JSON.stringify(again.data));
+  assert.equal(again.data.id, first.data.id);
+  assert.equal(again.data.color, "#EF4444");
+});
+
+test("re-registering an agent with a new look puts its cards in the next delta", { skip }, async () => {
+  const agent = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Restyled", type: "agent" } });
+  const card = await newCard(A, { assignee_id: agent.data.id });
+  await db.query("UPDATE cards SET updated_at = NOW() - INTERVAL '1 hour' WHERE id = $1", [card.data.id]);
+
+  // Same look: nothing a client renders changed, so nothing is stamped.
+  await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Restyled", type: "agent" } });
+  let { rows } = await db.query("SELECT updated_at < NOW() - INTERVAL '30 minutes' AS stale FROM cards WHERE id = $1", [card.data.id]);
+  assert.equal(rows[0].stale, true, "an unchanged re-registration leaves cards alone");
+
+  await call(A, api.members.POST, "/api/members", {
+    method: "POST", body: { name: "Restyled", type: "agent", color: "#3B82F6" },
+  });
+  ({ rows } = await db.query("SELECT updated_at > NOW() - INTERVAL '1 minute' AS fresh FROM cards WHERE id = $1", [card.data.id]));
+  assert.equal(rows[0].fresh, true, "cards showing the member are stamped");
+});
+
 test("a credential naming another team's member is refused, not trusted", { skip }, async () => {
   const foreign = await call(B, api.members.POST, "/api/members", { method: "POST", body: { name: "Foreign", type: "agent" } });
   const card = await newCard(A, {}, { member: foreign.data.id });
