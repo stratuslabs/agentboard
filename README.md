@@ -433,6 +433,36 @@ Every query the core runs is scoped to the `teamId` this returns, and it is the 
 
 Without `configure()`, every request acts for the single self-hosted team, which is what self-hosted AgentBoard is. For a multi-team app that means a missed `configure()` fails open, so test that an unauthenticated request is refused. The self-hosted password check lives in `src/middleware.ts` and is not part of `configure()`; a consuming app authenticates in its resolver.
 
+**Add your own UI** by rendering the core's components from your files instead of re-exporting them. The board layout takes sidebar slots, rendered above Settings, and the settings screen takes a scope label and a list of sections, which you build from the core's defaults by `id` (`members`, `connect`, `agent-board`, `default-boards`, `default-columns`):
+
+```tsx
+// app/(board)/layout.tsx
+"use client";
+import BoardLayout from "@stratuslabs/agentboard-core/components/BoardLayout";
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <BoardLayout sidebarFooter={<TeamSwitcher />} sidebarRail={<TeamSwitcher collapsed />}>
+      {children}
+    </BoardLayout>
+  );
+}
+
+// app/settings/page.tsx
+"use client";
+import SettingsShell from "@stratuslabs/agentboard-core/components/settings/SettingsShell";
+import { defaultSettingsSections } from "@stratuslabs/agentboard-core/components/settings/sections";
+
+const sections = [
+  ...defaultSettingsSections().filter((s) => s.id !== "agent-board"),
+  { id: "billing", group: "Team", label: "Billing", icon: <CreditCard />, description: "Your plan.", content: <Billing /> },
+];
+
+export default function SettingsPage() {
+  return <SettingsShell scope={<ActiveTeamName />} sections={sections} />;
+}
+```
+
 [test/consumer](test/consumer) is a working example, and CI builds and drives it (`scripts/verify-consumer.mjs`) against the lowest and newest supported Next 16.
 
 ## Roadmap

@@ -186,6 +186,9 @@ try {
     `${page.status} ${String(page.data).slice(0, 200)}`,
   );
 
+  const bySlug = await call(teamA, `/api/products/by-slug?org_slug=${org.data.slug}&product_slug=${product.data.slug}`);
+  check("the board page's product lookup finds team A's product", bySlug.status === 200 && bySlug.data?.id === product.data.id, JSON.stringify(bySlug));
+
   const html = String(page.data);
   check(
     "the consumer's sidebar footer slot renders in the core's sidebar",
