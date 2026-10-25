@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql, db } from "@/lib/sql";
 import { initDb } from "@/lib/db";
-import { ensureDefaultTeam, ensureTeamDefaults } from "@/lib/tenancy";
+import { ensureDefaultTeam, ensureTeamDefaults, SELF_HOSTED_USER_ID } from "@/lib/tenancy";
 
 /**
  * Which team a request acts for.
@@ -12,9 +12,15 @@ import { ensureDefaultTeam, ensureTeamDefaults } from "@/lib/tenancy";
  * resolves to it. The hosted edition swaps in its own resolver (signed-in
  * user's active team, or the team an API key belongs to) with
  * setTenantResolver.
+ *
+ * userId is who is acting, for what is kept per person (preferences). Null
+ * when the caller is the team rather than a person: the hosted edition's API
+ * keys. Self-hosted has no accounts, so every request acts as its one implicit
+ * user, SELF_HOSTED_USER_ID.
  */
 export type TenantContext = {
   teamId: number;
+  userId: number | null;
 };
 
 /** Thrown by the guards below; withTenant turns it into a response. */
@@ -54,7 +60,7 @@ function selfHostedTeam(): Promise<TenantContext> {
       defaultTeamId = null;
       throw err;
     });
-  return defaultTeamId.then((teamId) => ({ teamId }));
+  return defaultTeamId.then((teamId) => ({ teamId, userId: SELF_HOSTED_USER_ID }));
 }
 
 const selfHosted: TenantResolver = {

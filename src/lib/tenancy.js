@@ -15,7 +15,11 @@
  * edition's schema already uses, so it can adopt this one without renames.
  *
  * Uniques that used to be per instance are per team: organization name and
- * slug, settings and preference keys, product keys.
+ * slug, settings keys, product keys.
+ *
+ * Preferences are per user within a team, as in the hosted edition. Self-hosted
+ * has no accounts, so every request acts as one implicit user, SELF_HOSTED_USER_ID
+ * (0), which no hosted users row can be: their ids start at 1.
  *
  * CommonJS so `scripts/setup-db.js` can share it with `src/lib/db.ts`.
  */
@@ -23,6 +27,9 @@
 /** The single team a self-hosted install resolves to. */
 const DEFAULT_TEAM_SLUG = "default";
 const DEFAULT_TEAM_NAME = "Default";
+
+/** The one user a self-hosted install has. See tenant.ts. */
+const SELF_HOSTED_USER_ID = 0;
 
 /** Tables that hold team_id directly. Everything else inherits it. */
 const ROOT_TABLES = ["organizations", "members", "settings", "user_preferences"];
@@ -48,6 +55,7 @@ DECLARE
   v_team INTEGER;
   pk_name TEXT;
   pk_cols INTEGER;
+  pk_has_user BOOLEAN;
   n INTEGER;
 BEGIN
   PERFORM pg_advisory_xact_lock(708708);
@@ -91,17 +99,27 @@ BEGIN
     ALTER TABLE organizations ADD CONSTRAINT organizations_team_id_name_key UNIQUE (team_id, name);
   END IF;
 
-  -- Settings and preferences were keyed by key alone. Only a single-column
-  -- key is replaced, so a table that already has a wider one (the hosted
-  -- edition keys preferences by user too) is left alone.
-  FOREACH t IN ARRAY ARRAY['settings', 'user_preferences'] LOOP
-    SELECT conname, array_length(conkey, 1) INTO pk_name, pk_cols
-      FROM pg_constraint WHERE conrelid = t::regclass AND contype = 'p';
-    IF pk_cols = 1 THEN
-      EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', t, pk_name);
-      EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I PRIMARY KEY (team_id, key)', t, t || '_pkey');
-    END IF;
-  END LOOP;
+  -- Settings were keyed by key alone; now by team and key.
+  SELECT conname, array_length(conkey, 1) INTO pk_name, pk_cols
+    FROM pg_constraint WHERE conrelid = 'settings'::regclass AND contype = 'p';
+  IF pk_cols = 1 THEN
+    EXECUTE format('ALTER TABLE settings DROP CONSTRAINT %I', pk_name);
+    ALTER TABLE settings ADD CONSTRAINT settings_pkey PRIMARY KEY (team_id, key);
+  END IF;
+
+  -- Preferences: by team, user and key, as the hosted edition already has them
+  -- (its table, with user_id in the key, is left exactly as it is). Existing
+  -- self-hosted preferences belong to its one implicit user.
+  ALTER TABLE user_preferences ADD COLUMN IF NOT EXISTS user_id INTEGER NOT NULL DEFAULT ${SELF_HOSTED_USER_ID};
+  SELECT c.conname, EXISTS (
+      SELECT 1 FROM pg_attribute a
+      WHERE a.attrelid = c.conrelid AND a.attname = 'user_id' AND a.attnum = ANY (c.conkey)
+    ) INTO pk_name, pk_has_user
+    FROM pg_constraint c WHERE c.conrelid = 'user_preferences'::regclass AND c.contype = 'p';
+  IF NOT pk_has_user THEN
+    EXECUTE format('ALTER TABLE user_preferences DROP CONSTRAINT %I', pk_name);
+    ALTER TABLE user_preferences ADD CONSTRAINT user_preferences_pkey PRIMARY KEY (team_id, user_id, key);
+  END IF;
 END
 $migration$;
 `;
@@ -145,6 +163,7 @@ async function ensureTeamDefaults(query, teamId) {
 }
 
 module.exports = {
+  SELF_HOSTED_USER_ID,
   DEFAULT_BOARDS,
   DEFAULT_TEAM_SLUG,
   ROOT_TABLES,

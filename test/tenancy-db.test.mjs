@@ -26,6 +26,7 @@ const url = process.env[URL_VAR];
 const skip = url ? false : `set ${URL_VAR} to run`;
 const UPGRADE = `tenancy_up_${process.pid}`;
 const FRESH = `tenancy_fresh_${process.pid}`;
+const HOSTED = `tenancy_hosted_${process.pid}`;
 
 /** @type {import('pg').Pool} */
 let pool;
@@ -159,6 +160,15 @@ test("upgrade: an existing install moves into one default team, keys and numbers
     assert.equal(col[0].is_nullable, "NO", `${table}.team_id is NOT NULL`);
   }
 
+  // Preferences are per user, as in the hosted edition. Self-hosted has no
+  // accounts, so an existing preference belongs to its one implicit user, 0.
+  const { rows: prefs } = await up("SELECT team_id, user_id, key FROM user_preferences");
+  assert.deepEqual(prefs, [{ team_id: ids.teamA, user_id: 0, key: "profileMemberId" }]);
+  const { rows: prefsKey } = await up(
+    "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'user_preferences'::regclass AND contype = 'p'"
+  );
+  assert.equal(prefsKey[0].def, "PRIMARY KEY (team_id, user_id, key)");
+
   const { rows: keys } = await up("SELECT team_id, key, product_id FROM product_keys ORDER BY key");
   assert.deepEqual(keys, [
     { team_id: ids.teamA, key: "AB", product_id: ids.ab.id },
@@ -198,6 +208,40 @@ test("fresh install: no team until the app asks for one, then exactly one", { sk
     (err) => err.code === "23502",
     "an organization must have a team"
   );
+});
+
+test("hosted schema: preferences already keyed by user are left exactly as they are", { skip }, async () => {
+  const hosted = inSchema(HOSTED);
+  await hosted(`CREATE SCHEMA ${HOSTED}`);
+  try {
+    await hosted(PRE_TENANCY.replace(
+      "CREATE TABLE user_preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+      `CREATE TABLE teams (
+         id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       );
+       CREATE TABLE users (id SERIAL PRIMARY KEY);
+       CREATE TABLE user_preferences (
+         team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         key TEXT NOT NULL, value TEXT NOT NULL,
+         PRIMARY KEY (team_id, user_id, key)
+       );`
+    ));
+    const shape = async () => ({
+      constraints: (await hosted(
+        "SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'user_preferences'::regclass ORDER BY 1"
+      )).rows,
+      columns: (await hosted(
+        "SELECT column_name, column_default, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'user_preferences' ORDER BY 1",
+        [HOSTED]
+      )).rows,
+    });
+    const before = await shape();
+    await migrate(hosted);
+    assert.deepEqual(await shape(), before);
+  } finally {
+    await hosted(`DROP SCHEMA ${HOSTED} CASCADE`);
+  }
 });
 
 test("names, settings and preferences are unique per team, not per instance", { skip }, async () => {

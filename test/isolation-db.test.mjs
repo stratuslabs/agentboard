@@ -154,12 +154,22 @@ before(async () => {
 
   // Team A is the self-hosted team, resolved exactly as a self-hosted request
   // is. Team B is added beside it, as the hosted edition would.
-  A.id = (await tenant.resolveTenant(new Request("http://localhost/"))).teamId;
+  const selfHosted = await tenant.resolveTenant(new Request("http://localhost/"));
+  A.id = selfHosted.teamId;
+  A.userId = selfHosted.userId;
   B.id = (await db.query("INSERT INTO teams (name, slug) VALUES ('Team B', 'team-b') RETURNING id")).rows[0].id;
   const { ensureTeamDefaults } = require("../src/lib/tenancy.js");
   await ensureTeamDefaults((t, v) => db.query(t, v), B.id);
   tenant.setTenantResolver({
-    fromRequest: async (request) => ({ teamId: Number(request.headers.get("x-test-team")) }),
+    // A user per request too: x-test-user, "none" for a caller with no user
+    // (the hosted edition's API keys), and otherwise the self-hosted user, 0.
+    fromRequest: async (request) => {
+      const user = request.headers.get("x-test-user");
+      return {
+        teamId: Number(request.headers.get("x-test-team")),
+        userId: user === "none" ? null : Number(user ?? 0),
+      };
+    },
   });
 
   // The same names in both teams, which per-team uniques allow, plus a slug
@@ -307,4 +317,22 @@ test("team B's data came through all of that untouched", { skip }, async () => {
   assert.ok(members.some((m) => m.id === B.member.id && m.name === "Shared Name"));
   assert.equal((await call(B, api.settings.GET, "/api/settings")).data.theme, "AgentBoard-theme");
   assert.equal((await call(B, api.preferences.GET, "/api/preferences")).data.profileMemberId, B.member.id);
+});
+
+test("preferences are per user within a team, and need a user", { skip }, async () => {
+  assert.equal(A.userId, 0, "self-hosted requests act as its one implicit user");
+  const as = (/** @type {string} */ user) => ({ headers: { "x-test-user": user } });
+  const prefs = api.preferences;
+  for (const [user, value] of [["1", "101"], ["2", "102"]]) {
+    const saved = await call(B, prefs.PATCH, "/api/preferences", { method: "PATCH", body: { key: "profileMemberId", value }, ...as(user) });
+    assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  }
+  assert.equal((await call(B, prefs.GET, "/api/preferences", as("1"))).data.profileMemberId, 101);
+  assert.equal((await call(B, prefs.GET, "/api/preferences", as("2"))).data.profileMemberId, 102);
+  assert.equal((await call(B, prefs.GET, "/api/preferences")).data.profileMemberId, B.member.id, "user 0's stays its own");
+  assert.equal((await call(A, prefs.GET, "/api/preferences", as("1"))).data.profileMemberId, undefined, "and user 1 in team A has none");
+
+  assert.equal((await call(B, prefs.GET, "/api/preferences", as("none"))).status, 403);
+  const anon = await call(B, prefs.PATCH, "/api/preferences", { method: "PATCH", body: { key: "x", value: "y" }, ...as("none") });
+  assert.equal(anon.status, 403);
 });
