@@ -6,12 +6,13 @@ import { checkCardText } from "../../../lib/card-text";
 import { getCardWithLocation } from "../../../lib/card-location";
 import { memberIdByName, resolveAgentMember } from "../../../lib/members";
 import { assertColumn, assertMember, withTenant } from "../../../lib/tenant";
+import { resolveScope } from "../../../lib/scope-params";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const sp = request.nextUrl.searchParams;
-  const boardId = sp.get("board_id");
-  const columnId = sp.get("column_id");
+  const scope = await resolveScope(teamId, sp, ["org", "product", "board", "column"]);
+  const { org: orgId, product: productId, board: boardId, column: columnId } = scope;
   const assignee = sp.get("assignee");
   const assigneeId = sp.get("assignee_id");
   const priority = sp.get("priority");
@@ -30,6 +31,16 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     JOIN products p ON p.id = b.product_id
     JOIN organizations o ON o.id = p.org_id
     LEFT JOIN members m ON cards.assignee_id = m.id`;
+
+  if (orgId) {
+    conditions.push(`o.id = $${paramIdx++}`);
+    values.push(orgId);
+  }
+
+  if (productId) {
+    conditions.push(`p.id = $${paramIdx++}`);
+    values.push(productId);
+  }
 
   if (boardId) {
     conditions.push(`columns.board_id = $${paramIdx++}`);
