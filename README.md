@@ -178,6 +178,24 @@ preferences — see [cli/README.md](cli/README.md) for the complete reference.
 
 All API routes require authentication via cookie or `Authorization: Bearer <password>` header when `APP_PASSWORD` is set. If `APP_PASSWORD` is unset, all routes are open.
 
+Errors are JSON, `{ "error": "..." }`. A path no route serves is a `404`
+(`No API route for GET /api/tasks`), never the app's HTML.
+
+The list endpoints take a slug wherever they take an id: `org=` for `org_id=`,
+`product=` for `product_id=`, `board=` for `board_id=`, `column=` for
+`column_id=`. Slugs are unique within their parent, so a board or column slug
+needs its parent too, and a product slug used in more than one organization
+needs `org=`:
+
+```
+GET /api/boards?product=agentboard
+GET /api/columns?product=agentboard&board=development
+GET /api/cards?org=labs&product=agentboard&board=development&column=todo
+```
+
+A slug that matches nothing is a `404` naming it. Pass an id or a slug for a
+level, not both.
+
 ### Auth
 
 ```
@@ -198,7 +216,7 @@ PATCH  /api/orgs/reorder   { ids: [1, 2, 3] }
 ### Products
 
 ```
-GET    /api/products?org_id=
+GET    /api/products?org_id=|org=
 GET    /api/products/by-slug?org_slug=&product_slug=
 POST   /api/products         { org_id, name, emoji? }   # emoji auto-picked from name if omitted
 PATCH  /api/products/:id     { name?, emoji? }
@@ -210,7 +228,7 @@ PATCH  /api/products/reorder { ids: [1, 2, 3] }
 ### Boards
 
 ```
-GET    /api/boards?product_id=
+GET    /api/boards?product_id=|product=   # product= may need org=
 GET    /api/boards/:id
 POST   /api/boards         { product_id, name }
 PATCH  /api/boards/:id     { name?, position? }
@@ -221,7 +239,7 @@ PATCH  /api/boards/reorder { ids: [1, 2, 3] }
 ### Columns
 
 ```
-GET    /api/columns?board_id=
+GET    /api/columns?board_id=|board=      # board= needs product= or product_id=
 GET    /api/columns/by-card/:id
 POST   /api/columns       { board_id, name }
 PATCH  /api/columns/:id   { name?, position?, color? }
@@ -231,7 +249,7 @@ DELETE /api/columns/:id
 ### Cards
 
 ```
-GET    /api/cards?board_id=&column_id=&assignee=&priority=&label=
+GET    /api/cards?org=&product=&board_id=|board=&column_id=|column=&assignee=&priority=&label=
 POST   /api/cards          { column_id, title, description?, assignee?, priority?, labels?, github_issue_url?, github_pr_url?, due_date? }
 GET    /api/cards/:id
 PATCH  /api/cards/:id      { ...partial update }
@@ -257,12 +275,15 @@ says when to ask again.
 GET /api/board?product_id=1
 GET /api/board?product_id=1&board_id=4
 GET /api/board?product_id=1&board_id=4&updated_since=<server_time>
+GET /api/board?product=agentboard&board=development
 
 GET /api/stream              # every board
 GET /api/stream?board_id=4   # one board
 ```
 
 `GET /api/board` returns `{ server_time, boards, active_board_id, columns, cards }`.
+A `board_id` that no longer exists opens the product's first board; a `board=`
+slug that matches nothing is a `404`.
 Boards and columns always come back whole — they are a handful of rows, and
 filtering them would only cost the client a second reconciliation path.
 

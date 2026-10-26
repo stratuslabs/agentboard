@@ -3,13 +3,18 @@ import { sql } from "../../../lib/sql";
 import { initDb, slugify } from "../../../lib/db";
 import { notifyBoard } from "../../../lib/realtime/notify";
 import { assertBoard, found, withTenant } from "../../../lib/tenant";
+import { resolveScope } from "../../../lib/scope-params";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
-  const rawBoardId = request.nextUrl.searchParams.get("board_id");
+  const { board: rawBoardId } = await resolveScope(teamId, request.nextUrl.searchParams, [
+    "org",
+    "product",
+    "board",
+  ]);
 
   if (!rawBoardId) {
-    return NextResponse.json({ error: "board_id is required" }, { status: 400 });
+    return NextResponse.json({ error: "board_id or board is required" }, { status: 400 });
   }
   // Another team's board has no columns, like one that doesn't exist.
   const boardId = await found(assertBoard(teamId, rawBoardId));

@@ -4,14 +4,18 @@ import { sql } from "../../../lib/sql";
 import { notifyBoard } from "../../../lib/realtime/notify";
 import { DEFAULT_COLUMNS } from "../../../lib/default-columns";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
+import { resolveScope } from "../../../lib/scope-params";
 
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
-  const rawProductId = request.nextUrl.searchParams.get("product_id");
+  const { product: rawProductId } = await resolveScope(teamId, request.nextUrl.searchParams, [
+    "org",
+    "product",
+  ]);
 
   if (!rawProductId) {
-    return NextResponse.json({ error: "product_id is required" }, { status: 400 });
+    return NextResponse.json({ error: "product_id or product is required" }, { status: 400 });
   }
   // Another team's product has no boards, like one that doesn't exist.
   const productId = await found(assertProduct(teamId, rawProductId));

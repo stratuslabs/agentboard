@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readSnapshot } from "../../../lib/sql";
 import { envInt } from "../../../lib/env";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
+import { resolveScope } from "../../../lib/scope-params";
 
 /**
  * Everything a board screen needs, in one request.
@@ -73,12 +74,13 @@ const DELTA_OVERLAP_MS = envInt("BOARD_DELTA_OVERLAP_MS", 2_000, 0);
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const sp = request.nextUrl.searchParams;
-  const rawProductId = sp.get("product_id");
-  const requestedBoardId = sp.get("board_id");
+  const scope = await resolveScope(teamId, sp, ["org", "product", "board"]);
+  const rawProductId = scope.product;
+  const requestedBoardId = scope.board;
   const updatedSince = sp.get("updated_since");
 
   if (!rawProductId) {
-    return NextResponse.json({ error: "product_id is required" }, { status: 400 });
+    return NextResponse.json({ error: "product_id or product is required" }, { status: 400 });
   }
   // Boards, columns and cards below all hang off this product, so checking it
   // is the team's scopes the whole response. Another team's product reads as

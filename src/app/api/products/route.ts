@@ -4,10 +4,11 @@ import { initDb, slugify, createDefaultBoards } from "../../../lib/db";
 import { suggestEmoji } from "../../../lib/emoji-suggest";
 import { createProductWithKey } from "../../../lib/card-keys";
 import { assertOrg, found, withTenant } from "../../../lib/tenant";
+import { resolveScope } from "../../../lib/scope-params";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
-  const orgId = request.nextUrl.searchParams.get("org_id");
+  const { org: orgId } = await resolveScope(teamId, request.nextUrl.searchParams, ["org"]);
 
   let rows;
   if (orgId) {
