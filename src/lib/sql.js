@@ -136,7 +136,9 @@ function sql(strings, ...values) {
 /** Escape hatch for queries built dynamically; mirrors `pg`'s Pool.query. */
 const db = {
   /**
-   * @param {string} text
+   * @param {string | (import('pg').QueryConfig & { query_timeout?: number })} text
+   *   or a config object, for per-query options. `pg` honors `query_timeout`
+   *   per query, though its types only declare it on the client.
    * @param {unknown[]} [values]
    * @returns {Promise<import('pg').QueryResult<any>>}
    */

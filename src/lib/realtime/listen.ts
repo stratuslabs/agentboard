@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { Client } from "pg";
-import { connectionString, sslConfig } from "../sql";
+import { connectionString, db, sslConfig } from "../sql";
 import { REALTIME_CHANNEL, type BoardChange } from "./notify";
 import { envInt } from "../env";
 
@@ -64,6 +64,12 @@ function scheduleRetry() {
   // Do not hold a short-lived script open just to retry a subscription.
   retryTimer.unref?.();
   retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);
+}
+
+function cancelRetry() {
+  if (!retryTimer) return;
+  clearTimeout(retryTimer);
+  retryTimer = null;
 }
 
 function teardown() {
@@ -136,10 +142,11 @@ async function start(): Promise<boolean> {
     return false;
   }
 
-  // Prove it. A pooler that accepted the LISTEN but handed the backend to
-  // somebody else answers this by never delivering, which is exactly the
+  // Prove it, from the pool rather than from this connection. A pooler that
+  // accepted the LISTEN but handed the backend to somebody else answers a
+  // cross-connection notification by never delivering it, which is exactly the
   // silent failure the caller cannot otherwise detect.
-  if (!(await probe(next))) {
+  if (!(await probe())) {
     console.error(
       "realtime: LISTEN was accepted but no notification arrived — the " +
         "connection is probably pooled. Falling back to polling; set " +
@@ -157,44 +164,55 @@ async function start(): Promise<boolean> {
 }
 
 /**
- * Send ourselves a notification and wait for it to come back.
+ * Send a notification from where real ones come from, and wait for it here.
  *
- * Sent down the same connection that is listening, so it tests the exact
- * property every stream depends on. The payload carries no `board_id`, so even
- * if it reached another process it would be ignored there rather than being
- * mistaken for a board change.
+ * Sent through the **pool**, not down the listening connection. Every real
+ * notification is a `pg_notify` issued by a write route on a pooled
+ * connection, and what has to be proved is that one of those reaches this idle
+ * listener. Probing down the listener itself proves only that a connection can
+ * talk to itself, and on a transaction pooler it can pass for exactly the wrong
+ * reason: issuing the notify may hand that connection back the backend that ran
+ * the `LISTEN`, which is released again the moment the query ends.
+ *
+ * It also tests the deployed pair: the pool follows `POSTGRES_URL` while the
+ * listener may follow `DIRECT_POSTGRES_URL`.
+ *
+ * The payload carries neither a `board_id` nor a `team_id`, so even if it
+ * reached another process it would be ignored there rather than being mistaken
+ * for a board change.
  */
-async function probe(candidate: Client): Promise<boolean> {
+async function probe(): Promise<boolean> {
   const token = `probe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  const roundTrip = new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      pendingProbe = null;
-      resolve(false);
-    }, PROBE_TIMEOUT_MS);
+  let settle: (ok: boolean) => void = () => {};
+  const answer = new Promise<boolean>((resolve) => {
+    // The deadline bounds the whole probe, the pool query included. The pool
+    // has no query timeout of its own, and every stream waits on this start
+    // before sending a byte, so a notify stuck on a half-open socket must not
+    // hold them past the deadline.
+    const timer = setTimeout(() => settle(false), PROBE_TIMEOUT_MS);
     timer.unref?.();
-
-    pendingProbe = {
-      token,
-      seen: () => {
-        clearTimeout(timer);
-        pendingProbe = null;
-        resolve(true);
-      },
+    settle = (ok) => {
+      clearTimeout(timer);
+      // Only our own: a late settle must not clear a newer probe.
+      if (pendingProbe?.token === token) pendingProbe = null;
+      resolve(ok);
     };
   });
+  pendingProbe = { token, seen: () => settle(true) };
 
-  try {
-    await candidate.query("SELECT pg_notify($1, $2)", [
-      REALTIME_CHANNEL,
-      JSON.stringify({ probe: token }),
-    ]);
-  } catch {
-    pendingProbe = null;
-    return false;
-  }
+  // The query gets the same deadline as a real timeout, not just a timer that
+  // stops waiting for it: a query that is merely abandoned keeps its pool
+  // connection, every retry abandons another, and a pool's worth of them stops
+  // all of the app's queries. A timed-out query errors, and the pool discards
+  // a connection released with an error.
+  db.query({
+    text: "SELECT pg_notify($1, $2)",
+    values: [REALTIME_CHANNEL, JSON.stringify({ probe: token })],
+    query_timeout: PROBE_TIMEOUT_MS,
+  }).catch(() => settle(false));
 
-  return roundTrip;
+  return answer;
 }
 
 /**
@@ -210,6 +228,31 @@ export async function ensureListening(): Promise<boolean> {
     });
   }
   return starting;
+}
+
+/**
+ * Close the listener and cancel any pending retry, so a process that is done
+ * (a test file, a script, a graceful shutdown) can exit: the listener holds a
+ * socket of its own that nothing else will close. Safe to call more than once.
+ * A later `ensureListening` starts over.
+ */
+export async function stopListening(): Promise<void> {
+  cancelRetry();
+  // A start in flight would otherwise install its client after this returns.
+  const inFlight = starting;
+  if (inFlight) {
+    await inFlight.catch(() => false);
+    // And one that failed has just armed a retry on its way out.
+    cancelRetry();
+  }
+  retryMs = 1_000;
+  if (!client) return;
+  const dying = client;
+  client = null;
+  dying.removeAllListeners();
+  await dying.end().catch(() => {
+    // Already gone.
+  });
 }
 
 /**

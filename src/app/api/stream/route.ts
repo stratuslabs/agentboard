@@ -210,6 +210,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       // way, so the client cannot tell which is driving it.
       const interval = live ? RECONCILE_MS : POLL_MS;
       let last: string | null = null;
+      // Whether `last` is a real reading or only the absence of one. A stamp
+      // that never succeeded is not a baseline, and treating it as one turns a
+      // transient outage into permanent staleness below.
+      let baselined = false;
 
       // Sampled before `hello`, and that ordering is the whole point.
       //
@@ -222,6 +226,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       if (interval > 0) {
         try {
           last = await stampFor(teamId, boardId);
+          baselined = true;
         } catch (err) {
           console.error("realtime: initial stamp failed", err);
         }
@@ -236,8 +241,14 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
           if (closed) return;
           try {
             const next = await stampFor(teamId, boardId);
-            if (last !== null && next !== last) event("change", { board_id: boardId });
+            // The first good reading after a failed baseline is an
+            // invalidation, not a starting point. The old value was never
+            // learned, so nothing can be said to be unchanged, and the outage
+            // that lost the baseline most likely took the client's own mount
+            // fetch with it.
+            if (!baselined || next !== last) event("change", { board_id: boardId });
             last = next;
+            baselined = true;
           } catch (err) {
             console.error("realtime: poll failed", err);
           }
