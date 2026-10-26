@@ -37,6 +37,7 @@ import {
   type Column,
   type Member,
   PRIORITIES,
+  cardLabel,
   cardLink,
   describeDue,
   formatDateTime,
@@ -60,6 +61,8 @@ export interface CardContext {
   orgName?: string;
   productEmoji?: string;
   productName?: string;
+  /** The product's card key, for a card that doesn't carry its own. */
+  productKey?: string | null;
   boardName?: string;
 }
 
@@ -224,6 +227,8 @@ export default function CardDetail({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // AB-142, or #<id> for a card in a product that has no key yet.
+  const label = cardLabel(card, context.productKey);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // --- Saving ---
@@ -451,7 +456,7 @@ export default function CardDetail({
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(cardLink(card.id));
+      await navigator.clipboard.writeText(cardLink(card, context.productKey));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -773,7 +778,7 @@ export default function CardDetail({
             {context.productName && <><span className="truncate">{context.productEmoji} {context.productName}</span><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /></>}
             {context.boardName && <><span className="truncate">{context.boardName}</span><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /></>}
           </span>
-          <span className="font-mono text-xs text-text-2">#{card.id}</span>
+          <span className="font-mono text-xs text-text-2">{label}</span>
           <span className="flex-1" />
           {saveIndicator}
           {siblings && index >= 0 && siblingsLabel && (
@@ -819,7 +824,7 @@ export default function CardDetail({
     <div
       ref={rootRef}
       role="complementary"
-      aria-label={`Card #${card.id}`}
+      aria-label={`Card ${label}`}
       className="slide-in-right fixed top-0 right-0 bottom-0 z-40 flex w-[520px] max-w-full flex-col border-l border-border-strong bg-bg-sidebar shadow-[-16px_0_48px_rgba(0,0,0,0.5)]"
     >
       <div className="flex h-[52px] shrink-0 items-center gap-1.5 border-b border-border pr-2.5 pl-5 text-[13px]">
@@ -830,7 +835,7 @@ export default function CardDetail({
             {context.boardName && <><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /><span className="truncate">{context.boardName}</span></>}
           </span>
         )}
-        <span className="font-mono text-[11px] text-text-4">#{card.id}</span>
+        <span className="font-mono text-[11px] text-text-4">{label}</span>
         <span className="flex-1" />
         {saveIndicator}
         {navButtons}

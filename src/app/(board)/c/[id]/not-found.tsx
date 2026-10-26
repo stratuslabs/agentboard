@@ -7,9 +7,13 @@ import { Button, EmptyState } from "../../../../components/ui";
 export default function CardNotFound() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
-  const body = /^[0-9]+$/.test(id ?? "")
-    ? <>There&apos;s no card #{id}. It may have been deleted.</>
-    : <>This link doesn&apos;t point to a card.</>;
+  const ref = id ?? "";
+  // A number is an internal id, KEY-N a readable one like AB-142.
+  const body = /^[0-9]+$/.test(ref)
+    ? <>There&apos;s no card #{ref}. It may have been deleted.</>
+    : /^[A-Za-z][A-Za-z0-9]{1,9}-[0-9]+$/.test(ref)
+      ? <>There&apos;s no card {ref.toUpperCase()}. It may have been deleted.</>
+      : <>This link doesn&apos;t point to a card.</>;
   return (
     <div className="flex flex-1 items-center justify-center pb-20">
       <EmptyState

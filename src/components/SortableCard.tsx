@@ -7,11 +7,12 @@ import type { Card } from "../lib/cards";
 
 interface SortableCardProps {
   card: Card;
+  productKey?: string | null;
   onClick: () => void;
   selected?: boolean;
 }
 
-export default function SortableCard({ card, onClick, selected }: SortableCardProps) {
+export default function SortableCard({ card, productKey, onClick, selected }: SortableCardProps) {
   const {
     attributes,
     listeners,
@@ -29,7 +30,7 @@ export default function SortableCard({ card, onClick, selected }: SortableCardPr
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <KanbanCard card={card} onClick={onClick} selected={selected} />
+      <KanbanCard card={card} productKey={productKey} onClick={onClick} selected={selected} />
     </div>
   );
 }

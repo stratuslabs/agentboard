@@ -24,6 +24,43 @@ export interface Card {
   /** Sub-task counts, from the board and card endpoints. Absent on older servers. */
   subtask_total?: number;
   subtask_done?: number;
+  /** The card's number within its product, the 142 in AB-142. Null until the product has a key. */
+  number?: number | null;
+  /** The readable key, AB-142, when the endpoint already joined the product. */
+  key?: string | null;
+  /** The key of the product the card lives in, from endpoints that span products. */
+  product_key?: string | null;
+}
+
+type CardRef = Pick<Card, "id"> & Partial<Pick<Card, "number" | "key" | "product_key">>;
+
+/**
+ * The card's readable key, AB-142, or null when it has none: a product
+ * without a key yet, or an older server that sends no number.
+ *
+ * A key the server already put on the card wins. Otherwise it is built from
+ * the card's own product key, which cross-product views send, and then from
+ * `productKey`, the key of the board the card is shown on.
+ */
+export function cardKey(card: CardRef, productKey?: string | null): string | null {
+  if (card.key) return card.key;
+  const prefix = card.product_key || productKey;
+  return prefix && card.number ? `${prefix}-${card.number}` : null;
+}
+
+/** What the UI calls a card: its key, or `#<id>` without one. */
+export function cardLabel(card: CardRef, productKey?: string | null): string {
+  return cardKey(card, productKey) ?? `#${card.id}`;
+}
+
+/** The tab title for an open card, "AB-142 Fix login", or undefined when none is open. */
+export function cardTitle(
+  card: (CardRef & Pick<Card, "title">) | null | undefined,
+  productKey?: string | null,
+): string | undefined {
+  if (!card) return undefined;
+  const key = cardKey(card, productKey);
+  return key ? `${key} ${card.title}` : card.title;
 }
 
 export interface Member {
@@ -143,10 +180,16 @@ export function writeCardParam(cardId: number | null, full = false): void {
 }
 
 /**
- * The card's permanent URL, `/c/<id>`. It resolves to wherever the card lives
- * when it's opened, so it keeps working after the card moves board or the
- * product is renamed, and doesn't depend on the page it was copied from.
+ * The card's permanent URL, `/c/AB-142`, or `/c/<id>` for a card without a
+ * key. It resolves to wherever the card lives when it's opened, so it keeps
+ * working after the card moves board or the product is renamed, and doesn't
+ * depend on the page it was copied from. A key that later changes, because
+ * the product's key was edited or the card moved product, still resolves:
+ * old keys are kept. A bare card id is still accepted and links as `/c/<id>`.
  */
-export function cardLink(cardId: number): string {
-  return new URL(`/c/${cardId}`, window.location.origin).toString();
+export function cardLink(card: CardRef | number, productKey?: string | null): string {
+  // A bare id is the original signature; it has no key to use, so it links by id.
+  const ref =
+    typeof card === "number" ? String(card) : (cardKey(card, productKey) ?? String(card.id));
+  return new URL(`/c/${encodeURIComponent(ref)}`, window.location.origin).toString();
 }

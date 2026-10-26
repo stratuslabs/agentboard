@@ -5,7 +5,7 @@ import { ArrowLeft, Calendar } from "lucide-react";
 import CardDetail from "./CardDetail";
 import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
-import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, DUE_TEXT, cardKey, cardTitle, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
 
 export interface ViewCard extends Card {
   org_name: string;
@@ -63,7 +63,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
   const openCard = openCardId === null
     ? null
     : ordered.find((c) => c.id === openCardId) ?? (heldCard?.id === openCardId ? heldCard : null);
-  useDocumentTitle(openCard ? pageTitle(openCard.title, openCard.board_name, openCard.product_name) : pageTitle(title));
+  useDocumentTitle(openCard ? pageTitle(cardTitle(openCard), openCard.board_name, openCard.product_name) : pageTitle(title));
 
   function open(card: ViewCard, view: "panel" | "page" = cardView) {
     const cardId = card.id;
@@ -94,7 +94,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
       key={openCard.id}
       mode={cardView}
       card={openCard}
-      context={{ orgName: openCard.org_name || undefined, productEmoji: openCard.product_emoji, productName: openCard.product_name, boardName: openCard.board_name }}
+      context={{ orgName: openCard.org_name || undefined, productEmoji: openCard.product_emoji, productName: openCard.product_name, productKey: openCard.product_key, boardName: openCard.board_name }}
       siblings={ordered.some((c) => c.id === openCard.id) ? ordered : undefined}
       siblingsLabel={title}
       onNavigate={(c) => open(ordered.find((o) => o.id === c.id) ?? (c as ViewCard))}
@@ -139,6 +139,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
                   {group.cards.map((card) => {
                     const dueStatus = card.due_date ? getDueDateStatus(card.due_date) : null;
                     const displayName = displayAssignee(card);
+                    const key = cardKey(card);
 
                     return (
                       <button
@@ -147,6 +148,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
                         className={cx("flex h-11 w-full items-center gap-3 rounded-lg border px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2", openCardId === card.id ? "border-text-3 bg-surface-2" : "border-border bg-surface-1")}
                       >
                         <PriorityDot priority={card.priority} />
+                        {key && <span className="min-w-[52px] shrink-0 font-mono text-[11.5px] text-text-4">{key}</span>}
                         <span className="min-w-0 flex-1 truncate text-[13.5px] text-text-1">{card.title}</span>
                         <StatusBadge color={card.column_color}>{card.column_name}</StatusBadge>
                         {displayName ? (
