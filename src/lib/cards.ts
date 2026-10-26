@@ -185,9 +185,11 @@ export function writeCardParam(cardId: number | null, full = false): void {
  * working after the card moves board or the product is renamed, and doesn't
  * depend on the page it was copied from. A key that later changes, because
  * the product's key was edited or the card moved product, still resolves:
- * old keys are kept.
+ * old keys are kept. A bare card id is still accepted and links as `/c/<id>`.
  */
-export function cardLink(card: CardRef, productKey?: string | null): string {
-  const ref = cardKey(card, productKey) ?? String(card.id);
+export function cardLink(card: CardRef | number, productKey?: string | null): string {
+  // A bare id is the original signature; it has no key to use, so it links by id.
+  const ref =
+    typeof card === "number" ? String(card) : (cardKey(card, productKey) ?? String(card.id));
   return new URL(`/c/${encodeURIComponent(ref)}`, window.location.origin).toString();
 }

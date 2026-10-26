@@ -59,3 +59,8 @@ test("the permanent link uses the key, or the id without one", () => {
   assert.equal(cardLink({ id: 9, number: 142 }, "AB"), "https://board.example/c/AB-142");
   assert.equal(cardLink({ id: 9 }), "https://board.example/c/9");
 });
+
+test("cardLink still takes a bare card id, as it did before keys", () => {
+  assert.equal(cardLink(42), "https://board.example/c/42");
+  assert.equal(cardLink(42, "AB"), "https://board.example/c/42");
+});
