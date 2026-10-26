@@ -82,7 +82,7 @@
     "./app/(board)/page": "./src/app/(board)/page.tsx",
     "./app/(board)/past-due/page": "./src/app/(board)/past-due/page.tsx",
     "./app/(board)/today/page": "./src/app/(board)/today/page.tsx",
-    "./app/api/[...path]/route": "./src/app/api/[...path]/route.ts",
+    "./app/api/[[...path]]/route": "./src/app/api/[[...path]]/route.ts",
     "./app/api/attachments/[id]/route": "./src/app/api/attachments/[id]/route.ts",
     "./app/api/auth/login/route": "./src/app/api/auth/login/route.ts",
     "./app/api/auth/logout/route": "./src/app/api/auth/logout/route.ts",

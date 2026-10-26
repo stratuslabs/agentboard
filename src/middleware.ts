@@ -94,7 +94,8 @@ export async function middleware(request: NextRequest) {
   // Open mode: no password configured, nothing to guess or throttle.
   if (!process.env.APP_PASSWORD) return NextResponse.next();
 
-  const isApi = pathname.startsWith("/api/");
+  // The bare /api root is an API path too: it gets the JSON 401, not a redirect.
+  const isApi = pathname === "/api" || pathname.startsWith("/api/");
   const hadCredential = presentsCredential(request);
   const key = clientKey(request.headers);
 

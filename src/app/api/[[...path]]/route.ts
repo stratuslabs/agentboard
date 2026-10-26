@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
  * HTML with a 200, and a deeper one gets the HTML not-found page. A client
  * that guessed a path, or wrote to one, was told it worked or handed HTML to
  * parse. A static segment outranks a dynamic one, so this catches every
- * unknown /api path and nothing a real route serves.
+ * unknown /api path and nothing a real route serves. It is an optional
+ * catch-all so the bare /api root, which has no segment, lands here as well.
  *
  * The middleware runs first, so with a password set an unauthenticated caller
  * still gets its 401 and learns nothing about which paths exist.
