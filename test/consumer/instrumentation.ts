@@ -4,5 +4,6 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { configure } = await import("@stratuslabs/agentboard-core/configure");
   const { tenant } = await import("@/tenant");
-  configure({ tenant });
+  // app/account is this app's own page, so no org may be slugged "account".
+  configure({ tenant, reservedOrgSlugs: ["account"] });
 }

@@ -1,4 +1,5 @@
 import { slugify } from "./slug";
+import { getConfig } from "../configure";
 
 /**
  * Top-level paths the app itself owns. An organization lives at
@@ -27,8 +28,13 @@ export const RESERVED_ORG_SLUGS: ReadonlySet<string> = new Set([
  */
 export const SHADOWED_ORG_SLUGS: readonly string[] = ["api", "c"];
 
+/**
+ * Whether a slug is one of the app's own paths: the core's, or one an app
+ * that consumes it reserved with configure({ reservedOrgSlugs }).
+ */
 export function isReservedOrgSlug(slug: string): boolean {
-  return RESERVED_ORG_SLUGS.has(slug.toLowerCase());
+  const lower = slug.toLowerCase();
+  return RESERVED_ORG_SLUGS.has(lower) || (getConfig().reservedOrgSlugs ?? []).includes(lower);
 }
 
 /**

@@ -45,10 +45,17 @@ export type AgentBoardConfig = {
      */
     beforeTypeChange?: (change: MemberTypeChange) => void | Promise<void>;
   };
+  /**
+   * Top-level paths the app serves itself (`signup`, `billing`), on top of
+   * the core's own. An organization lives at /<org-slug>, so these are kept
+   * from becoming org slugs: a name that would land on one gets `-org`
+   * appended, and asking for one outright is refused.
+   */
+  reservedOrgSlugs?: readonly string[];
 };
 
 const STORE = Symbol.for("@stratuslabs/agentboard-core/config");
-const OPTIONS = ["tenant", "members"] as const;
+const OPTIONS = ["tenant", "members", "reservedOrgSlugs"] as const;
 const TENANT_KEYS = ["fromRequest", "fromPage"] as const;
 const MEMBER_HOOKS = ["beforeTypeChange"] as const;
 
@@ -81,6 +88,20 @@ function functions<T extends object>(
   return Object.freeze({ ...value }) as Readonly<T>;
 }
 
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** A list of slugs as they appear in a URL, copied and frozen. */
+function slugList(value: unknown): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new TypeError("reservedOrgSlugs must be an array of slugs");
+  for (const slug of value) {
+    if (typeof slug !== "string" || !SLUG.test(slug)) {
+      throw new TypeError(`reservedOrgSlugs: not a slug: ${JSON.stringify(slug)} (lowercase letters, digits and single hyphens)`);
+    }
+  }
+  return Object.freeze([...value]);
+}
+
 function validate(config: AgentBoardConfig): Readonly<AgentBoardConfig> {
   if (config === null || typeof config !== "object") {
     throw new TypeError("configure() takes an options object");
@@ -94,9 +115,11 @@ function validate(config: AgentBoardConfig): Readonly<AgentBoardConfig> {
   const members = functions<NonNullable<AgentBoardConfig["members"]>>(
     config.members, MEMBER_HOOKS, "members", "beforeTypeChange", "Unknown members hook",
   );
+  const reservedOrgSlugs = slugList(config.reservedOrgSlugs);
   const result: AgentBoardConfig = {};
   if (tenant) result.tenant = tenant;
   if (members) result.members = members;
+  if (reservedOrgSlugs) result.reservedOrgSlugs = reservedOrgSlugs;
   return Object.freeze(result);
 }
 
