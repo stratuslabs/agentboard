@@ -130,6 +130,10 @@ export default function KanbanBoard({
   const [renamingColumnId, setRenamingColumnId] = useState<number | null>(null);
   const [renameColumnName, setRenameColumnName] = useState("");
   const [renameColumnError, setRenameColumnError] = useState<string | null>(null);
+  // Why adding a column, or adding or renaming a board, was refused: a 409
+  // for a name another one on the board or product already has or makes.
+  const [addColumnError, setAddColumnError] = useState<string | null>(null);
+  const [boardNameError, setBoardNameError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -504,7 +508,11 @@ export default function KanbanBoard({
     if (res.ok) {
       setNewColumnName("");
       setAddingColumn(false);
+      setAddColumnError(null);
       loadColumns();
+    } else {
+      const data = await res.json().catch(() => null);
+      setAddColumnError(data?.error || "Couldn't add this column.");
     }
   }
 
@@ -569,13 +577,17 @@ export default function KanbanBoard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ product_id: productId, name: newBoardName.trim() }),
     });
-    if (res.ok) {
-      const board = await res.json();
-      setNewBoardName("");
-      setAddingBoard(false);
-      await loadBoards();
-      setActiveBoardId(board.id);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setBoardNameError(data?.error || "Couldn't add this board.");
+      return;
     }
+    const board = await res.json();
+    setNewBoardName("");
+    setAddingBoard(false);
+    setBoardNameError(null);
+    await loadBoards();
+    setActiveBoardId(board.id);
   }
 
   async function handleRenameBoard(boardId: number) {
@@ -588,7 +600,11 @@ export default function KanbanBoard({
     if (res.ok) {
       setRenamingBoardId(null);
       setRenameBoardName("");
+      setBoardNameError(null);
       loadBoards();
+    } else {
+      const data = await res.json().catch(() => null);
+      setBoardNameError(data?.error || "Couldn't rename this board.");
     }
   }
 
@@ -778,12 +794,14 @@ export default function KanbanBoard({
               key={board.id}
               type="text"
               value={renameBoardName}
-              onChange={(e) => setRenameBoardName(e.target.value)}
+              onChange={(e) => { setRenameBoardName(e.target.value); setBoardNameError(null); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleRenameBoard(board.id);
-                if (e.key === "Escape") { setRenamingBoardId(null); setRenameBoardName(""); }
+                if (e.key === "Escape") { setRenamingBoardId(null); setRenameBoardName(""); setBoardNameError(null); }
               }}
-              onBlur={() => { setRenamingBoardId(null); setRenameBoardName(""); }}
+              onBlur={() => { setRenamingBoardId(null); setRenameBoardName(""); setBoardNameError(null); }}
+              aria-invalid={boardNameError ? true : undefined}
+              aria-describedby={boardNameError ? "board-name-error" : undefined}
               className="mb-1.5 h-7 w-32 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 focus:border-text-4 focus:outline-none"
               autoFocus
             />
@@ -815,21 +833,23 @@ export default function KanbanBoard({
             <input
               type="text"
               value={newBoardName}
-              onChange={(e) => setNewBoardName(e.target.value)}
+              onChange={(e) => { setNewBoardName(e.target.value); setBoardNameError(null); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleAddBoard();
-                if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); }
+                if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); setBoardNameError(null); }
               }}
+              aria-invalid={boardNameError ? true : undefined}
+              aria-describedby={boardNameError ? "board-name-error" : undefined}
               className="h-7 w-32 rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none"
               placeholder="Board name"
               autoFocus
             />
             <Button variant="primary" size="sm" className="h-7" onClick={handleAddBoard}>Add</Button>
-            <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingBoard(false); setNewBoardName(""); }}>Cancel</Button>
+            <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingBoard(false); setNewBoardName(""); setBoardNameError(null); }}>Cancel</Button>
           </div>
         ) : (
           <button
-            onClick={() => setAddingBoard(true)}
+            onClick={() => { setAddingBoard(true); setBoardNameError(null); }}
             className="flex h-full shrink-0 items-end pb-3 text-text-3 transition-colors hover:text-text-1"
             title="Add board"
             aria-label="Add board"
@@ -838,6 +858,11 @@ export default function KanbanBoard({
           </button>
         )}
       </div>
+      {boardNameError && (addingBoard || renamingBoardId !== null) && (
+        <p id="board-name-error" role="alert" className="shrink-0 border-b border-border px-7 py-1.5 text-[12px] leading-4 text-danger max-md:px-4">
+          {boardNameError}
+        </p>
+      )}
 
       {/* Column menu */}
       {columnContextMenu && (
@@ -882,6 +907,7 @@ export default function KanbanBoard({
             if (board) {
               setRenamingBoardId(board.id);
               setRenameBoardName(board.name);
+              setBoardNameError(null);
             }
             setBoardContextMenu(null);
           }}>
@@ -1102,26 +1128,34 @@ export default function KanbanBoard({
                 <input
                   type="text"
                   value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
+                  onChange={(e) => { setNewColumnName(e.target.value); setAddColumnError(null); }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleAddColumn();
                     if (e.key === "Escape") {
                       setAddingColumn(false);
                       setNewColumnName("");
+                      setAddColumnError(null);
                     }
                   }}
+                  aria-invalid={addColumnError ? true : undefined}
+                  aria-describedby={addColumnError ? "add-column-error" : undefined}
                   className="h-8 w-full rounded-md border border-border-strong bg-surface-2 px-2 text-[13px] text-text-1 placeholder:text-text-3 focus:border-text-4 focus:outline-none"
                   placeholder="Column name"
                   autoFocus
                 />
+                {addColumnError && (
+                  <p id="add-column-error" role="alert" className="mt-1.5 text-[12px] leading-4 text-danger">
+                    {addColumnError}
+                  </p>
+                )}
                 <div className="mt-2 flex gap-1.5">
                   <Button variant="primary" size="sm" className="h-7" onClick={handleAddColumn}>Add</Button>
-                  <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingColumn(false); setNewColumnName(""); }}>Cancel</Button>
+                  <Button variant="ghost" size="sm" className="h-7" onClick={() => { setAddingColumn(false); setNewColumnName(""); setAddColumnError(null); }}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <button
-                onClick={() => setAddingColumn(true)}
+                onClick={() => { setAddingColumn(true); setAddColumnError(null); }}
                 className="flex h-11 w-[264px] shrink-0 items-center justify-center gap-2 self-start rounded-[10px] border border-dashed border-border-strong text-[13px] text-text-3 transition-colors hover:border-text-4 hover:text-text-2"
               >
                 <Plus className="h-4 w-4" />

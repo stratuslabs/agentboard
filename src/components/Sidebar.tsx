@@ -125,9 +125,9 @@ function NavButton({ onClick, icon, label }: { onClick: () => void; icon: React.
 }
 
 // --- Sortable Org Header ---
-function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
+function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
   org: Org; expanded: boolean; onToggle: () => void; onContextMenu: (e: React.MouseEvent) => void;
-  isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
+  isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   onMenuClick: (e: React.MouseEvent) => void; menuOpen: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `org-${org.id}` });
@@ -139,7 +139,10 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
         <input type="text" value={editingName} onChange={(e) => onEditChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onEditSubmit(); if (e.key === "Escape") onEditCancel(); }}
           onBlur={onEditSubmit}
+          aria-invalid={editError ? true : undefined}
+          aria-describedby={editError ? `rename-org-error-${org.id}` : undefined}
           className={cx(INLINE_INPUT, "font-mono text-[11px] tracking-[0.8px] uppercase")} autoFocus />
+        <RenameError id={`rename-org-error-${org.id}`} error={editError} />
       </div>
     );
   }
@@ -159,6 +162,12 @@ function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, 
   );
 }
 
+// Why a rename was refused, such as a name another product already has.
+function RenameError({ id, error }: { id: string; error: string | null }) {
+  if (!error) return null;
+  return <p id={id} role="alert" className="px-2 pt-1 pb-1.5 text-[11.5px] leading-4 text-danger">{error}</p>;
+}
+
 // --- Droppable Org Zone (for receiving products) ---
 function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children: React.ReactNode; isOver?: boolean }) {
   const { setNodeRef, isOver: droppableIsOver } = useDroppable({ id: `org-drop-${orgId}` });
@@ -171,9 +180,9 @@ function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children
 }
 
 // --- Sortable Product Item ---
-function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
+function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
   product: Product; isSelected: boolean; href: string; onContextMenu: (e: React.MouseEvent) => void;
-  isEditing: boolean; editingName: string; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
+  isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `product-${product.id}` });
@@ -185,7 +194,10 @@ function SortableProductItem({ product, isSelected, href, onContextMenu, isEditi
         <input type="text" value={editingName} onChange={(e) => onEditChange(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onEditSubmit(); if (e.key === "Escape") onEditCancel(); }}
           onBlur={onEditSubmit}
+          aria-invalid={editError ? true : undefined}
+          aria-describedby={editError ? `rename-product-error-${product.id}` : undefined}
           className={INLINE_INPUT} autoFocus />
+        <RenameError id={`rename-product-error-${product.id}`} error={editError} />
       </div>
     );
   }
@@ -310,6 +322,9 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   const [editingOrgName, setEditingOrgName] = useState("");
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editingProductName, setEditingProductName] = useState("");
+  // Why the open org or product rename was refused (say, a 409 for a name
+  // another one already has), shown under its input until it changes.
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: "org" | "product"; id: number; orgId?: number } | null>(null);
   const [emojiPickerProductId, setEmojiPickerProductId] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
@@ -428,9 +443,14 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   async function handleLogout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
 
   async function handleRenameOrg(orgId: number) {
-    if (!editingOrgName.trim()) { setEditingOrgId(null); return; }
-    await fetch(`/api/orgs/${orgId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editingOrgName.trim() }) });
-    setEditingOrgId(null); setEditingOrgName(""); loadOrgs();
+    if (!editingOrgName.trim()) { setEditingOrgId(null); setRenameError(null); return; }
+    const res = await fetch(`/api/orgs/${orgId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editingOrgName.trim() }) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setRenameError(data?.error || "Couldn't rename this organization.");
+      return;
+    }
+    setEditingOrgId(null); setEditingOrgName(""); setRenameError(null); loadOrgs();
   }
 
   function handleDeleteOrg(orgId: number) {
@@ -442,9 +462,14 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   }
 
   async function handleRenameProduct(productId: number, orgId: number) {
-    if (!editingProductName.trim()) { setEditingProductId(null); return; }
-    await fetch(`/api/products/${productId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editingProductName.trim() }) });
-    setEditingProductId(null); setEditingProductName(""); await refreshProducts(orgId);
+    if (!editingProductName.trim()) { setEditingProductId(null); setRenameError(null); return; }
+    const res = await fetch(`/api/products/${productId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: editingProductName.trim() }) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setRenameError(data?.error || "Couldn't rename this product.");
+      return;
+    }
+    setEditingProductId(null); setEditingProductName(""); setRenameError(null); await refreshProducts(orgId);
   }
 
   function handleDeleteProduct(productId: number, orgId: number) {
@@ -653,8 +678,9 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
               <div key={org.id} className="flex flex-col gap-px">
                 <SortableOrgHeader org={org} expanded={expandedOrgs.has(org.id)} onToggle={() => toggleOrg(org.id)}
                   onContextMenu={(e) => handleContextMenu(e, "org", org.id)}
-                  isEditing={editingOrgId === org.id} editingName={editingOrgName} onEditChange={setEditingOrgName}
-                  onEditSubmit={() => handleRenameOrg(org.id)} onEditCancel={() => { setEditingOrgId(null); setEditingOrgName(""); }}
+                  isEditing={editingOrgId === org.id} editingName={editingOrgName} editError={editingOrgId === org.id ? renameError : null}
+                  onEditChange={(v) => { setEditingOrgName(v); setRenameError(null); }}
+                  onEditSubmit={() => handleRenameOrg(org.id)} onEditCancel={() => { setEditingOrgId(null); setEditingOrgName(""); setRenameError(null); }}
                   onMenuClick={(e) => handleOrgMenuClick(e, org.id)} menuOpen={orgMenuId === org.id} />
 
                 {expandedOrgs.has(org.id) && (
@@ -664,8 +690,9 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
                         <SortableProductItem key={product.id} product={product} isSelected={pathname === `/${org.slug}/${product.slug}`}
                           href={`/${org.slug}/${product.slug}`}
                           onContextMenu={(e) => handleContextMenu(e, "product", product.id, org.id)}
-                          isEditing={editingProductId === product.id} editingName={editingProductName} onEditChange={setEditingProductName}
-                          onEditSubmit={() => handleRenameProduct(product.id, org.id)} onEditCancel={() => { setEditingProductId(null); setEditingProductName(""); }}
+                          isEditing={editingProductId === product.id} editingName={editingProductName} editError={editingProductId === product.id ? renameError : null}
+                          onEditChange={(v) => { setEditingProductName(v); setRenameError(null); }}
+                          onEditSubmit={() => handleRenameProduct(product.id, org.id)} onEditCancel={() => { setEditingProductId(null); setEditingProductName(""); setRenameError(null); }}
                           emojiPickerOpen={emojiPickerProductId === product.id}
                           onEmojiToggle={() => setEmojiPickerProductId(emojiPickerProductId === product.id ? null : product.id)}
                           onEmojiChange={(emoji) => handleChangeEmoji(product.id, org.id, emoji)} />
@@ -735,7 +762,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
             Add product
           </MenuItem>
           <MenuDivider />
-          <MenuItem icon={<Pencil />} onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); } setOrgMenuId(null); }}>
+          <MenuItem icon={<Pencil />} onClick={(e) => { e.stopPropagation(); const org = orgs.find((o) => o.id === orgMenuId); if (org) { setEditingOrgId(orgMenuId); setEditingOrgName(org.name); setRenameError(null); } setOrgMenuId(null); }}>
             Rename
           </MenuItem>
           <MenuItem danger icon={<Trash2 />} onClick={(e) => { e.stopPropagation(); handleDeleteOrg(orgMenuId); setOrgMenuId(null); }}>
@@ -789,8 +816,8 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       {contextMenu && (
         <MenuPanel className="fixed w-44" style={{ left: contextMenu.x, top: contextMenu.y }}>
           <MenuItem icon={<Pencil />} onClick={() => {
-            if (contextMenu.type === "org") { const org = orgs.find((o) => o.id === contextMenu.id); setEditingOrgId(contextMenu.id); setEditingOrgName(org?.name || ""); }
-            else { const products = Object.values(productsByOrg).flat(); const product = products.find((p) => p.id === contextMenu.id); setEditingProductId(contextMenu.id); setEditingProductName(product?.name || ""); }
+            if (contextMenu.type === "org") { const org = orgs.find((o) => o.id === contextMenu.id); setEditingOrgId(contextMenu.id); setEditingOrgName(org?.name || ""); setRenameError(null); }
+            else { const products = Object.values(productsByOrg).flat(); const product = products.find((p) => p.id === contextMenu.id); setEditingProductId(contextMenu.id); setEditingProductName(product?.name || ""); setRenameError(null); }
             setContextMenu(null);
           }}>
             Rename
