@@ -66,6 +66,12 @@ function scheduleRetry() {
   retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);
 }
 
+function cancelRetry() {
+  if (!retryTimer) return;
+  clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
 function teardown() {
   if (!client) return;
   const dying = client;
@@ -227,13 +233,14 @@ export async function ensureListening(): Promise<boolean> {
  * A later `ensureListening` starts over.
  */
 export async function stopListening(): Promise<void> {
-  if (retryTimer) {
-    clearTimeout(retryTimer);
-    retryTimer = null;
-  }
+  cancelRetry();
   // A start in flight would otherwise install its client after this returns.
   const inFlight = starting;
-  if (inFlight) await inFlight.catch(() => false);
+  if (inFlight) {
+    await inFlight.catch(() => false);
+    // And one that failed has just armed a retry on its way out.
+    cancelRetry();
+  }
   retryMs = 1_000;
   if (!client) return;
   const dying = client;

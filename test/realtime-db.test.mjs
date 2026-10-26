@@ -226,3 +226,37 @@ test("stopListening closes the listener's connection", { skip }, async (t) => {
   for (let i = 0; i < 50 && (await listeners()) > 0; i++) await new Promise((r) => setTimeout(r, 20));
   assert.equal(await listeners(), 0, "and is gone once stopped");
 });
+
+test("stopListening during a start that fails leaves no retry behind", { skip }, async (t) => {
+  if (!(await listen.ensureListening())) {
+    t.skip("this database cannot deliver across connections, so a retry could not be observed");
+    return;
+  }
+  await listen.stopListening();
+  const listeners = async () => Number((await db.query(
+    "SELECT count(*)::int AS n FROM pg_stat_activity WHERE query ILIKE $1 AND pid <> pg_backend_pid()",
+    [`LISTEN ${REALTIME_CHANNEL}`],
+  )).rows[0].n);
+
+  // A start that is still connecting when shutdown begins, and then fails: it
+  // arms a retry on its way out. Port 1 refuses the connection at once.
+  const saved = process.env.DIRECT_POSTGRES_URL;
+  process.env.DIRECT_POSTGRES_URL = "postgresql://postgres:postgres@127.0.0.1:1/postgres";
+  try {
+    const starting = listen.ensureListening();
+    await listen.stopListening();
+    assert.equal(await starting, false);
+  } finally {
+    if (saved === undefined) delete process.env.DIRECT_POSTGRES_URL;
+    else process.env.DIRECT_POSTGRES_URL = saved;
+  }
+
+  // The first retry is due after one second. Had it survived, it would now
+  // reach the real database and LISTEN again with nobody asking it to.
+  await new Promise((r) => setTimeout(r, 2_500));
+  try {
+    assert.equal(await listeners(), 0, "nothing reopened the listener after it was stopped");
+  } finally {
+    await listen.stopListening();
+  }
+});
