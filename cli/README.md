@@ -166,6 +166,8 @@ Flags a command doesn't support are errors, not ignored — e.g. `task move 14 -
 
 Every command exits `0` on success and `1` on any failure, with the reason on stderr: an HTTP error, a server that can't be reached (the message names the URL and cause, such as `ENOTFOUND`), a response that isn't JSON (usually a login page or the wrong `AGENTBOARD_URL`), or a usage error. Scripts can rely on the exit code. `test/cli-exit-codes.test.mjs` checks this for every command.
 
+When an organization, product, board or column isn't found, the error names what you asked for and where it looked, and lists what does exist: `Board 'ship' not found in product 'general'. Available: design (Design), build (Build)`.
+
 ## Output Flags
 
 - `--json` — JSON output

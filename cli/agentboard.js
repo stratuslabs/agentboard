@@ -16,10 +16,11 @@ const VERSION = require("./package.json").version;
 
 // ---- Helpers --------------------------------------------------------------
 
-// "slug (Name), ..." so an error shows what the board actually has. A column's
-// slug follows its name, so a renamed column no longer answers to its old slug.
-function describeColumns(cols) {
-  return cols.map((c) => (c.name && c.name !== c.slug ? `${c.slug} (${c.name})` : c.slug)).join(", ");
+// "slug (Name), ..." so an error shows what actually exists: a board's
+// columns, or the orgs and products you can see. A column's slug follows its
+// name, so a renamed column no longer answers to its old slug.
+function describeNamed(items) {
+  return items.map((c) => (c.name && c.name !== c.slug ? `${c.slug} (${c.name})` : c.slug)).join(", ");
 }
 
 // First line-ish of a response body, enough to recognise a login page.
@@ -281,6 +282,18 @@ function describeBoards(boards) {
     .join(", ");
 }
 
+// "Product 'x' not found. Available: a (A), b (B)" for an org, product or
+// board that didn't resolve, so a typo doesn't need a second command to fix.
+// `items` is described in the order given; `kind` is plural, for the
+// nothing-exists case.
+function notFound(what, tried, where, items, describe, kind) {
+  const head = `${what} '${tried}' not found${where ? ` in ${where}` : ""}.`;
+  if (!items || items.length === 0) {
+    return `${head} ${where ? "It has" : "You have"} no ${kind} yet.`;
+  }
+  return `${head} Available: ${describe(items)}`;
+}
+
 function findColumn(cols, input) {
   return (
     cols.find((c) => c.slug === input) ||
@@ -379,7 +392,7 @@ function makeResolvers(req) {
   async function resolveOrgId(slugOrName) {
     const orgs = await req("GET", "/api/orgs");
     const org = orgs.find((o) => o.slug === slugOrName || o.name === slugOrName);
-    if (!org) die(`Organization not found: ${slugOrName}`);
+    if (!org) die(notFound("Organization", slugOrName, null, orgs, describeNamed, "organizations"));
     return org.id;
   }
 
@@ -387,7 +400,7 @@ function makeResolvers(req) {
     const products = await req("GET", "/api/products");
     // Product slugs are unique per org, not globally — refuse to guess.
     const matches = products.filter((x) => x.slug === slugOrName || x.name === slugOrName);
-    if (matches.length === 0) die(`Product not found: ${slugOrName}`);
+    if (matches.length === 0) die(notFound("Product", slugOrName, null, products, describeNamed, "products"));
     if (matches.length > 1) {
       die(`'${slugOrName}' matches ${matches.length} products in different orgs; rename one to disambiguate`);
     }
@@ -398,17 +411,21 @@ function makeResolvers(req) {
     return (await resolveProduct(slugOrName)).id;
   }
 
-  async function resolveBoardId(productId, slugOrName) {
+  /** `productLabel` names the product in the error; the slug when known. */
+  async function resolveBoardId(productId, slugOrName, productLabel) {
     const boards = await req("GET", `/api/boards?product_id=${productId}`);
     const b = boards.find((x) => x.slug === slugOrName || x.name === slugOrName);
-    if (!b) die(`Board not found: ${slugOrName}`);
+    if (!b) {
+      const where = productLabel ? `product '${productLabel}'` : "this product";
+      die(notFound("Board", slugOrName, where, boards, describeBoards, "boards"));
+    }
     return b.id;
   }
 
   async function resolveColumnId(boardId, slugOrName) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     const c = findColumn(cols, slugOrName);
-    if (!c) die(`Column not found: ${slugOrName}. Available: ${describeColumns(cols)}`);
+    if (!c) die(notFound("Column", slugOrName, "this board", cols, describeNamed, "columns"));
     return c.id;
   }
 
@@ -419,7 +436,7 @@ function makeResolvers(req) {
   async function resolveProductAndBoard(productSlug, boardSlug) {
     const product = await resolveProduct(productSlug);
     if (boardSlug) {
-      return { productId: product.id, boardId: await resolveBoardId(product.id, boardSlug) };
+      return { productId: product.id, boardId: await resolveBoardId(product.id, boardSlug, product.slug) };
     }
     const boards = await req("GET", `/api/boards?product_id=${product.id}`);
     const picked = pickDefaultBoard(product, boards);
@@ -636,7 +653,7 @@ async function main() {
 
       const targetCol = findColumn(cols, statusName);
       if (!targetCol) {
-        die(`Column '${statusName}' not found on this board. Available: ${describeColumns(cols)}`);
+        die(`Column '${statusName}' not found on this board. Available: ${describeNamed(cols)}`);
       }
 
       const data = await req("PATCH", `/api/cards/${cardId}/move`, {
@@ -1089,10 +1106,13 @@ async function main() {
         let cols;
         let where;
         if (flags["to-board"]) {
-          const productId = flags["to-product"]
-            ? await resolve.resolveProductId(flags["to-product"])
-            : card.product_id;
-          const boardId = await resolve.resolveBoardId(productId, flags["to-board"]);
+          const product = flags["to-product"] ? await resolve.resolveProduct(flags["to-product"]) : null;
+          const productId = product ? product.id : card.product_id;
+          const boardId = await resolve.resolveBoardId(
+            productId,
+            flags["to-board"],
+            product ? product.slug : card.product_slug
+          );
           cols = await req("GET", `/api/columns?board_id=${boardId}`);
           where = `board '${flags["to-board"]}'`;
         } else {
