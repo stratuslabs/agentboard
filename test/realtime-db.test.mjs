@@ -39,7 +39,10 @@ let end;
 const team = {};
 /** Every pg_notify payload sent through the pool, in order. */
 const poolNotifies = [];
-/** While set, the pool's probe notify never returns, like a half-open socket. */
+/**
+ * While set, the probe's notify really runs on a pool connection and stalls
+ * there, as on a half-open socket: the connection is held until it ends.
+ */
 let stallProbe = false;
 
 const resolver = {
@@ -126,7 +129,11 @@ before(async () => {
       if (typeof text === "string" && text.includes("pg_notify")) {
         const values = Array.isArray(args[1]) ? args[1] : args[0]?.values;
         poolNotifies.push(values?.[1]);
-        if (stallProbe && String(values?.[1]).includes('"probe"')) return new Promise(() => {});
+        if (stallProbe && String(values?.[1]).includes('"probe"')) {
+          const stall = (q) => q.replace(/^SELECT /, "SELECT pg_sleep(20), ");
+          if (typeof args[0] === "string") args[0] = stall(args[0]);
+          else args[0] = { ...args[0], text: stall(args[0].text) };
+        }
       }
       return super.query(...args);
     }
@@ -281,4 +288,24 @@ test("a probe whose pool query stalls still answers by the deadline", { skip }, 
     stallProbe = false;
     await listen.stopListening();
   }
+});
+
+test("stalled probes give their pool connections back", { skip }, async () => {
+  // Each failed start retries, and each retry probes again. A probe that only
+  // stops waiting, leaving its query running, keeps a pool connection per
+  // attempt, and a pool's worth of them stops every other query in the app.
+  const max = Number(process.env.POSTGRES_POOL_MAX);
+  stallProbe = true;
+  try {
+    for (let i = 0; i < max; i++) {
+      await listen.stopListening();
+      assert.equal(await listen.ensureListening(), false);
+    }
+  } finally {
+    stallProbe = false;
+    await listen.stopListening();
+  }
+  const started = Date.now();
+  await db.query("SELECT 1");
+  assert.ok(Date.now() - started < 2_000, `an ordinary query waited ${Date.now() - started}ms for a connection`);
 });

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { Client } from "pg";
-import { connectionString, sql, sslConfig } from "../sql";
+import { connectionString, db, sslConfig } from "../sql";
 import { REALTIME_CHANNEL, type BoardChange } from "./notify";
 import { envInt } from "../env";
 
@@ -201,9 +201,16 @@ async function probe(): Promise<boolean> {
   });
   pendingProbe = { token, seen: () => settle(true) };
 
-  sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify({ probe: token })})`.catch(() =>
-    settle(false),
-  );
+  // The query gets the same deadline as a real timeout, not just a timer that
+  // stops waiting for it: a query that is merely abandoned keeps its pool
+  // connection, every retry abandons another, and a pool's worth of them stops
+  // all of the app's queries. A timed-out query errors, and the pool discards
+  // a connection released with an error.
+  db.query({
+    text: "SELECT pg_notify($1, $2)",
+    values: [REALTIME_CHANNEL, JSON.stringify({ probe: token })],
+    query_timeout: PROBE_TIMEOUT_MS,
+  }).catch(() => settle(false));
 
   return answer;
 }
