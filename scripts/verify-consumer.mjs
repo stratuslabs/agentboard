@@ -154,6 +154,14 @@ try {
 
   const org = await call(teamA, "/api/orgs", { method: "POST", body: { name: "Consumer Org" } });
   check("team A creates an org", org.status === 201, JSON.stringify(org));
+  const pageNamed = await call(teamA, "/api/orgs", { method: "POST", body: { name: "Account" } });
+  check(
+    "an org named after one of the consumer's pages gets a slug that isn't shadowed",
+    pageNamed.status === 201 && pageNamed.data?.slug === "account-org",
+    JSON.stringify(pageNamed),
+  );
+  const pageSlug = await call(teamA, "/api/orgs", { method: "POST", body: { name: "Mine", slug: "account" } });
+  check("asking for a consumer page's path as an org slug is refused", pageSlug.status === 400, JSON.stringify(pageSlug));
   const product = await call(teamA, "/api/products", { method: "POST", body: { org_id: org.data.id, name: "Consumer Product" } });
   check("team A creates a product", product.status === 201, JSON.stringify(product));
   const board = await call(teamA, `/api/board?product_id=${product.data.id}`);
