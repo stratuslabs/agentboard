@@ -4,7 +4,13 @@
  * It was duplicated verbatim in the sidebar and the settings page, which is how
  * it came to describe a credential that does not exist and an install that
  * cloned an entire web application to get one dependency-free script.
+ *
+ * An app that consumes the core and sets agents up differently (per-agent API
+ * keys, say) passes its own function of this shape to BoardLayout's
+ * agentSetupPrompt and to defaultSettingsSections({ agentSetupPrompt }).
  */
+export type AgentSetupPrompt = (boardUrl: string) => string;
+
 export function agentSetupPrompt(boardUrl: string): string {
   return `You're being connected to AgentBoard — a kanban board this team uses to track work. Set yourself up as follows.
 

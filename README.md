@@ -471,6 +471,8 @@ export default function SettingsPage() {
 }
 ```
 
+If your app sets agents up differently (per-agent API keys instead of a shared token, say), give both the same prompt function, `(boardUrl: string) => string`, and the sidebar's get-started card and the settings connect section show yours instead of the core's: `<BoardLayout agentSetupPrompt={myPrompt}>` and `defaultSettingsSections({ agentSetupPrompt: myPrompt })`. It's a function, so the files that pass it must be client components, as above.
+
 [test/consumer](test/consumer) is a working example, and CI builds and drives it (`scripts/verify-consumer.mjs`) against the lowest and newest supported Next 16.
 
 ## Roadmap
