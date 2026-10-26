@@ -11,10 +11,10 @@ import { columnSlugMatchesName, planColumnRename, planColumnReslug } from "../sr
 
 const cols = (...list) => list.map(([id, name, slug]) => ({ id, name, slug }));
 
-test("slugify is unchanged by the move to plain JS", () => {
+test("slugify keeps its rule, apart from dropping apostrophes (card 248)", () => {
   assert.equal(slugify("In Review"), "in-review");
   assert.equal(slugify("  Todo!! "), "todo");
-  assert.equal(slugify("Can't replicate"), "can-t-replicate");
+  assert.equal(slugify("Can't replicate"), "cant-replicate");
   assert.equal(slugify("!!!"), "");
 });
 
@@ -24,6 +24,23 @@ test("a slug matches its name, or its name with a -N collision suffix", () => {
   assert.equal(columnSlugMatchesName("todo", "Can't replicate"), false);
   assert.equal(columnSlugMatchesName("done", "Live"), false);
   assert.equal(columnSlugMatchesName("todo-x", "Todo"), false);
+  // Made before apostrophes were dropped, and still what agents type.
+  assert.equal(columnSlugMatchesName("can-t-replicate", "Can't replicate"), true);
+  assert.equal(columnSlugMatchesName("can-t-replicate-2", "Can't replicate"), true);
+  assert.equal(columnSlugMatchesName("cant-replicate", "Can't replicate"), true);
+});
+
+test("migration leaves slugs made before apostrophes were dropped", () => {
+  const board = cols([1, "Can't replicate", "can-t-replicate"], [2, "Won't fix", "won-t-fix-2"], [3, "Done", "done"]);
+  assert.deepEqual(planColumnReslug(board), [{ id: 2, from: "won-t-fix-2", to: "won-t-fix" }]);
+});
+
+test("a rename to a name another column already has is a 409, whatever its slug", () => {
+  // Renamed from Todo to Doing before slugs followed names, and kept `todo`.
+  const board = cols([1, "Doing", "todo"], [2, "Backlog", "backlog"]);
+  const clash = planColumnRename(board, 2, "doing");
+  assert.equal(clash.status, 409);
+  assert.match(clash.error, /already called Doing \(slug 'todo'\)/);
 });
 
 test("renaming a column moves its slug to the new name", () => {
@@ -31,7 +48,7 @@ test("renaming a column moves its slug to the new name", () => {
   assert.deepEqual(planColumnRename(board, 1, "Can't replicate"), {
     ok: true,
     name: "Can't replicate",
-    slug: "can-t-replicate",
+    slug: "cant-replicate",
   });
 });
 
@@ -71,7 +88,7 @@ test("a rename onto another column's slug fails loudly instead of sharing it", (
 test("migration re-slugs only columns whose slug no longer matches their name", () => {
   // Stellar's Bugs board: To do was renamed "Can't replicate" and kept `todo`.
   const board = cols([1, "Backlog", "backlog"], [2, "Can't replicate", "todo"], [3, "Done", "done"]);
-  assert.deepEqual(planColumnReslug(board), [{ id: 2, from: "todo", to: "can-t-replicate" }]);
+  assert.deepEqual(planColumnReslug(board), [{ id: 2, from: "todo", to: "cant-replicate" }]);
 });
 
 test("migration frees slugs first, so a suffixed column can take its plain slug", () => {

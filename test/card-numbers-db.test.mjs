@@ -299,7 +299,8 @@ test("a product update that fails partway changes nothing", { skip }, async () =
     // Discarded, not reused: pglite-socket desyncs a client after an error.
     client.release(true);
   }
-  assert.deepEqual(result, { error: "Product already exists in this org", status: 409 });
+  assert.equal(result.status, 409);
+  assert.match(result.error, /already uses the slug 'agentboard' \(AgentBoard\)/);
   const { rows } = await query("SELECT key, name FROM products WHERE id = $1", [ids.ops.product]);
   assert.deepEqual(rows[0], { key: "OPS", name: "Ops" });
   const ops = await insertCard(ids.ops.column, "probe");

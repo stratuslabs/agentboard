@@ -1,5 +1,6 @@
 import { initDb } from "../../../../lib/db";
 import { orgSlugFromName } from "../../../../lib/org-slug";
+import { isUniqueViolation, planSlugName } from "../../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "../../../../lib/sql";
 import { boardIdsUnderOrgs, notifyBoards } from "../../../../lib/realtime/notify";
@@ -12,10 +13,25 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   if (!name) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
-  const slug = orgSlugFromName(name);
-  const { rows } = await sql`
-    UPDATE organizations SET name = ${name}, slug = ${slug} WHERE id = ${orgId} AND team_id = ${teamId} RETURNING *
-  `;
+  // The slug stays: every product URL under the org starts with it. The new
+  // name still can't be one another org has, or makes.
+  const { rows: siblings } = await sql`SELECT id, name, slug FROM organizations WHERE team_id = ${teamId}`;
+  const plan = planSlugName(
+    { kind: "organization", scope: "in this workspace" }, name, siblings, orgId, orgSlugFromName
+  );
+  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
+  let rows;
+  try {
+    ({ rows } = await sql`
+      UPDATE organizations SET name = ${plan.name} WHERE id = ${orgId} AND team_id = ${teamId} RETURNING *
+    `);
+  } catch (err) {
+    // Another request took the name between the check and this write.
+    if (isUniqueViolation(err)) {
+      return NextResponse.json({ error: "Another organization already has that name. Pick a different name." }, { status: 409 });
+    }
+    throw err;
+  }
   if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

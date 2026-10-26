@@ -1,7 +1,7 @@
 // Plain JavaScript with JSDoc types so `node --test` can import it.
 
 import cardKeys from "./card-keys.js";
-import { slugify } from "./slug.js";
+import { planSlugName } from "./slug.js";
 
 const { changeProductKey } = cardKeys;
 
@@ -39,7 +39,19 @@ export async function updateProduct(client, productId, patch) {
       }
     }
     if (patch.name) {
-      await query("UPDATE products SET name = $1, slug = $2 WHERE id = $3", [patch.name, slugify(patch.name), productId]);
+      // The slug stays: agent configs and URLs point at it (renaming General
+      // to HQ once broke every config that said `general`). The new name
+      // still can't be one another product in the org has, or makes.
+      const { rows: siblings } = await query(
+        "SELECT id, name, slug FROM products WHERE org_id = (SELECT org_id FROM products WHERE id = $1)",
+        [productId]
+      );
+      const plan = planSlugName(PRODUCT, patch.name, siblings, productId);
+      if (!plan.ok) {
+        await query("ROLLBACK");
+        return { error: plan.error, status: plan.status };
+      }
+      await query("UPDATE products SET name = $1 WHERE id = $2", [plan.name, productId]);
     }
     if (patch.emoji) {
       await query("UPDATE products SET emoji = $1 WHERE id = $2", [patch.emoji, productId]);
@@ -56,10 +68,14 @@ export async function updateProduct(client, productId, patch) {
     return { product: rows[0] };
   } catch (err) {
     await query("ROLLBACK").catch(() => {});
-    if (isSlugConflict(err)) return { error: "Product already exists in this org", status: 409 };
+    if (isSlugConflict(err)) {
+      return { error: "Another product in this org already uses that slug. Pick a different name.", status: 409 };
+    }
     throw err;
   }
 }
+
+const PRODUCT = { kind: "product", scope: "in this org" };
 
 /** The name's slug is another product's in the same org. @param {unknown} err */
 function isSlugConflict(err) {
