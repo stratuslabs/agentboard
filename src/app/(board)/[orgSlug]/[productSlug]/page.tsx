@@ -19,6 +19,8 @@ interface ProductData {
   name: string;
   slug: string;
   emoji: string;
+  /** The product's card key, the AB in AB-142. Null until it has one. */
+  key?: string | null;
   org_name: string;
   org_slug: string;
 }
@@ -85,6 +87,7 @@ export default function ProductBoardPage() {
       orgName={product.org_name}
       productName={product.name}
       productEmoji={product.emoji}
+      productKey={product.key ?? null}
       onBack={isMobile ? () => router.push("/") : undefined}
     />
   );

@@ -32,7 +32,7 @@ import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { type Card, type Member, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, type Member, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -84,6 +84,8 @@ interface KanbanBoardProps {
   orgName: string;
   productName: string;
   productEmoji: string;
+  /** The product's card key, the AB in AB-142, so cards can show theirs. */
+  productKey?: string | null;
   onBack?: () => void;
 }
 
@@ -92,6 +94,7 @@ export default function KanbanBoard({
   orgName,
   productName,
   productEmoji,
+  productKey = null,
   onBack,
 }: KanbanBoardProps) {
   const { isStarred: isStarredFn, toggleStarredProduct } = usePreferences();
@@ -709,7 +712,7 @@ export default function KanbanBoard({
 
   const openCardObj = openCardId !== null ? cards.find((c) => c.id === openCardId) ?? null : null;
   const activeBoard = boards.find((b) => b.id === activeBoardId);
-  useDocumentTitle(pageTitle(openCardObj?.title, activeBoard?.name, productName));
+  useDocumentTitle(pageTitle(cardTitle(openCardObj, productKey), activeBoard?.name, productName));
 
   function cardDetailProps(card: Card) {
     // Prev/next walks the card's column as it is shown; if a filter hides the
@@ -721,7 +724,7 @@ export default function KanbanBoard({
     return {
       card,
       columns,
-      context: { orgName, productEmoji, productName, boardName: activeBoard?.name },
+      context: { orgName, productEmoji, productName, productKey, boardName: activeBoard?.name },
       siblings,
       siblingsLabel: columns.find((c) => c.id === card.column_id)?.name,
       onNavigate: (c: Card) => openCard(c.id),
@@ -1053,6 +1056,7 @@ export default function KanbanBoard({
                         <SortableCard
                           key={card.id}
                           card={card}
+                          productKey={productKey}
                           selected={openCardId === card.id}
                           onClick={() => openCard(card.id)}
                         />
@@ -1132,7 +1136,7 @@ export default function KanbanBoard({
           <DragOverlay>
             {activeCard ? (
               <div className="rotate-[1.5deg] shadow-[0_16px_40px_rgba(0,0,0,0.55)]">
-                <KanbanCard card={activeCard} onClick={() => {}} />
+                <KanbanCard card={activeCard} productKey={productKey} onClick={() => {}} />
               </div>
             ) : null}
           </DragOverlay>

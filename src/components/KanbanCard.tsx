@@ -2,17 +2,20 @@
 
 import { Bot, Calendar, CircleDot, GitPullRequest, ListChecks } from "lucide-react";
 import { Avatar, Chip, PriorityDot, cx } from "./ui";
-import { type Card, DUE_TEXT, displayAssignee, formatDueDate, getDueDateStatus, githubRef, parseLabels } from "../lib/cards";
+import { type Card, DUE_TEXT, cardKey, displayAssignee, formatDueDate, getDueDateStatus, githubRef, parseLabels } from "../lib/cards";
 import { subtaskProgress } from "../lib/subtasks";
 
 interface KanbanCardProps {
   card: Card;
+  /** The board's product key, so the card can show its AB-142. */
+  productKey?: string | null;
   onClick: () => void;
   selected?: boolean;
 }
 
-export default function KanbanCard({ card, onClick, selected }: KanbanCardProps) {
+export default function KanbanCard({ card, productKey, onClick, selected }: KanbanCardProps) {
   const labelList = parseLabels(card.labels);
+  const key = cardKey(card, productKey);
   const displayName = displayAssignee(card);
   const isAgent = card.assignee_type === "agent";
   const dueStatus = card.due_date ? getDueDateStatus(card.due_date) : null;
@@ -48,6 +51,7 @@ export default function KanbanCard({ card, onClick, selected }: KanbanCardProps)
             {isAgent && <Bot aria-label="Agent" className="h-[13px] w-[13px] text-silver" />}
           </span>
         )}
+        {key && <span className="font-mono text-[11px] text-text-4">{key}</span>}
         <span className="flex-1" />
         {prRef && (
           <span className="flex items-center gap-[3px] font-mono text-[11px] text-text-3" title={card.github_pr_url ?? undefined}>
