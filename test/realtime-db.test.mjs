@@ -39,6 +39,8 @@ let end;
 const team = {};
 /** Every pg_notify payload sent through the pool, in order. */
 const poolNotifies = [];
+/** While set, the pool's probe notify never returns, like a half-open socket. */
+let stallProbe = false;
 
 const resolver = {
   fromRequest: async (request) => ({
@@ -124,6 +126,7 @@ before(async () => {
       if (typeof text === "string" && text.includes("pg_notify")) {
         const values = Array.isArray(args[1]) ? args[1] : args[0]?.values;
         poolNotifies.push(values?.[1]);
+        if (stallProbe && String(values?.[1]).includes('"probe"')) return new Promise(() => {});
       }
       return super.query(...args);
     }
@@ -257,6 +260,25 @@ test("stopListening during a start that fails leaves no retry behind", { skip },
   try {
     assert.equal(await listeners(), 0, "nothing reopened the listener after it was stopped");
   } finally {
+    await listen.stopListening();
+  }
+});
+
+test("a probe whose pool query stalls still answers by the deadline", { skip }, async () => {
+  // Every stream awaits the listener's start before sending a byte, so a probe
+  // that never returns would hold all of them with no hello and no fallback.
+  await listen.stopListening();
+  stallProbe = true;
+  try {
+    const started = Date.now();
+    const result = await Promise.race([
+      listen.ensureListening(),
+      new Promise((r) => setTimeout(() => r("hung"), 5_000)),
+    ]);
+    assert.equal(result, false, "falls back to polling instead of waiting on the query");
+    assert.ok(Date.now() - started < 3_000, `answered in ${Date.now() - started}ms`);
+  } finally {
+    stallProbe = false;
     await listen.stopListening();
   }
 });

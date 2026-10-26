@@ -184,31 +184,28 @@ async function start(): Promise<boolean> {
 async function probe(): Promise<boolean> {
   const token = `probe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  const roundTrip = new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      pendingProbe = null;
-      resolve(false);
-    }, PROBE_TIMEOUT_MS);
+  let settle: (ok: boolean) => void = () => {};
+  const answer = new Promise<boolean>((resolve) => {
+    // The deadline bounds the whole probe, the pool query included. The pool
+    // has no query timeout of its own, and every stream waits on this start
+    // before sending a byte, so a notify stuck on a half-open socket must not
+    // hold them past the deadline.
+    const timer = setTimeout(() => settle(false), PROBE_TIMEOUT_MS);
     timer.unref?.();
-
-    pendingProbe = {
-      token,
-      seen: () => {
-        clearTimeout(timer);
-        pendingProbe = null;
-        resolve(true);
-      },
+    settle = (ok) => {
+      clearTimeout(timer);
+      // Only our own: a late settle must not clear a newer probe.
+      if (pendingProbe?.token === token) pendingProbe = null;
+      resolve(ok);
     };
   });
+  pendingProbe = { token, seen: () => settle(true) };
 
-  try {
-    await sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify({ probe: token })})`;
-  } catch {
-    pendingProbe = null;
-    return false;
-  }
+  sql`SELECT pg_notify(${REALTIME_CHANNEL}, ${JSON.stringify({ probe: token })})`.catch(() =>
+    settle(false),
+  );
 
-  return roundTrip;
+  return answer;
 }
 
 /**
