@@ -109,6 +109,7 @@ before(async () => {
     boards: await load("boards"),
     columns: await load("columns"),
     cards: await load("cards"),
+    fallback: await load("[[...path]]"),
   };
 
   const selfHosted = await tenant.resolveTenant(new Request("http://localhost/"));
@@ -205,4 +206,34 @@ test("slug lookups never cross teams", { skip }, async () => {
   await fails(A, api.products.GET, "/api/products?org=bravo-only", 404, /not found/);
   await fails(A, api.boards.GET, "/api/boards?product=bravo", 404, /not found/);
   assert.ok(!ids(await ok(A, api.cards.GET, "/api/cards?org=labs")).some((id) => B.labs.cards.some((c) => c.id === id)));
+});
+
+// The unknown-path fallback resolves the team first, like every real route, so
+// a consumer's resolver turns an unauthenticated caller away with its own 401
+// on any path. Answering 404 before auth would tell a stranger which API
+// routes exist.
+test("an unknown /api path answers the resolver's 401 before its 404", { skip }, async () => {
+  const { NextRequest } = api.next;
+  const { TenantError } = tenant;
+  const signedIn = tenant.tenantResolver().fromRequest;
+  tenant.setTenantResolver({
+    fromRequest: async (request) => {
+      if (!request.headers.get("x-test-team")) throw new TenantError(401, "Unauthorized");
+      return signedIn(request);
+    },
+  });
+  try {
+    for (const path of ["/api", "/api/tasks"]) {
+      const anonymous = await api.fallback.GET(new NextRequest(`http://localhost${path}`));
+      assert.equal(anonymous.status, 401, path);
+      assert.deepEqual(await anonymous.json(), { error: "Unauthorized" }, path);
+      const real = await api.orgs.GET(new NextRequest(`http://localhost/api/orgs`));
+      assert.equal(real.status, 401, "a real route agrees");
+    }
+    const r = await call(A, api.fallback.POST, "/api/tasks", { method: "POST", body: {} });
+    assert.equal(r.status, 404);
+    assert.equal(r.data.error, "No API route for POST /api/tasks");
+  } finally {
+    tenant.setTenantResolver({ fromRequest: signedIn });
+  }
 });

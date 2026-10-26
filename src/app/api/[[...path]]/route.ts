@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { apiNotFound } from "../../../lib/api-not-found";
+import { withTenant } from "../../../lib/tenant";
 
 /**
  * Any /api path no other route claims.
@@ -11,13 +12,12 @@ import { NextRequest, NextResponse } from "next/server";
  * unknown /api path and nothing a real route serves. It is an optional
  * catch-all so the bare /api root, which has no segment, lands here as well.
  *
- * The middleware runs first, so with a password set an unauthenticated caller
- * still gets its 401 and learns nothing about which paths exist.
+ * It resolves the team first, like every real route. With a password set the
+ * middleware has already answered 401; a consumer that authenticates in its
+ * tenant resolver instead gets that resolver's 401 here too. Answering 404
+ * before auth would tell a stranger which API routes exist.
  */
-function notFound(request: NextRequest): Response {
-  const { pathname } = request.nextUrl;
-  return NextResponse.json({ error: `No API route for ${request.method} ${pathname}` }, { status: 404 });
-}
+const notFound = withTenant(async (request) => apiNotFound(request));
 
 export const GET = notFound;
 export const POST = notFound;
