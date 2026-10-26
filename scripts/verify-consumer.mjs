@@ -18,8 +18,8 @@
 //   - the re-exported board page renders, with the core's Tailwind classes
 //     compiled into its stylesheet
 //   - the consumer's own layout and settings page fill the core's UI slots:
-//     a sidebar footer item, the settings scope, an extra settings section
-//     and a default section left out
+//     a sidebar footer item, the settings scope, an extra settings section,
+//     a default section left out and the consumer's own agent setup prompt
 //   - the default-columns setting saves and reads back, and a member is renamed
 //     and removed (and another team can't remove it), through the mounted routes
 //
@@ -207,6 +207,11 @@ try {
       settingsHtml.includes("Consumer billing") &&
       settingsHtml.includes("Default columns"),
     `${settings.status} ${settingsHtml.slice(0, 200)}`,
+  );
+  check(
+    "the connect section shows the consumer's agent setup prompt instead of the core's",
+    settingsHtml.includes("Consumer setup prompt") && !settingsHtml.includes("npm install -g agentboard"),
+    settingsHtml.includes("npm install -g agentboard") ? "found the core's prompt" : "no consumer prompt",
   );
   check("a section the consumer left out is not rendered", !settingsHtml.includes("Agent default board"), "found Agent default board");
 

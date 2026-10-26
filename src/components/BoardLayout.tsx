@@ -9,9 +9,14 @@
  *   <BoardLayout sidebarFooter={<TeamSwitcher />} sidebarRail={<TeamSwitcher collapsed />}>
  *     {children}
  *   </BoardLayout>
+ *
+ * agentSetupPrompt replaces the prompt the sidebar's get-started card copies
+ * for a first agent. It is a function, so the layout that passes it must be a
+ * client component.
  */
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
+import type { AgentSetupPrompt } from "../lib/agent-prompt";
 import ProfileSetup from "./ProfileSetup";
 import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
 
@@ -21,9 +26,11 @@ export interface BoardLayoutProps {
   sidebarFooter?: React.ReactNode;
   /** Rendered above Settings in the collapsed sidebar rail. */
   sidebarRail?: React.ReactNode;
+  /** The setup prompt for a new agent, given the board's URL. Defaults to the core's. */
+  agentSetupPrompt?: AgentSetupPrompt;
 }
 
-function BoardLayoutInner({ children, sidebarFooter, sidebarRail }: BoardLayoutProps) {
+function BoardLayoutInner({ children, sidebarFooter, sidebarRail, agentSetupPrompt }: BoardLayoutProps) {
   const { collapsed, toggleCollapsed, isMobile } = useSidebar();
   const pathname = usePathname();
 
@@ -43,6 +50,7 @@ function BoardLayoutInner({ children, sidebarFooter, sidebarRail }: BoardLayoutP
           isMobile={isMobile}
           footerSlot={sidebarFooter}
           railSlot={sidebarRail}
+          agentSetupPrompt={agentSetupPrompt}
         />
       )}
       {showContent && children}

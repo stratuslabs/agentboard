@@ -46,7 +46,7 @@ import { useBoardStream } from "../lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { agentSetupPrompt } from "../lib/agent-prompt";
+import { agentSetupPrompt as coreSetupPrompt, type AgentSetupPrompt } from "../lib/agent-prompt";
 import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
@@ -82,6 +82,8 @@ interface SidebarProps {
   footerSlot?: React.ReactNode;
   /** Rendered above Settings in the collapsed sidebar rail. */
   railSlot?: React.ReactNode;
+  /** The setup prompt the get-started card copies for a first agent. */
+  agentSetupPrompt?: AgentSetupPrompt;
 }
 
 const INLINE_INPUT =
@@ -228,12 +230,13 @@ function GetStartedStep({ n, complete, enabled, label, onClick }: { n: number; c
 }
 
 // --- Getting Started Card ---
-function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }: {
+function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, setupPrompt }: {
   orgs: Org[];
   productsByOrg: Record<number, Product[]>;
   members: { id: number; name: string; type: string; color: string }[];
   onAddOrg: () => void;
   onAddProduct: (orgId: number) => void;
+  setupPrompt: AgentSetupPrompt;
 }) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -247,7 +250,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }
 
   const boardUrl = typeof window !== "undefined" ? window.location.origin : "";
 
-  const prompt = agentSetupPrompt(boardUrl);
+  const prompt = setupPrompt(boardUrl);
 
   function handleCopy() {
     navigator.clipboard.writeText(prompt);
@@ -293,7 +296,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct }
 }
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot }: SidebarProps) {
+export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct } = usePreferences();
@@ -612,6 +615,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
           orgs={orgs}
           productsByOrg={productsByOrg}
           members={members}
+          setupPrompt={agentSetupPrompt}
           onAddOrg={() => setShowAddOrg(true)}
           onAddProduct={(orgId) => {
             setAddingProductOrg(orgId);

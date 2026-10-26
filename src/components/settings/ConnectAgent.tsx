@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Check, Copy, FileText } from "lucide-react";
 import { Avatar, Button } from "../ui";
-import { agentSetupPrompt } from "../../lib/agent-prompt";
+import { agentSetupPrompt, type AgentSetupPrompt } from "../../lib/agent-prompt";
 import { useBoardMembers } from "./BoardMembers";
 
 const STEPS = ["Register itself as a team member", "Set up the CLI", "Check for assigned tasks", "Start working"];
@@ -17,13 +17,13 @@ function PromptLine({ line }: { line: string }) {
 const PLACEHOLDER_URL = "https://your-agentboard-url.com";
 const noSubscription = () => () => {};
 
-export default function ConnectAgent() {
+export default function ConnectAgent({ setupPrompt = agentSetupPrompt }: { setupPrompt?: AgentSetupPrompt }) {
   const { members } = useBoardMembers();
   const [copied, setCopied] = useState(false);
   // The server renders the placeholder and the browser swaps in its own
   // origin after hydrating, so the two renders agree.
   const boardUrl = useSyncExternalStore(noSubscription, () => window.location.origin, () => PLACEHOLDER_URL);
-  const prompt = agentSetupPrompt(boardUrl);
+  const prompt = setupPrompt(boardUrl);
   const agents = members.filter((m) => m.type === "agent");
 
   function handleCopy() {

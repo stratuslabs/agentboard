@@ -6,16 +6,20 @@
  *
  * Ids are also the page anchors (/settings#members): members, connect,
  * agent-board, default-boards, default-columns.
+ *
+ * agentSetupPrompt replaces the prompt the connect section hands to agents;
+ * pass the same function to BoardLayout so the sidebar shows it too.
  */
 import { Bot, Columns3, Palette, Plug, Users } from "lucide-react";
 import type { SettingsSectionDef } from "./SettingsShell";
+import type { AgentSetupPrompt } from "../../lib/agent-prompt";
 import BoardMembers from "./BoardMembers";
 import ConnectAgent from "./ConnectAgent";
 import { DefaultBoards, DefaultColumns } from "./DefaultLists";
 import ProductDefaultBoards from "./ProductDefaultBoards";
 
 /** A new list each call, so a caller can change it freely. */
-export function defaultSettingsSections(): SettingsSectionDef[] {
+export function defaultSettingsSections({ agentSetupPrompt }: { agentSetupPrompt?: AgentSetupPrompt } = {}): SettingsSectionDef[] {
   return [
     {
       id: "members",
@@ -31,7 +35,7 @@ export function defaultSettingsSections(): SettingsSectionDef[] {
       label: "Connect an agent",
       icon: <Plug />,
       description: "Copy this prompt and paste it to any AI agent to connect it to AgentBoard. It will auto-register as a member and can manage tasks via CLI.",
-      content: <ConnectAgent />,
+      content: <ConnectAgent setupPrompt={agentSetupPrompt} />,
     },
     {
       id: "agent-board",

@@ -1,13 +1,15 @@
 // The core's settings screen with this app's scope label and an extra section,
-// the way a hosted edition adds billing and drops what it doesn't serve.
+// the way a hosted edition adds billing, drops what it doesn't serve and
+// hands agents its own setup prompt.
 "use client";
 
 import { CreditCard } from "lucide-react";
 import SettingsShell from "@stratuslabs/agentboard-core/components/settings/SettingsShell";
 import { defaultSettingsSections } from "@stratuslabs/agentboard-core/components/settings/sections";
+import { consumerSetupPrompt } from "../../lib/setup-prompt";
 
 const sections = [
-  ...defaultSettingsSections().filter((s) => s.id !== "agent-board"),
+  ...defaultSettingsSections({ agentSetupPrompt: consumerSetupPrompt }).filter((s) => s.id !== "agent-board"),
   {
     id: "consumer-billing",
     group: "Team",
