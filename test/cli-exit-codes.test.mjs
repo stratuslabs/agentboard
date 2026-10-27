@@ -38,6 +38,7 @@ function argsFor(key) {
   if (accepts.includes("column") && !accepts.includes("product")) flags.push("--column", "todo");
   if (accepts.includes("org") && key.startsWith("product ")) flags.push("--org", "o");
   if (accepts.includes("pr")) flags.push("--pr", "https://example.com/pr/1");
+  if (accepts.includes("url") && !accepts.includes("pr")) flags.push("--url", "https://example.com/doc");
   // Most commands take an id; the rest take a name or title. Extra
   // positionals are harmless to the ones that don't want them.
   const positional = { status: ["1", "done"], attention: ["1", "on"] }[key] ?? ["1", "x"];

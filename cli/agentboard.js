@@ -44,7 +44,7 @@ const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version
 const VALUE_FLAGS = new Set([
   "product", "board", "board-id", "column", "to-product", "to-board",
   "priority", "assignee", "label", "description", "due", "title",
-  "issue", "pr", "file", "ids", "name", "emoji", "org", "type", "color",
+  "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
   "avatar-url", "position", "set", "append", "key", "value",
 ]);
 
@@ -94,7 +94,9 @@ const COMMAND_FLAGS = {
   "task update": ["title", "description", "assignee", "priority", "label", "due", "issue", "pr"],
   "task done": [],
   "task remove": [],
-  "task link": ["issue", "pr"],
+  "task link": ["issue", "pr", "url", "title"],
+  "task links": [],
+  "task unlink": ["url"],
   "task attach": ["file"],
   "task attachments": [],
   "task reorder": ["ids"],
@@ -506,7 +508,10 @@ Management Commands:
   board list|add|remove|rename|reorder|view
   column list|add|remove|rename
   member list|add|remove|update
-  task add|list|show|move|update|done|remove|link|attach|attachments
+  task add|list|show|move|update|done|remove|link|links|unlink|attach|attachments
+    task link <id> --url <url> [--title <text>]   Link any URL: a Slack thread, doc, design
+    task link <id> --issue <url> | --pr <url>     Set the card's GitHub issue or PR
+    task unlink <id> --url <url>
     task move <id> --column <col>
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
@@ -1166,13 +1171,40 @@ async function main() {
         if (!id) die("Usage: agentboard task remove <card-id>");
         output(await req("DELETE", `/api/cards/${id}`), flags);
       } else if (sub === "link") {
+        const usage = "Usage: agentboard task link <card-id> --url <url> [--title <text>] | --issue <url> | --pr <url>";
         const id = positional[2];
-        if (!id) die("Usage: agentboard task link <card-id> --issue <url> or --pr <url>");
+        if (!id) die(usage);
+        // --url links anything (a Slack thread, a doc, a design); --issue and
+        // --pr fill the card's GitHub fields.
         const body = {};
         if (flags.issue) body.github_issue_url = flags.issue;
         if (flags.pr) body.github_pr_url = flags.pr;
-        if (Object.keys(body).length === 0) die("Provide --issue or --pr URL");
-        output(await req("PATCH", `/api/cards/${id}`, body), flags);
+        if (flags.title !== undefined && !flags.url) die(`--title requires --url. ${usage}`);
+        if (Object.keys(body).length === 0 && !flags.url) die(`Provide --url, --issue or --pr. ${usage}`);
+        let result;
+        if (flags.url) {
+          const link = { url: flags.url };
+          if (flags.title !== undefined) link.title = flags.title;
+          result = await req("POST", `/api/cards/${id}/links`, link);
+        }
+        if (Object.keys(body).length > 0) result = await req("PATCH", `/api/cards/${id}`, body);
+        output(result, flags);
+      } else if (sub === "links") {
+        const id = positional[2];
+        if (!id) die("Usage: agentboard task links <card-id>");
+        const links = await req("GET", `/api/cards/${id}/links`);
+        if (flags.json || flags.quiet || !Array.isArray(links)) {
+          output(links, flags);
+        } else if (links.length === 0) {
+          console.log("No links.");
+        } else {
+          for (const l of links) console.log(l.title ? `${l.title}  ${l.url}` : l.url);
+        }
+      } else if (sub === "unlink") {
+        const usage = "Usage: agentboard task unlink <card-id> --url <url>";
+        const id = positional[2];
+        if (!id || !flags.url) die(usage);
+        output(await req("DELETE", `/api/cards/${id}/links`, { url: flags.url }), flags);
       } else if (sub === "attach") {
         const id = positional[2];
         if (!id || !flags.file) die("Usage: agentboard task attach <card-id> --file <path>");
@@ -1194,7 +1226,7 @@ async function main() {
         output(await req("PATCH", "/api/cards/reorder", { ids }), flags);
       } else {
         die(
-          `Unknown task command: ${sub}. Use: add, list, show, move, update, done, remove, link, attach, attachments, reorder`
+          `Unknown task command: ${sub}. Use: add, list, show, move, update, done, remove, link, links, unlink, attach, attachments, reorder`
         );
       }
     }

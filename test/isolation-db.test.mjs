@@ -91,6 +91,10 @@ async function populate(team, { orgName, productName, uniqueSlug }) {
     method: "POST", id: team.card.id, body: { title: "step" },
   });
   team.subtask = subtask.data;
+  const link = await call(team, api.cardLinks.POST, `/api/cards/${team.card.id}/links`, {
+    method: "POST", id: team.card.id, body: { url: "https://x.test/thread", title: "thread" },
+  });
+  team.link = link.data;
 
   await call(team, api.settings.PATCH, "/api/settings", { method: "PATCH", body: { key: "theme", value: `${productName}-theme` } });
   await call(team, api.preferences.PATCH, "/api/preferences", { method: "PATCH", body: { key: "profileMemberId", value: String(team.member.id) } });
@@ -143,6 +147,7 @@ before(async () => {
     cardViews: await load("cards/views"),
     cardAttachments: await load("cards/[id]/attachments"),
     cardSubtasks: await load("cards/[id]/subtasks"),
+    cardLinks: await load("cards/[id]/links"),
     attachment: await load("attachments/[id]"),
     subtask: await load("subtasks/[id]"),
     members: await load("members"),
@@ -235,6 +240,7 @@ test("another team's rows read as missing", { skip }, async () => {
   await notFound(call(A, api.boardOne.GET, "", { id: B.board.id }), "board");
   await notFound(call(A, api.cardSubtasks.GET, "", { id: B.card.id }), "card's sub-tasks");
   await notFound(call(A, api.subtask.GET, "", { id: B.subtask.id }), "sub-task");
+  await notFound(call(A, api.cardLinks.GET, "", { id: B.card.id }), "card's links");
   await notFound(call(A, api.stream.GET, `/api/stream?board_id=${B.board.id}`), "stream of B's board");
   assert.deepEqual((await call(A, api.cardAttachments.GET, "", { id: B.card.id })).data, []);
   assert.deepEqual((await call(A, api.columnsByCard.GET, "", { id: B.card.id })).data, []);
@@ -270,6 +276,8 @@ test("writes aimed at another team's rows change nothing", { skip }, async () =>
   await refused(call(A, api.cardSubtasks.POST, "", { method: "POST", id: B.card.id, body: { title: "x" } }), "sub-task on B's card");
   await refused(call(A, api.subtask.PATCH, "", { method: "PATCH", id: B.subtask.id, body: { done: true } }), "tick sub-task");
   await refused(call(A, api.subtask.DELETE, "", { method: "DELETE", id: B.subtask.id }), "delete sub-task");
+  await refused(call(A, api.cardLinks.POST, "", { method: "POST", id: B.card.id, body: { url: "https://evil.test" } }), "link on B's card");
+  await refused(call(A, api.cardLinks.DELETE, "", { method: "DELETE", id: B.card.id, body: { url: B.link.url } }), "unlink B's link");
   await refused(call(A, api.member.PATCH, "", { method: "PATCH", id: B.member.id, body: { name: "Mine" } }), "rename member");
   await refused(call(A, api.member.DELETE, "", { method: "DELETE", id: B.member.id }), "delete member");
 
@@ -313,6 +321,8 @@ test("team B's data came through all of that untouched", { skip }, async () => {
   assert.equal((await call(B, api.cardAttachments.GET, "", { id: B.card.id })).data.length, 1);
   const subtask = (await call(B, api.subtask.GET, "", { id: B.subtask.id })).data;
   assert.equal(subtask.done, false);
+  const links = (await call(B, api.cardLinks.GET, "", { id: B.card.id })).data;
+  assert.deepEqual(links.map((l) => [l.id, l.url, l.title]), [[B.link.id, "https://x.test/thread", "thread"]]);
   const members = (await call(B, api.members.GET, "/api/members")).data;
   assert.ok(members.some((m) => m.id === B.member.id && m.name === "Shared Name"));
   assert.equal((await call(B, api.settings.GET, "/api/settings")).data.theme, "AgentBoard-theme");

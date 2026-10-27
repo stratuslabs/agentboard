@@ -126,6 +126,9 @@ agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>
 agentboard task update <id> [--title X --description X --priority X --due X]
 agentboard task done <id>
 agentboard task remove <id>
+agentboard task link <id> --url <url> [--title <text>]    # any URL: Slack thread, doc, design
+agentboard task links <id>
+agentboard task unlink <id> --url <url>
 agentboard task link <id> --issue <url>
 agentboard task link <id> --pr <url>
 agentboard task attach <id> --file <path>
