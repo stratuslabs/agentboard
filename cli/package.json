@@ -3,9 +3,16 @@
   "version": "0.10.0",
   "description": "CLI for AgentBoard — lightweight project management for agents and humans",
   "bin": {
-    "agentboard": "./agentboard.js"
+    "agentboard": "agentboard.js"
   },
-  "keywords": ["agentboard", "project-management", "kanban", "agents", "ai", "cli"],
+  "keywords": [
+    "agentboard",
+    "project-management",
+    "kanban",
+    "agents",
+    "ai",
+    "cli"
+  ],
   "author": "Dylan Feltus",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -20,5 +27,10 @@
   "engines": {
     "node": ">=18"
   },
-  "files": ["agentboard.js", "README.md", "LICENSE", "package.json"]
+  "files": [
+    "agentboard.js",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ]
 }
