@@ -39,6 +39,17 @@ test("url is required, must be a string and must parse", () => {
   }
 });
 
+test("url must start with http:// or https://, not just parse as one", () => {
+  // new URL() accepts these, but the stored string is rendered as an href,
+  // where a browser resolves them as same-origin paths, not the intended site.
+  for (const url of ["https:example.com", "https:/example.com", "http:example.com/a", "https:\\\\example.com"]) {
+    const r = parseLinkUrl(url);
+    assert.equal(r.ok, false, `${url} should be rejected`);
+    assert.match(r.error, /http:\/\/ or https:\/\//);
+  }
+  assert.deepEqual(parseLinkUrl("HTTPS://Example.com/A"), { ok: true, value: "HTTPS://Example.com/A" });
+});
+
 test("url is at most MAX_LINK_URL characters", () => {
   const base = "https://x.test/";
   assert.equal(parseLinkUrl(base + "a".repeat(MAX_LINK_URL - base.length)).ok, true);

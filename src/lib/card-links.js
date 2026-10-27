@@ -40,6 +40,11 @@ export function parseLinkUrl(raw) {
   if (url.length > MAX_LINK_URL) {
     return { ok: false, error: `url must be at most ${MAX_LINK_URL} characters` };
   }
+  // Check the raw prefix too: new URL() accepts `https:example.com`, which a
+  // browser resolves as a same-origin path when it is used as an href.
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, error: "url must start with http:// or https://" };
+  }
   let parsed;
   try {
     parsed = new URL(url);
