@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { legacySlugify, planSlugName, slugify, slugTaken } from "../src/lib/slug.js";
+import { legacySlugify, planSlugName, slugify, slugTaken, uniqueBySlug } from "../src/lib/slug.js";
 
 const BOARD = { kind: "board", scope: "in this product" };
 const rows = (...list) => list.map(([id, name, slug]) => ({ id, name, slug }));
@@ -114,3 +114,12 @@ test("slugTaken only matches stored slugs, never a sibling's name", () => {
 });
 
 const ORG_LIKE = { kind: "organization", scope: "in this workspace" };
+
+test("uniqueBySlug keeps the first of each slug and drops names with none", () => {
+  const kept = uniqueBySlug(["Can't", "Cant", "TODO", "todo", "!!!", "Done"], (n) => n);
+  assert.deepEqual(kept, [
+    { item: "Can't", slug: "cant" },
+    { item: "TODO", slug: "todo" },
+    { item: "Done", slug: "done" },
+  ]);
+});

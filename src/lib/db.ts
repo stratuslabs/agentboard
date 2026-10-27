@@ -2,7 +2,7 @@ import { sql, db } from "./sql";
 import { DEFAULT_BOARD_MIGRATION } from "./default-board-migration";
 import { DEFAULT_COLUMNS } from "./default-columns";
 import { SHADOWED_ORG_SLUGS } from "./org-slug";
-import { slugify } from "./slug";
+import { slugify, uniqueBySlug } from "./slug";
 import { planColumnReslug } from "./column-slug";
 import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "./card-keys";
 import { TENANCY_MIGRATION } from "./tenancy";
@@ -223,9 +223,13 @@ export async function createDefaultBoards(teamId: number, productId: number) {
   const { rows: colSettings } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_columns'`;
   const columns: { name: string; color: string }[] = colSettings.length > 0 ? JSON.parse(colSettings[0].value) : FALLBACK_COLUMNS;
 
-  for (let i = 0; i < boardNames.length; i++) {
-    const boardName = boardNames[i];
-    const boardSlug = slugify(boardName);
+  // A default that makes the same slug as an earlier one is skipped, rather
+  // than failing the insert after the product and some boards exist.
+  const boards = uniqueBySlug(boardNames, (name) => name);
+  const cols = uniqueBySlug(columns, (col) => col.name);
+
+  for (let i = 0; i < boards.length; i++) {
+    const { item: boardName, slug: boardSlug } = boards[i];
     const { rows } = await sql`
       INSERT INTO boards (product_id, name, slug, position)
       VALUES (${productId}, ${boardName}, ${boardSlug}, ${i})
@@ -238,9 +242,8 @@ export async function createDefaultBoards(teamId: number, productId: number) {
       await sql`UPDATE products SET default_board_id = ${boardId} WHERE id = ${productId}`;
     }
 
-    for (let j = 0; j < columns.length; j++) {
-      const col = columns[j];
-      const colSlug = slugify(col.name);
+    for (let j = 0; j < cols.length; j++) {
+      const { item: col, slug: colSlug } = cols[j];
       await sql`
         INSERT INTO columns (board_id, name, slug, position, color)
         VALUES (${boardId}, ${col.name}, ${colSlug}, ${j}, ${col.color})

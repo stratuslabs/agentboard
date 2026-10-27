@@ -196,3 +196,38 @@ test("a custom org slug is checked against stored slugs only, not names", { skip
   const taken = await post(api.orgs.POST, "/api/orgs", { name: "Third Org", slug: "slug-labs" });
   expect(taken, 409, /already uses the slug 'slug-labs' \(Stratus Labs\)/);
 });
+
+test("saved defaults that now make the same slug don't break adding a product", { skip }, async () => {
+  // Distinct under the old rule (can-t, cant), the same once apostrophes are
+  // dropped. The later one is skipped instead of failing the insert halfway.
+  const teamId = org.team_id;
+  const { rows: saved } = await db.query(
+    "SELECT key, value FROM settings WHERE team_id = $1 AND key IN ('default_boards', 'default_columns')",
+    [teamId]
+  );
+  const save = (key, value) =>
+    db.query(
+      "INSERT INTO settings (team_id, key, value) VALUES ($1, $2, $3) ON CONFLICT ON CONSTRAINT settings_pkey DO UPDATE SET value = EXCLUDED.value",
+      [teamId, key, value]
+    );
+  await save("default_boards", JSON.stringify(["Floyd's", "Floyds", "Ops"]));
+  await save(
+    "default_columns",
+    JSON.stringify([
+      { name: "Can't", color: "#111111" },
+      { name: "Cant", color: "#222222" },
+      { name: "Done", color: "#333333" },
+    ])
+  );
+  try {
+    const r = await post(api.products.POST, "/api/products", { org_id: org.id, name: "Defaults Check" });
+    expect(r, 201);
+    const boards = await boardsOf(r.data.id);
+    assert.deepEqual(boards.map((b) => [b.name, b.slug]), [["Floyd's", "floyds"], ["Ops", "ops"]]);
+    const { rows: cols } = await db.query("SELECT name, slug FROM columns WHERE board_id = $1 ORDER BY position", [boards[0].id]);
+    assert.deepEqual(cols.map((c) => [c.name, c.slug]), [["Can't", "cant"], ["Done", "done"]]);
+  } finally {
+    await db.query("DELETE FROM settings WHERE team_id = $1 AND key IN ('default_boards', 'default_columns')", [teamId]);
+    for (const row of saved) await save(row.key, row.value);
+  }
+});

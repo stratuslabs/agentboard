@@ -119,6 +119,28 @@ export function slugTaken(what, slug, others, pick = "slug") {
 }
 
 /**
+ * Keep the first of each slug, in order, and drop names that make no slug.
+ * Saved default boards and columns can hold names that were distinct under
+ * the old rule but aren't now (Can't and Cant), or differ only in case.
+ * @template T
+ * @param {T[]} items
+ * @param {(item: T) => string} nameOf
+ * @returns {{ item: T, slug: string }[]}
+ */
+export function uniqueBySlug(items, nameOf) {
+  const seen = new Set();
+  /** @type {{ item: T, slug: string }[]} */
+  const kept = [];
+  for (const item of items) {
+    const slug = slugify(nameOf(item));
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    kept.push({ item, slug });
+  }
+  return kept;
+}
+
+/**
  * Whether a database error is a unique-constraint violation, for the race
  * where another request takes the slug between the check and the write.
  * @param {unknown} err
