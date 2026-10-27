@@ -186,3 +186,13 @@ test("renaming an org keeps its slug; a taken name is a 409", { skip }, async ()
   const dupAdd = await post(api.orgs.POST, "/api/orgs", { name: "Second-Org" });
   expect(dupAdd, 409, /'second-org' \(Second Org\)/);
 });
+
+test("a custom org slug is checked against stored slugs only, not names", { skip }, async () => {
+  // The first org is now called Stratus Labs but holds `slug-labs`, so
+  // `stratus-labs` is free even though that name would make it.
+  const free = await post(api.orgs.POST, "/api/orgs", { name: "Sales Org", slug: "stratus-labs" });
+  expect(free, 201);
+  assert.equal(free.data.slug, "stratus-labs");
+  const taken = await post(api.orgs.POST, "/api/orgs", { name: "Third Org", slug: "slug-labs" });
+  expect(taken, 409, /already uses the slug 'slug-labs' \(Stratus Labs\)/);
+});

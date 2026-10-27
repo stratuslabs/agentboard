@@ -84,13 +84,9 @@ export function planSlugName(what, rawName, siblings, selfId, makeSlug = slugify
  */
 export function slugConflict(what, name, slug, others) {
   const made = new Set([slug, slugify(name), legacySlugify(name)].filter(Boolean));
-  const holder = others.find((o) => made.has(o.slug));
-  if (holder) {
-    return {
-      ok: false,
-      status: 409,
-      error: `Another ${what.kind} ${what.scope} already uses the slug '${holder.slug}' (${holder.name}). Pick a different name.`,
-    };
+  for (const s of made) {
+    const taken = slugTaken(what, s, others, "name");
+    if (taken) return taken;
   }
   const namesake = others.find((o) => made.has(slugify(o.name)) || made.has(legacySlugify(o.name)));
   if (namesake) {
@@ -101,6 +97,25 @@ export function slugConflict(what, name, slug, others) {
     };
   }
   return null;
+}
+
+/**
+ * The 409 for a slug, as given, that one of `others` already holds. Names
+ * aren't looked at: this is for a slug someone asked for explicitly.
+ * @param {SlugScope} what
+ * @param {string} slug
+ * @param {SlugRow[]} others
+ * @param {"slug" | "name"} [pick] what the error asks for a different one of
+ * @returns {{ ok: false, status: 409, error: string } | null}
+ */
+export function slugTaken(what, slug, others, pick = "slug") {
+  const holder = others.find((o) => o.slug === slug);
+  if (!holder) return null;
+  return {
+    ok: false,
+    status: 409,
+    error: `Another ${what.kind} ${what.scope} already uses the slug '${holder.slug}' (${holder.name}). Pick a different ${pick}.`,
+  };
 }
 
 /**

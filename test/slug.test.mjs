@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { legacySlugify, planSlugName, slugify } from "../src/lib/slug.js";
+import { legacySlugify, planSlugName, slugify, slugTaken } from "../src/lib/slug.js";
 
 const BOARD = { kind: "board", scope: "in this product" };
 const rows = (...list) => list.map(([id, name, slug]) => ({ id, name, slug }));
@@ -104,3 +104,13 @@ test("a custom slug maker is used, such as the org rule for reserved paths", () 
   const plan = planSlugName({ kind: "organization", scope: "in this team" }, "C", [], null, orgSlug);
   assert.deepEqual(plan, { ok: true, name: "C", slug: "c-org" });
 });
+
+test("slugTaken only matches stored slugs, never a sibling's name", () => {
+  const siblings = [{ id: 1, name: "HQ", slug: "general" }];
+  assert.equal(slugTaken(ORG_LIKE, "hq", siblings), null, "HQ's name makes hq, but nobody holds it");
+  const r = slugTaken(ORG_LIKE, "general", siblings);
+  assert.equal(r && r.status, 409);
+  assert.match(r.error, /already uses the slug 'general' \(HQ\)/);
+});
+
+const ORG_LIKE = { kind: "organization", scope: "in this workspace" };

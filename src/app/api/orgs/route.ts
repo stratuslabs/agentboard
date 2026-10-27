@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "../../../lib/sql";
 import { initDb } from "../../../lib/db";
 import { isReservedOrgSlug, orgSlugFromName } from "../../../lib/org-slug";
-import { planSlugName, slugConflict } from "../../../lib/slug";
+import { planSlugName, slugTaken } from "../../../lib/slug";
 import { withTenant } from "../../../lib/tenant";
 
 const ORG = { kind: "organization", scope: "in this workspace" };
@@ -29,8 +29,9 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   const { rows: siblings } = await sql`SELECT id, name, slug FROM organizations WHERE team_id = ${teamId}`;
   const plan = planSlugName(ORG, name, siblings, null, orgSlugFromName);
   if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
-  // A slug asked for has to be free too; it's checked as a slug, not a name.
-  const custom = customSlug ? slugConflict(ORG, customSlug, customSlug, siblings) : null;
+  // A slug asked for has to be free too. It's checked against stored slugs
+  // only: an org renamed to HQ that kept `general` doesn't hold `hq`.
+  const custom = customSlug ? slugTaken(ORG, customSlug, siblings) : null;
   if (custom) return NextResponse.json({ error: custom.error }, { status: custom.status });
   const slug = customSlug || plan.slug;
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM organizations WHERE team_id = ${teamId}`;
