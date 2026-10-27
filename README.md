@@ -163,6 +163,12 @@ agentboard subtask list <card-id>         # [x]/[ ] per item, then "1/3 done"
 agentboard subtask done <subtask-id>      # or: undo
 agentboard subtask rename <subtask-id> "New title"
 agentboard subtask remove <subtask-id>
+
+# Links: point a card at anything, such as a Slack thread, a doc or a design
+agentboard task link <id> --url <url> [--title "Launch thread"]
+agentboard task links <id>
+agentboard task unlink <id> --url <url>
+agentboard task link <id> --pr <url>      # or --issue: the card's GitHub fields
 ```
 
 ### Output Flags
@@ -327,6 +333,21 @@ characters; `done` must be a boolean. Unknown fields in a PATCH are a 400.
 Every write bumps the card's `updated_at` and notifies the board, so live
 views pick it up. Board cards and `GET /api/cards/:id` include
 `subtask_total` and `subtask_done`.
+
+### Links
+
+```
+GET    /api/cards/:id/links
+POST   /api/cards/:id/links    { url, title? }    # 201 new, 200 already linked
+DELETE /api/cards/:id/links    { url }
+```
+
+A link is any absolute `http://` or `https://` URL, up to 2048 characters;
+other schemes are a 400. A card holds each URL once: posting a URL it already
+has keeps one link and replaces its title if you send one. Titles are one
+line, at most 200 characters. Every write bumps the card's `updated_at` and
+notifies the board. The GitHub issue and PR stay separate card fields
+(`github_issue_url`, `github_pr_url`).
 
 ### Attachments
 

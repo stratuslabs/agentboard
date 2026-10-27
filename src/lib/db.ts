@@ -205,6 +205,19 @@ export async function ensureTables() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
+  // Card links: any http(s) URL a card points at (a Slack thread, a doc, a
+  // design), beside the GitHub issue and PR fields. One row per URL per card,
+  // so linking the same URL again updates it instead of adding a duplicate.
+  await sql`
+    CREATE TABLE IF NOT EXISTS card_links (
+      id SERIAL PRIMARY KEY,
+      card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      title TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (card_id, url)
+    )
+  `;
   // A team's default settings are written when the team is first resolved
   // (see src/lib/tenant.ts), not here: they belong to a team now.
 }

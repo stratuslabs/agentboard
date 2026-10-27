@@ -134,6 +134,17 @@ async function setup() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
+  // Card links: any URL a card points at (a Slack thread, a doc, a design).
+  await sql`
+    CREATE TABLE IF NOT EXISTS card_links (
+      id SERIAL PRIMARY KEY,
+      card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      title TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE (card_id, url)
+    )
+  `;
   // The self-hosted team and its default settings (the app also does this on
   // its first request). An untouched old default column list gains Blocked.
   const query = (text, values) => db.query(text, values);
