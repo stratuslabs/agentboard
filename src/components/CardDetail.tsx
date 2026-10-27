@@ -810,11 +810,6 @@ export default function CardDetail({
               <dt className="text-text-3">Updated</dt>
               <dd className="font-mono text-text-2">{formatDateTime(card.updated_at)}</dd>
             </dl>
-            <span className="flex-1" />
-            <Button variant="danger-ghost" size="sm" className="self-start" onClick={() => setShowDeleteConfirm(true)}>
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete card
-            </Button>
           </aside>
         </div>
         {deleteConfirm}
