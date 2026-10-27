@@ -1,4 +1,5 @@
 import { initDb, slugify } from "../../../lib/db";
+import { isUniqueViolation, planSlugName } from "../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "../../../lib/sql";
 import { notifyBoard } from "../../../lib/realtime/notify";
@@ -6,6 +7,8 @@ import { DEFAULT_COLUMNS } from "../../../lib/default-columns";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
 
+const BOARD = { kind: "board", scope: "in this product" };
+const TAKEN = "Another board in this product already uses that slug. Pick a different name.";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
@@ -35,17 +38,27 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   }
   const product_id = await assertProduct(teamId, body.product_id);
 
-  const slug = slugify(name);
+  const { rows: siblings } = await sql`SELECT id, name, slug FROM boards WHERE product_id = ${product_id}`;
+  const plan = planSlugName(BOARD, name, siblings, null);
+  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
+  const { slug } = plan;
 
   // Set position to max+1
   const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) AS max_pos FROM boards WHERE product_id = ${product_id}`;
   const position = maxRows[0].max_pos + 1;
 
-  const { rows } = await sql`
-    INSERT INTO boards (product_id, name, slug, position)
-    VALUES (${product_id}, ${name}, ${slug}, ${position})
-    RETURNING *
-  `;
+  let rows;
+  try {
+    ({ rows } = await sql`
+      INSERT INTO boards (product_id, name, slug, position)
+      VALUES (${product_id}, ${plan.name}, ${slug}, ${position})
+      RETURNING *
+    `);
+  } catch (err) {
+    // Another request took the slug between the check and this write.
+    if (isUniqueViolation(err)) return NextResponse.json({ error: TAKEN }, { status: 409 });
+    throw err;
+  }
   const board = rows[0];
 
   // Create default columns

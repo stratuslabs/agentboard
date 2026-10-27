@@ -10,21 +10,28 @@
 // Plain JavaScript with JSDoc types so `node --test` can run it on the Node
 // version CI uses, without a build step.
 
-import { slugify } from "./slug.js";
+import { legacySlugify, slugConflict, slugify } from "./slug.js";
 
 /** @typedef {{ id: number, name: string, slug: string }} ColumnRef */
 
+/** How a column clash is worded: "Another column on this board ...". */
+export const COLUMN = { kind: "column", scope: "on this board" };
+
 /**
- * True when the slug is what the name makes, or that with a `-N` suffix
- * (how the migration resolves two columns with the same name).
+ * True when the slug is what the name makes, or made before apostrophes were
+ * dropped, or either with a `-N` suffix (how the migration resolves two
+ * columns with the same name).
  * @param {string} slug
  * @param {string} name
  */
 export function columnSlugMatchesName(slug, name) {
-  const base = slugify(name);
-  if (!base) return false;
-  if (slug === base) return true;
-  return slug.startsWith(`${base}-`) && /^\d+$/.test(slug.slice(base.length + 1));
+  // A slug made before apostrophes were dropped (can-t-replicate) still
+  // matches, so the startup repair doesn't move columns agents already use.
+  return [slugify(name), legacySlugify(name)].some((base) => {
+    if (!base) return false;
+    if (slug === base) return true;
+    return slug.startsWith(`${base}-`) && /^\d+$/.test(slug.slice(base.length + 1));
+  });
 }
 
 /**
@@ -51,14 +58,9 @@ export function planColumnRename(boardColumns, columnId, rawName) {
   if (self && columnSlugMatchesName(self.slug, name)) {
     return { ok: true, name, slug: self.slug };
   }
-  const holder = boardColumns.find((c) => c.slug === slug && Number(c.id) !== Number(columnId));
-  if (holder) {
-    return {
-      ok: false,
-      status: 409,
-      error: `Another column on this board already uses the slug '${slug}' (${holder.name}). Pick a different name.`,
-    };
-  }
+  const others = boardColumns.filter((c) => Number(c.id) !== Number(columnId));
+  const conflict = slugConflict(COLUMN, name, slug, others);
+  if (conflict) return conflict;
   return { ok: true, name, slug };
 }
 
@@ -88,12 +90,16 @@ export function planColumnReslug(boardColumns) {
     for (let n = 2; taken(to, c.id); n++) to = `${base}-${n}`;
     move(c, to);
   }
-  // Then suffixed columns whose plain slug is now free.
+  // Then suffixed columns whose plain slug is now free. A plain slug made
+  // before apostrophes were dropped (can-t-replicate) stays: agents use it.
   for (const c of boardColumns) {
-    const base = slugify(c.name);
     const current = slugs.get(c.id);
-    if (!base || current === base || !columnSlugMatchesName(current, c.name)) continue;
-    if (!taken(base, c.id)) move(c, base);
+    for (const base of [slugify(c.name), legacySlugify(c.name)]) {
+      if (!base || current === base || !current.startsWith(`${base}-`)) continue;
+      if (!/^\d+$/.test(current.slice(base.length + 1))) continue;
+      if (!taken(base, c.id)) move(c, base);
+      break;
+    }
   }
   return plan;
 }
