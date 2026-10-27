@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -37,6 +37,7 @@ import {
   Pencil,
   Pin,
   Plus,
+  Search,
   Settings,
   Star,
   Trash2,
@@ -46,6 +47,7 @@ import { useBoardStream } from "../lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "../contexts/PreferencesContext";
+import { openQuickSearch, searchShortcut } from "../lib/quick-search";
 import { agentSetupPrompt as coreSetupPrompt, type AgentSetupPrompt } from "../lib/agent-prompt";
 import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
@@ -112,14 +114,15 @@ function NavLink({ href, icon, label, active, trailing, tone = "default" }: {
   );
 }
 
-function NavButton({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+function NavButton({ onClick, icon, label, trailing }: { onClick: () => void; icon: React.ReactNode; label: string; trailing?: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
       className="flex h-[29px] w-full items-center gap-2.5 rounded-md px-2 text-[13px] text-text-2 transition-colors hover:bg-surface-2 hover:text-text-1"
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
-      {label}
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      {trailing}
     </button>
   );
 }
@@ -307,11 +310,16 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, 
   );
 }
 
+/** For a value that never changes after hydration, such as the platform. */
+const noSubscribe = () => () => {};
+
 // --- Main Sidebar ---
 export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct } = usePreferences();
+  // The quick search shortcut, once the platform is known (not during SSR).
+  const shortcut = useSyncExternalStore(noSubscribe, searchShortcut, () => null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [productsByOrg, setProductsByOrg] = useState<Record<number, Product[]>>({});
   const [addingOrgName, setAddingOrgName] = useState("");
@@ -609,6 +617,9 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
         <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
           <Logo size={32} />
         </button>
+        <IconButton onClick={openQuickSearch} size={32} title={`Search${shortcut ? ` (${shortcut})` : ""}`} aria-label="Search" className="mt-2 text-text-2">
+          <Search className="h-4 w-4" />
+        </IconButton>
         <div className="flex-1" />
         {railSlot}
         <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
@@ -658,6 +669,8 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
           <NavLink href="/past-due" tone="danger" active={pathname === "/past-due"} icon={<CircleAlert />} label="Past Due"
             trailing={<span className="font-mono text-[11px]">{pastDueCount}</span>} />
         )}
+        <NavButton onClick={openQuickSearch} icon={<Search />} label="Search"
+          trailing={shortcut && <kbd className="font-mono text-[10.5px] text-text-4">{shortcut}</kbd>} />
         <NavLink href="/today" active={pathname === "/today"} icon={<CalendarDays />} label="Today" />
         <NavLink href="/assigned" active={pathname === "/assigned"} icon={<CircleUserRound />} label="Assigned to me" />
       </nav>

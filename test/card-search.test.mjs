@@ -7,7 +7,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSearchQuery, cardMatchesSearch, escapeLike } from "../src/lib/card-search.js";
+import { register } from "node:module";
+
+register("./support/ts-loader.mjs", import.meta.url);
+const { parseSearchQuery, cardMatchesSearch, escapeLike } = await import("../src/lib/card-search.ts");
 
 const card = (over = {}) => ({
   id: 41,
