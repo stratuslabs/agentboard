@@ -76,6 +76,9 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Record<string, unknown>>({});
+  // Keys changed locally since mount. The initial GET may carry an older server
+  // value for these, so it must not overwrite them.
+  const touched = useRef<Set<string>>(new Set());
 
   // Debounced PATCH to server
   const flushToServer = useCallback(() => {
@@ -95,16 +98,22 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const queuePatch = useCallback((key: string, value: unknown) => {
     pendingPatches.current[key] = value;
+    touched.current.add(key);
     flushToServer();
   }, [flushToServer]);
 
   // Fetch from server on mount, server wins on conflict
   useEffect(() => {
     fetch('/api/preferences')
-      .then((r) => r.json())
-      .then((serverPrefs: Record<string, unknown>) => {
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
+      .then((received: Record<string, unknown>) => {
         setPrefs((local) => {
           const merged: Preferences = { ...local };
+          // Drop keys the user changed while this request was in flight.
+          const serverPrefs: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(received)) {
+            if (!touched.current.has(key)) serverPrefs[key] = value;
+          }
 
           if (serverPrefs[SERVER_KEYS.expandedOrgs] !== undefined) {
             merged.expandedOrgs = serverPrefs[SERVER_KEYS.expandedOrgs] as number[];
@@ -126,7 +135,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
             merged.profileMemberId = serverPrefs[SERVER_KEYS.profileMemberId] as number | null;
             writeLS(LS_KEYS.profileMemberId, merged.profileMemberId);
           }
-          if (serverPrefs[SERVER_KEYS.hideDoneToday] !== undefined) {
+          // The server is the authority for this one: no row means the default.
+          // The local cache is unscoped, so on a shared browser it may hold another
+          // user's choice, and hiding cards that user never hid is worse than a flash.
+          if (!touched.current.has(SERVER_KEYS.hideDoneToday)) {
             merged.hideDoneToday = serverPrefs[SERVER_KEYS.hideDoneToday] === true;
             writeLS(LS_KEYS.hideDoneToday, merged.hideDoneToday);
           }
