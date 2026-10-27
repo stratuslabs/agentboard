@@ -36,15 +36,21 @@ export default function CardLinks({ cardId, cardUpdatedAt }: CardLinksProps) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Only the latest load may set the list; an older response is stale.
+  // Only the latest load may set the list; an older response is stale. A
+  // local add or remove also bumps it, so a load already in flight can't undo
+  // the change.
   const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
     try {
       const res = await fetch(`/api/cards/${cardId}/links`);
-      if (!res.ok || seq !== loadSeq.current) return;
-      setLinks(await res.json());
+      if (!res.ok) return;
+      const list: CardLink[] = await res.json();
+      // Check after the body is read: a newer load or a write may have landed
+      // while it was streaming.
+      if (seq !== loadSeq.current) return;
+      setLinks(list);
     } catch {
       // keep what we have; the next change reloads
     } finally {
@@ -77,6 +83,7 @@ export default function CardLinks({ cardId, cardUpdatedAt }: CardLinksProps) {
       });
       if (!res.ok) { setError(await errorOf(res)); return; }
       const saved: CardLink = await res.json();
+      loadSeq.current++;
       // A URL already on the card comes back as the same link, retitled.
       setLinks((prev) => (prev.some((l) => l.id === saved.id) ? prev.map((l) => (l.id === saved.id ? saved : l)) : [...prev, saved]));
       close();
@@ -89,6 +96,7 @@ export default function CardLinks({ cardId, cardUpdatedAt }: CardLinksProps) {
 
   async function remove(link: CardLink) {
     setError(null);
+    loadSeq.current++;
     setLinks((prev) => prev.filter((l) => l.id !== link.id));
     try {
       const res = await fetch(`/api/cards/${cardId}/links`, {
