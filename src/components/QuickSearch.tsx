@@ -13,13 +13,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { Dialog, PriorityDot, StatusBadge, cx } from "./ui";
 import {
-  OPEN_CARD_EVENT,
   QUICK_SEARCH_EVENT,
-  type OpenCardDetail,
   type SearchResult,
   productPath,
+  requestOpenCard,
   resultHref,
 } from "../lib/quick-search";
+import { writeCardParam } from "../lib/cards";
 
 const DEBOUNCE_MS = 150;
 const LIMIT = 20;
@@ -106,7 +106,9 @@ function QuickSearchDialog({ onClose }: { onClose: () => void }) {
     onClose();
     if (pathname === productPath(result)) {
       // The board on screen reads ?card= only when it mounts; ask it directly.
-      window.dispatchEvent(new CustomEvent<OpenCardDetail>(OPEN_CARD_EVENT, { detail: { cardId: result.id } }));
+      // If it hasn't mounted yet (the product is still loading), leave the
+      // link in the address bar for it to read when it does.
+      if (!requestOpenCard(result.id)) writeCardParam(result.id);
     } else {
       router.push(resultHref(result));
     }

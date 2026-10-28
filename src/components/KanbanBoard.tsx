@@ -558,6 +558,7 @@ export default function KanbanBoard({
     function onOpenCard(e: Event) {
       const cardId = (e as CustomEvent<OpenCardDetail>).detail?.cardId;
       if (!cardId) return;
+      e.preventDefault(); // tells quick search this board took it
       deepLinkRef.current = { cardId, full: false, resolved: false };
       writeCardParam(cardId);
       setDeepLinkTick((t) => t + 1);

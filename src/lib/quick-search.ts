@@ -7,13 +7,18 @@
  * redirects to the product page with `?card=`. A board reads that parameter
  * when it mounts, so when the card lives in the product already on screen the
  * same navigation would change the URL and open nothing. The dialog sends the
- * board OPEN_CARD_EVENT instead.
+ * board OPEN_CARD_EVENT instead, and a board that takes it says so by calling
+ * preventDefault(). When no board answers (it is still loading), the dialog
+ * writes `?card=` into the address bar so the board picks it up when it mounts.
  */
 
 /** Dispatched on window to open the quick search dialog. */
 export const QUICK_SEARCH_EVENT = "agentboard:quick-search";
 
-/** Dispatched on window with `{ cardId }` for the board on screen to open. */
+/**
+ * Dispatched on window with `{ cardId }` for the board on screen to open. It is
+ * cancelable: a board that handles it calls preventDefault().
+ */
 export const OPEN_CARD_EVENT = "agentboard:open-card";
 
 export interface OpenCardDetail {
@@ -45,6 +50,16 @@ export interface SearchResult {
 export function searchShortcut(): string {
   const platform = typeof navigator === "undefined" ? "" : navigator.platform || navigator.userAgent;
   return /Mac|iPhone|iPad|iPod/i.test(platform) ? "⌘K" : "Ctrl K";
+}
+
+/**
+ * Ask the board on screen to open a card. Returns false when no mounted board
+ * took it, so the caller can fall back to the `?card=` link.
+ */
+export function requestOpenCard(cardId: number): boolean {
+  const event = new CustomEvent<OpenCardDetail>(OPEN_CARD_EVENT, { detail: { cardId }, cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
 }
 
 export function openQuickSearch(): void {
