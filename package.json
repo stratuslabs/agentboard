@@ -75,6 +75,7 @@
   },
   "exports": {
     "./app/(board)/[orgSlug]/[productSlug]/page": "./src/app/(board)/[orgSlug]/[productSlug]/page.tsx",
+    "./app/(board)/[orgSlug]/page": "./src/app/(board)/[orgSlug]/page.tsx",
     "./app/(board)/assigned/page": "./src/app/(board)/assigned/page.tsx",
     "./app/(board)/c/[id]/not-found": "./src/app/(board)/c/[id]/not-found.tsx",
     "./app/(board)/c/[id]/page": "./src/app/(board)/c/[id]/page.tsx",

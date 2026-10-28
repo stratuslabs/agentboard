@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useBoardStream } from "../lib/useBoardStream";
 import {
   DndContext,
@@ -82,6 +83,8 @@ interface Board {
 interface KanbanBoardProps {
   productId: number;
   orgName: string;
+  /** The org's slug. When given, the org name in the breadcrumb links to its page, /<orgSlug>. */
+  orgSlug?: string;
   productName: string;
   productEmoji: string;
   /** The product's card key, the AB in AB-142, so cards can show theirs. */
@@ -92,6 +95,7 @@ interface KanbanBoardProps {
 export default function KanbanBoard({
   productId,
   orgName,
+  orgSlug,
   productName,
   productEmoji,
   productKey = null,
@@ -774,7 +778,11 @@ export default function KanbanBoard({
             <ArrowLeft className="h-4 w-4" />
           </IconButton>
         )}
-        <span className="truncate text-text-3">{orgName}</span>
+        {orgSlug ? (
+          <Link href={`/${orgSlug}`} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
+        ) : (
+          <span className="truncate text-text-3">{orgName}</span>
+        )}
         <ChevronRight className="h-[13px] w-[13px] shrink-0 text-text-4" />
         <span className="text-[14px]">{productEmoji}</span>
         <span className="truncate font-semibold text-text-1">{productName}</span>
