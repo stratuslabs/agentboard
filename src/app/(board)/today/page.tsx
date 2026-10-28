@@ -28,6 +28,7 @@ export default function TodayPage() {
     <ListView
       cards={cards}
       title="Today"
+      listId="today"
       icon={<CalendarDays />}
       emptyMessage="No cards are due today."
       emptyIcon={<CalendarCheck />}

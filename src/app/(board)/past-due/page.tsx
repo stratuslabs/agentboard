@@ -49,6 +49,7 @@ export default function PastDuePage() {
     <ListView
       cards={cards}
       title="Past Due"
+      listId="past-due"
       icon={<CircleAlert />}
       emptyMessage="Nothing assigned to you is overdue."
       emptyIcon={<CircleCheck />}

@@ -51,6 +51,7 @@ export default function AssignedPage() {
     <ListView
       cards={cards}
       title="Assigned to me"
+      listId="assigned"
       icon={<CircleUserRound />}
       emptyMessage="No cards are assigned to you."
       onRefresh={loadCards}

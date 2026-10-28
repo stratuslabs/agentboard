@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { normalizeCollapsed, toggleCollapsed, type CollapsedGroups } from '../lib/list-groups';
 
 interface Preferences {
   expandedOrgs: number[];
@@ -8,6 +9,8 @@ interface Preferences {
   showAllOrgs: Record<number, boolean>;
   selectedProduct: { productId: number; orgId: number } | null;
   profileMemberId: number | null;
+  /** Collapsed product groups on the list pages, per list (card 297). */
+  collapsedGroups: CollapsedGroups;
 }
 
 interface PreferencesContextType {
@@ -19,6 +22,7 @@ interface PreferencesContextType {
   setSelectedProduct: (productId: number, orgId: number) => void;
   setShowAllOrg: (orgId: number, showAll: boolean) => void;
   setProfileMemberId: (id: number) => void;
+  toggleCollapsedGroup: (list: string, key: string) => void;
   isLoaded: boolean;
 }
 
@@ -28,6 +32,7 @@ const DEFAULT_PREFS: Preferences = {
   showAllOrgs: {},
   selectedProduct: null,
   profileMemberId: null,
+  collapsedGroups: {},
 };
 
 const LS_KEYS = {
@@ -36,6 +41,7 @@ const LS_KEYS = {
   showAllOrgs: 'agentboard-show-all-orgs',
   selectedProduct: 'agentboard-selected',
   profileMemberId: 'agentboard-profile-member-id',
+  collapsedGroups: 'agentboard-collapsed-groups',
 } as const;
 
 const SERVER_KEYS = LS_KEYS; // Same keys used on server
@@ -66,6 +72,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     showAllOrgs: readLS(LS_KEYS.showAllOrgs, {}),
     selectedProduct: readLS(LS_KEYS.selectedProduct, null),
     profileMemberId: readLS(LS_KEYS.profileMemberId, null),
+    collapsedGroups: normalizeCollapsed(readLS<unknown>(LS_KEYS.collapsedGroups, {})),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +127,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
             merged.profileMemberId = serverPrefs[SERVER_KEYS.profileMemberId] as number | null;
             writeLS(LS_KEYS.profileMemberId, merged.profileMemberId);
           }
+          // The server is the authority: no row means nothing collapsed. The local
+          // cache is unscoped, so on a shared browser it may hold another user's choice.
+          merged.collapsedGroups = normalizeCollapsed(serverPrefs[SERVER_KEYS.collapsedGroups]);
+          writeLS(LS_KEYS.collapsedGroups, merged.collapsedGroups);
 
           return merged;
         });
@@ -184,6 +195,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     updatePref('profileMemberId', id);
   }, [updatePref]);
 
+  const toggleCollapsedGroup = useCallback((list: string, key: string) => {
+    setPrefs((prev) => {
+      const next = toggleCollapsed(prev.collapsedGroups, list, key);
+      writeLS(LS_KEYS.collapsedGroups, next);
+      queuePatch(SERVER_KEYS.collapsedGroups, next);
+      return { ...prev, collapsedGroups: next };
+    });
+  }, [queuePatch]);
+
   return (
     <PreferencesContext.Provider value={{
       prefs,
@@ -194,6 +214,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setSelectedProduct,
       setShowAllOrg,
       setProfileMemberId,
+      toggleCollapsedGroup,
       isLoaded,
     }}>
       {children}

@@ -26,6 +26,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.name AS product_name,
         p.emoji AS product_emoji,
         p.key AS product_key,
+        p.id AS product_id,
         b.name AS board_name,
         col.name AS column_name,
         col.color AS column_color
@@ -77,6 +78,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.name AS product_name,
         p.emoji AS product_emoji,
         p.key AS product_key,
+        p.id AS product_id,
         b.name AS board_name,
         col.name AS column_name,
         col.color AS column_color
@@ -108,6 +110,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.name AS product_name,
         p.emoji AS product_emoji,
         p.key AS product_key,
+        p.id AS product_id,
         b.name AS board_name,
         col.name AS column_name,
         col.color AS column_color
