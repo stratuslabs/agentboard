@@ -531,6 +531,14 @@ export default function KanbanBoard({
 
   const closeCardMenu = useCallback(() => setCardMenu(null), []);
 
+  // Right-click and Shift+F10 fire no click, so the window click handler that closes
+  // the board-tab and column menus never runs. Close them here so only one menu shows.
+  function openCardMenu(target: CardMenuTarget) {
+    setBoardContextMenu(null);
+    setColumnContextMenu(null);
+    setCardMenu(target);
+  }
+
   async function copyCardLink(card: Card) {
     try {
       await navigator.clipboard.writeText(cardLink(card, productKey));
@@ -1112,7 +1120,7 @@ export default function KanbanBoard({
                           productKey={productKey}
                           selected={openCardId === card.id}
                           onClick={() => openCard(card.id)}
-                          onOpenMenu={(point, el) => setCardMenu({ cardId: card.id, title: card.title, ...point, returnFocus: el })}
+                          onOpenMenu={(point, el) => openCardMenu({ cardId: card.id, title: card.title, ...point, returnFocus: el })}
                         />
                       ))}
                     </SortableContext>

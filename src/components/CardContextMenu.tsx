@@ -28,6 +28,16 @@ export function menuPoint(rect: DOMRect, point?: { x: number; y: number } | null
   return { x: Math.round(rect.left + 12), y: Math.round(rect.top + Math.min(rect.height, 32)) };
 }
 
+/**
+ * Whether a scroll event moved the card the menu is anchored to: the page or a
+ * scroller that holds the card. A scroll elsewhere, like the board tabs nudging
+ * by a pixel when focus leaves them, leaves the menu where it belongs.
+ */
+export function scrollMovesCard(scrolled: EventTarget | null, card: HTMLElement | null): boolean {
+  if (!card?.isConnected || !(scrolled instanceof Node) || scrolled.nodeType === Node.DOCUMENT_NODE) return true;
+  return scrolled.contains(card);
+}
+
 function menuItems(el: HTMLElement | null): HTMLButtonElement[] {
   return Array.from(el?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
 }
@@ -45,8 +55,8 @@ interface CardContextMenuProps {
 /**
  * The right-click menu for a card on a board: the same actions as the card's
  * "..." menu. Arrow keys, Home and End move between items; Escape and Tab close
- * it and return focus to the card; a click elsewhere, scrolling or resizing
- * closes it.
+ * it and return focus to the card; a click elsewhere, scrolling the card or
+ * resizing closes it.
  */
 export default function CardContextMenu({ target, onOpen, onOpenFull, onCopyLink, onDelete, onClose }: CardContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -71,17 +81,20 @@ export default function CardContextMenu({ target, onOpen, onOpenFull, onCopyLink
       onClose();
     };
     const gone = () => onClose();
+    const scrolled = (e: Event) => {
+      if (scrollMovesCard(e.target, target.returnFocus)) onClose();
+    };
     window.addEventListener("pointerdown", away, true);
-    window.addEventListener("scroll", gone, true);
+    window.addEventListener("scroll", scrolled, true);
     window.addEventListener("resize", gone);
     window.addEventListener("blur", gone);
     return () => {
       window.removeEventListener("pointerdown", away, true);
-      window.removeEventListener("scroll", gone, true);
+      window.removeEventListener("scroll", scrolled, true);
       window.removeEventListener("resize", gone);
       window.removeEventListener("blur", gone);
     };
-  }, [onClose]);
+  }, [onClose, target.returnFocus]);
 
   function onKeyDown(e: React.KeyboardEvent) {
     // Keys handled here stop at the menu, so an open side panel doesn't also
