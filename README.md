@@ -272,7 +272,8 @@ team in any case, so `claude` and `Claude` are one agent, and registering an
 agent that exists (`POST /api/members` with `type: "agent"`) returns it with
 `200` instead of adding another. People may share a name.
 
-Every card these routes return, alone or in a list, includes `url`: its
+Every card these routes return, alone or in a list, includes `url`, and so
+does every card in a `GET /api/board` snapshot or delta. It's the card's
 permanent link, `<origin>/c/<id>`, which opens the card wherever it lives. The
 origin is the one the request reached. Behind a reverse proxy, forward
 `X-Forwarded-Host` (browser writes already need it to pass the origin check)

@@ -216,6 +216,31 @@ test("the today, assigned and past-due views carry the link", { skip }, async ()
   assert.deepEqual(Object.keys(count.data), ["count"]);
 });
 
+test("the board snapshot and its deltas carry the link", { skip }, async () => {
+  const created = await newCard();
+  const path = `/api/board?product_id=${team.product.id}`;
+
+  const full = await call(api.board.GET, path, { headers: PROXIED });
+  assert.equal(full.status, 200);
+  assert.ok(full.data.cards.some((c) => c.id === created.data.id), "the snapshot lists the card");
+  for (const card of full.data.cards) {
+    assert.equal(card.url, `https://board.example.com/c/${card.id}`);
+  }
+
+  // A delta carries only changed cards, plus card_ids, which are ids, not cards.
+  const since = full.data.server_time;
+  const touched = await call(api.card.PATCH, `/api/cards/${created.data.id}`, {
+    method: "PATCH", id: created.data.id, body: { title: "touched" },
+  });
+  assert.equal(touched.status, 200);
+  const delta = await call(api.board.GET, `${path}&updated_since=${encodeURIComponent(since)}`, { headers: PROXIED });
+  assert.equal(delta.status, 200);
+  const changed = delta.data.cards.find((c) => c.id === created.data.id);
+  assert.ok(changed, "the delta includes the edited card");
+  assert.equal(changed.url, `https://board.example.com/c/${created.data.id}`);
+  assert.ok(delta.data.card_ids.every((id) => typeof id === "number"), "card_ids stay plain ids");
+});
+
 test("errors are passed through untouched", { skip }, async () => {
   const missing = await call(api.card.GET, "/api/cards/999999", { id: 999999 });
   assert.equal(missing.status, 404);
