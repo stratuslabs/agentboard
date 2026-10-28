@@ -239,6 +239,19 @@ function output(data, flags, idField = "id") {
   }
 }
 
+/**
+ * A card with its link (`url`) next to its id and key, where a reader looks
+ * first. Servers send the link they're reached at; one from before cards
+ * carried it gets the same `/c/<id>` link built from AGENTBOARD_URL.
+ */
+function withCardUrl(card, baseUrl) {
+  if (!card || typeof card !== "object" || card.id === undefined) return card;
+  const url =
+    card.url ?? `${baseUrl.replace(/\/+$/, "")}/c/${encodeURIComponent(String(card.id))}`;
+  const first = { id: card.id, ...(card.key === undefined ? {} : { key: card.key }), url };
+  return { ...first, ...Object.fromEntries(Object.entries(card).filter(([k]) => !(k in first))) };
+}
+
 // ---- Status aliases -------------------------------------------------------
 
 const STATUS_ALIASES = {
@@ -487,7 +500,7 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   status <id> <column>                 Move card to a column slug or name
                                        (doing/wip -> in-progress, review -> in-review
                                         when the board has no column by that slug)
-  show <id>                            Show card details
+  show <id>                            Show card details, with its link (url)
   rename <id> <title>                  Rename a card
   notes <id>                           View description
     --set <text>  --append <text>
@@ -672,7 +685,7 @@ async function main() {
       const cardId = positional[1];
       if (!cardId) die("Usage: agentboard show <id>");
       const data = await req("GET", `/api/cards/${cardId}`);
-      output(data, flags);
+      output(withCardUrl(data, remoteUrl), flags);
     }
 
     // ---- rename ----
@@ -1086,7 +1099,7 @@ async function main() {
       } else if (sub === "show") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task show <card-id>");
-        output(await req("GET", `/api/cards/${id}`), flags);
+        output(withCardUrl(await req("GET", `/api/cards/${id}`), remoteUrl), flags);
       } else if (sub === "move") {
         const id = positional[2];
         const usage =
