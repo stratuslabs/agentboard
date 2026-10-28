@@ -483,6 +483,8 @@ Every query the core runs is scoped to the `teamId` this returns, and it is the 
 
 `configure({ reservedOrgSlugs: ["signup", "billing"] })` names the top-level pages your app adds. An organization lives at `/<org-slug>`, so an org named "Billing" would be hidden behind your billing page; with this it gets `billing-org` instead, and a request for one of these slugs outright is refused. The core's own paths (`api`, `c`, `settings`, ...) are always reserved.
 
+`configure({ orgPages: true })` says your app mounts the org page, `app/(board)/[orgSlug]/page.tsx` (re-export `@stratuslabs/agentboard-core/app/(board)/[orgSlug]/page`). The org name in a board's breadcrumb then links to `/<org-slug>`, which lists the org's products. Leave it out and the name stays plain text, so an app that doesn't mount the page never links to a 404. Self-hosted AgentBoard has org pages without it.
+
 Without `configure()`, every request acts for the single self-hosted team, which is what self-hosted AgentBoard is. For a multi-team app that means a missed `configure()` fails open, so test that an unauthenticated request is refused. The self-hosted password check lives in `src/middleware.ts` and is not part of `configure()`; a consuming app authenticates in its resolver.
 
 **Add your own UI** by rendering the core's components from your files instead of re-exporting them. The board layout takes sidebar slots, rendered above Settings, and the settings screen takes a scope label and a list of sections, which you build from the core's defaults by `id` (`members`, `connect`, `agent-board`, `default-boards`, `default-columns`):

@@ -1,5 +1,5 @@
 import { slugify } from "./slug";
-import { getConfig } from "../configure";
+import { getConfig, orgPagesMounted } from "../configure";
 
 /**
  * Top-level paths the app itself owns. An organization lives at
@@ -56,6 +56,15 @@ export function orgSlugFromName(name: string): string {
  * gets `org_page` from /api/products/by-slug and passes no orgSlug when it's
  * false.
  */
+/**
+ * Whether /<slug> is that org's page, on the server: the app mounts org pages
+ * and the slug isn't one of the app's own paths (the core's, or one the
+ * consuming app reserved). /api/products/by-slug returns it as `org_page`.
+ */
+export function hasOrgPage(slug: string): boolean {
+  return orgPagesMounted() && !isReservedOrgSlug(slug);
+}
+
 export function orgPageHref(slug: string): string | null {
   return RESERVED_ORG_SLUGS.has(slug.toLowerCase()) ? null : `/${slug}`;
 }

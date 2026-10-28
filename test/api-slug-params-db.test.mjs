@@ -255,14 +255,18 @@ test("products/by-slug says whether the org has an org page", { skip }, async ()
 
   const previous = getConfig();
   try {
-    configure({ ...previous, reservedOrgSlugs: ["account"] });
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: ["account"] });
     assert.equal((await page("account")).org_page, false, "a consumer-reserved slug is the app's page, not the org's");
     assert.equal((await page("today")).org_page, false, "a core-reserved slug is the app's page");
     assert.equal((await page("solo-org", "solo")).org_page, true);
     assert.equal((await page("solo-org", "solo")).org_slug, "solo-org");
 
-    configure({ ...previous, reservedOrgSlugs: [] });
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: [] });
     assert.equal((await page("account")).org_page, true, "without the reservation /account is the org's page");
+
+    // An app that hasn't mounted app/(board)/[orgSlug]/page has no org pages.
+    configure({ ...previous, orgPages: false });
+    assert.equal((await page("solo-org", "solo")).org_page, false, "no link to a route the app didn't mount");
   } finally {
     configure(previous);
   }

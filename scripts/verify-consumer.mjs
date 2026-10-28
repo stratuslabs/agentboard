@@ -208,7 +208,7 @@ try {
   // page, so the breadcrumb must not link there. Only the server knows the
   // consumer's list, from configure() in its instrumentation bundle.
   const legacyProduct = await call(teamA, "/api/products", { method: "POST", body: { org_id: pageNamed.data.id, name: "Ledger" } });
-  const { Client } = createRequire(join(ROOT, "package.json"))("pg");
+  const { Client } = createRequire(join(app, "package.json"))("pg");
   const pg = new Client({ connectionString: databaseUrl });
   await pg.connect();
   await pg.query("UPDATE organizations SET slug = 'account' WHERE id = $1", [pageNamed.data.id]);
