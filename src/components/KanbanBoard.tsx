@@ -30,6 +30,7 @@ import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
+import { orgPageHref } from "../lib/org-slug";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
@@ -778,8 +779,8 @@ export default function KanbanBoard({
             <ArrowLeft className="h-4 w-4" />
           </IconButton>
         )}
-        {orgSlug ? (
-          <Link href={`/${orgSlug}`} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
+        {orgSlug && orgPageHref(orgSlug) ? (
+          <Link href={orgPageHref(orgSlug)!} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
         ) : (
           <span className="truncate text-text-3">{orgName}</span>
         )}

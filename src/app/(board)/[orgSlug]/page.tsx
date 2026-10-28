@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronRight, CloudOff, LayoutGrid, SearchX, Star } from "lu
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { useSidebar } from "../../../contexts/SidebarContext";
 import { pageTitle, useDocumentTitle } from "../../../lib/page-title";
+import { PRODUCTS_CHANGED } from "../../../lib/products-changed";
 import { Button, EmptyState, IconButton, PageLoader } from "../../../components/ui";
 
 interface OrgData {
@@ -43,6 +44,16 @@ export default function OrgPage() {
 
   useDocumentTitle(pageTitle(org?.name));
 
+  // Refetch when the sidebar adds, renames, deletes or moves a product, so
+  // the list never waits for a reload. The current list stays on screen
+  // while the refetch runs.
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const onChange = () => setRevision((r) => r + 1);
+    window.addEventListener(PRODUCTS_CHANGED, onChange);
+    return () => window.removeEventListener(PRODUCTS_CHANGED, onChange);
+  }, []);
+
   useEffect(() => {
     if (!orgSlug) return;
     let cancelled = false;
@@ -66,7 +77,7 @@ export default function OrgPage() {
     return () => {
       cancelled = true;
     };
-  }, [orgSlug]);
+  }, [orgSlug, revision]);
 
   if (!current) return <PageLoader />;
 

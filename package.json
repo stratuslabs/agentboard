@@ -178,6 +178,7 @@
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
     "./lib/product-update": "./src/lib/product-update.js",
+    "./lib/products-changed": "./src/lib/products-changed.ts",
     "./lib/rate-limit": "./src/lib/rate-limit.ts",
     "./lib/realtime/listen": "./src/lib/realtime/listen.ts",
     "./lib/realtime/notify": "./src/lib/realtime/notify.ts",

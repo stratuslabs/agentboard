@@ -45,3 +45,16 @@ export function orgSlugFromName(name: string): string {
   const slug = slugify(name);
   return isReservedOrgSlug(slug) ? `${slug}-org` : slug;
 }
+
+/**
+ * The org page for an org slug, /<orgSlug>, or null when the org has none.
+ *
+ * An org kept on a slug the core reserved later (an existing `today` org keeps
+ * its URLs) has no org page: /today is the Today page. This reads only the
+ * core's own list, never configure()'s, because it runs in the browser where
+ * that configuration isn't loaded; reading it would also make the server and
+ * client render different links.
+ */
+export function orgPageHref(slug: string): string | null {
+  return RESERVED_ORG_SLUGS.has(slug.toLowerCase()) ? null : `/${slug}`;
+}

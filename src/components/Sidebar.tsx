@@ -43,6 +43,7 @@ import {
   X,
 } from "lucide-react";
 import { useBoardStream } from "../lib/useBoardStream";
+import { announceProductsChanged } from "../lib/products-changed";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
 import { usePreferences } from "../contexts/PreferencesContext";
@@ -409,6 +410,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       setExpandedOrgs(data.map((o) => o.id));
     }
     setProductsByOrg(prodMap);
+    announceProductsChanged();
   }
 
   function toggleOrg(orgId: number) {
@@ -438,6 +440,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   async function refreshProducts(orgId: number) {
     const pRes = await fetch(`/api/products?org_id=${orgId}`);
     if (pRes.ok) { const products = await pRes.json(); setProductsByOrg((prev) => ({ ...prev, [orgId]: products })); }
+    announceProductsChanged();
   }
 
   async function handleLogout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
@@ -580,6 +583,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
           const newProducts = arrayMove(products, oldIndex, newIndex);
           setProductsByOrg((prev) => ({ ...prev, [sourceOrgId]: newProducts }));
           await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: newProducts.map((p) => p.id) }) });
+          announceProductsChanged();
         }
       } else {
         const sourceProducts = (productsByOrg[sourceOrgId] || []).filter((p) => p.id !== productId);
@@ -599,6 +603,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
 
         await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: sourceProducts.map((p) => p.id) }) });
         await fetch("/api/products/reorder", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: targetProducts.map((p) => p.id) }) });
+        announceProductsChanged();
       }
     }
   }
