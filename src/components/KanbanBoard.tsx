@@ -28,11 +28,12 @@ import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, L
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
+import CardContextMenu, { type CardMenuTarget } from "./CardContextMenu";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { type Card, type Member, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, type Member, cardLink, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -127,6 +128,7 @@ export default function KanbanBoard({
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [renameBoardName, setRenameBoardName] = useState("");
   const [columnContextMenu, setColumnContextMenu] = useState<{ columnId: number; x: number; y: number } | null>(null);
+  const [cardMenu, setCardMenu] = useState<CardMenuTarget | null>(null);
   const [renamingColumnId, setRenamingColumnId] = useState<number | null>(null);
   const [renameColumnName, setRenameColumnName] = useState("");
   const [renameColumnError, setRenameColumnError] = useState<string | null>(null);
@@ -527,6 +529,30 @@ export default function KanbanBoard({
     closeCard();
   }
 
+  const closeCardMenu = useCallback(() => setCardMenu(null), []);
+
+  async function copyCardLink(card: Card) {
+    try {
+      await navigator.clipboard.writeText(cardLink(card, productKey));
+    } catch {
+      // Clipboard can be denied; the card's own Copy link shows the same URL.
+    }
+  }
+
+  function confirmDeleteCard(cardId: number) {
+    setConfirmAction({
+      title: "Delete card",
+      message: "This card will be permanently deleted.",
+      action: async () => {
+        setConfirmAction(null);
+        const res = await fetch(`/api/cards/${cardId}`, { method: "DELETE" });
+        if (!res.ok) return;
+        setCards((prev) => prev.filter((c) => c.id !== cardId));
+        if (openCardId === cardId) closeCard();
+      },
+    });
+  }
+
   function openCard(cardId: number, view: "panel" | "page" = cardView) {
     setOpenCardId(cardId);
     setCardView(view);
@@ -762,6 +788,7 @@ export default function KanbanBoard({
     );
   }
 
+  const cardMenuCard = cardMenu ? cards.find((c) => c.id === cardMenu.cardId) : undefined;
   const columnMenuColumn = columnContextMenu ? columns.find((c) => c.id === columnContextMenu.columnId) : null;
   const columnMenuIndex = columnContextMenu ? columns.findIndex((c) => c.id === columnContextMenu.columnId) : -1;
 
@@ -1085,6 +1112,7 @@ export default function KanbanBoard({
                           productKey={productKey}
                           selected={openCardId === card.id}
                           onClick={() => openCard(card.id)}
+                          onOpenMenu={(point, el) => setCardMenu({ cardId: card.id, title: card.title, ...point, returnFocus: el })}
                         />
                       ))}
                     </SortableContext>
@@ -1184,6 +1212,17 @@ export default function KanbanBoard({
           mode="panel"
           {...cardDetailProps(openCardObj)}
           onMove={() => loadCards()}
+        />
+      )}
+
+      {cardMenuCard && cardMenu && (
+        <CardContextMenu
+          target={cardMenu}
+          onClose={closeCardMenu}
+          onOpen={() => openCard(cardMenuCard.id, "panel")}
+          onOpenFull={() => openCard(cardMenuCard.id, "page")}
+          onCopyLink={() => void copyCardLink(cardMenuCard)}
+          onDelete={() => confirmDeleteCard(cardMenuCard.id)}
         />
       )}
 
