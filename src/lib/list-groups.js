@@ -75,3 +75,14 @@ export function toggleCollapsed(state, list, key) {
   if (next.length) out[list] = next; else delete out[list];
   return out;
 }
+
+/**
+ * Apply toggles, in order, on top of a state. Used to replay clicks made before
+ * the stored preference arrived onto the server's value.
+ * @param {CollapsedGroups} state
+ * @param {Array<[string, string]>} toggles  [list, key] pairs
+ * @returns {CollapsedGroups}
+ */
+export function replayToggles(state, toggles) {
+  return toggles.reduce((acc, [list, key]) => toggleCollapsed(acc, list, key), state);
+}

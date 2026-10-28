@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupByProduct, normalizeCollapsed, toggleCollapsed, isCollapsed } from "../src/lib/list-groups.js";
+import { groupByProduct, normalizeCollapsed, toggleCollapsed, isCollapsed, replayToggles } from "../src/lib/list-groups.js";
 
 const card = (id, product_id, product_name, extra = {}) => ({
   id, product_id, product_name, product_emoji: "📦", org_name: "Labs", ...extra,
@@ -63,4 +63,17 @@ test("a stored value that isn't the right shape reads as nothing collapsed", () 
     assert.equal(isCollapsed(state, "today", "product:1"), false, JSON.stringify(bad));
   }
   assert.deepEqual(normalizeCollapsed({ today: ["product:1", 2, "product:1"], x: "y" }), { today: ["product:1"] });
+});
+
+test("replaying early toggles keeps the server's other collapsed groups", () => {
+  const server = { today: ["product:2"], assigned: ["product:5"] };
+  const out = replayToggles(server, [["today", "product:1"]]);
+  assert.deepEqual(out, { today: ["product:2", "product:1"], assigned: ["product:5"] });
+  assert.deepEqual(server, { today: ["product:2"], assigned: ["product:5"] });
+});
+
+test("replaying a toggle made twice is no change", () => {
+  const server = { today: ["product:2"] };
+  assert.deepEqual(replayToggles(server, [["today", "product:1"], ["today", "product:1"]]), server);
+  assert.deepEqual(replayToggles(server, []), server);
 });

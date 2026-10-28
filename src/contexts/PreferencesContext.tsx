@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { normalizeCollapsed, toggleCollapsed, type CollapsedGroups } from '../lib/list-groups';
+import { normalizeCollapsed, toggleCollapsed, replayToggles, type CollapsedGroups } from '../lib/list-groups';
 
 interface Preferences {
   expandedOrgs: number[];
@@ -77,6 +77,11 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Record<string, unknown>>({});
+  // Collapsed-group clicks made before the initial GET lands. They are replayed onto
+  // the server's value when it arrives, and nothing is saved until then, so an early
+  // click neither snaps back nor wipes groups collapsed in another browser.
+  const serverLoaded = useRef(false);
+  const earlyToggles = useRef<Array<[string, string]>>([]);
 
   // Debounced PATCH to server
   const flushToServer = useCallback(() => {
@@ -102,8 +107,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Fetch from server on mount, server wins on conflict
   useEffect(() => {
     fetch('/api/preferences')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
       .then((serverPrefs: Record<string, unknown>) => {
+        // Computed once, outside the updater, so a double-invoked updater can't replay twice.
+        serverLoaded.current = true;
+        const early = earlyToggles.current;
+        earlyToggles.current = [];
+        const collapsed = replayToggles(normalizeCollapsed(serverPrefs[SERVER_KEYS.collapsedGroups]), early);
         setPrefs((local) => {
           const merged: Preferences = { ...local };
 
@@ -129,17 +139,28 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           }
           // The server is the authority: no row means nothing collapsed. The local
           // cache is unscoped, so on a shared browser it may hold another user's choice.
-          merged.collapsedGroups = normalizeCollapsed(serverPrefs[SERVER_KEYS.collapsedGroups]);
-          writeLS(LS_KEYS.collapsedGroups, merged.collapsedGroups);
+          merged.collapsedGroups = collapsed;
+          writeLS(LS_KEYS.collapsedGroups, collapsed);
 
           return merged;
         });
+        if (early.length) queuePatch(SERVER_KEYS.collapsedGroups, collapsed);
         setIsLoaded(true);
       })
       .catch(() => {
+        // Keep the local state, and save any early clicks on top of it as before.
+        serverLoaded.current = true;
+        const early = earlyToggles.current;
+        earlyToggles.current = [];
+        if (early.length) {
+          setPrefs((local) => {
+            queuePatch(SERVER_KEYS.collapsedGroups, local.collapsedGroups);
+            return local;
+          });
+        }
         setIsLoaded(true); // Even on error, mark loaded so app works with localStorage data
       });
-  }, []);
+  }, [queuePatch]);
 
   const updatePref = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((prev) => ({ ...prev, [key]: value }));
@@ -196,10 +217,12 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   }, [updatePref]);
 
   const toggleCollapsedGroup = useCallback((list: string, key: string) => {
+    const early = !serverLoaded.current;
+    if (early) earlyToggles.current.push([list, key]);
     setPrefs((prev) => {
       const next = toggleCollapsed(prev.collapsedGroups, list, key);
       writeLS(LS_KEYS.collapsedGroups, next);
-      queuePatch(SERVER_KEYS.collapsedGroups, next);
+      if (!early) queuePatch(SERVER_KEYS.collapsedGroups, next);
       return { ...prev, collapsedGroups: next };
     });
   }, [queuePatch]);
