@@ -50,10 +50,11 @@ export function orgSlugFromName(name: string): string {
  * The org page for an org slug, /<orgSlug>, or null when the org has none.
  *
  * An org kept on a slug the core reserved later (an existing `today` org keeps
- * its URLs) has no org page: /today is the Today page. This reads only the
- * core's own list, never configure()'s, because it runs in the browser where
- * that configuration isn't loaded; reading it would also make the server and
- * client render different links.
+ * its URLs) has no org page: /today is the Today page. This runs in the
+ * browser, where configure() isn't loaded, so it checks only the core's own
+ * list. Slugs the consuming app reserved are the server's call: the board
+ * gets `org_page` from /api/products/by-slug and passes no orgSlug when it's
+ * false.
  */
 export function orgPageHref(slug: string): string | null {
   return RESERVED_ORG_SLUGS.has(slug.toLowerCase()) ? null : `/${slug}`;

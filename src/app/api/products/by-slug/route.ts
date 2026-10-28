@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "../../../../lib/sql";
 import { initDb } from "../../../../lib/db";
 import { withTenant } from "../../../../lib/tenant";
+import { isReservedOrgSlug } from "../../../../lib/org-slug";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
@@ -24,5 +25,9 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     return NextResponse.json({ error: "Product not found" }, { status: 404 });
   }
 
-  return NextResponse.json(rows[0]);
+  // Whether /<org_slug> is this org's page. An org kept on a slug reserved
+  // later, by the core (`today`) or by the consuming app with
+  // configure({ reservedOrgSlugs }), has none: that path is the app's own page.
+  // Only the server knows the app's list, so the board asks here.
+  return NextResponse.json({ ...rows[0], org_page: !isReservedOrgSlug(rows[0].org_slug) });
 });
