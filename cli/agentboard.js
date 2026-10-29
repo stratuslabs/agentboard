@@ -1396,9 +1396,9 @@ async function main() {
           writeAttachment(file, attachment.content, flags.force);
           const bytes = Buffer.byteLength(attachment.content);
           if (flags.json) {
-            // eslint-disable-next-line no-unused-vars
-            const { content, ...meta } = attachment;
-            output({ ...meta, path: file, bytes }, flags);
+            const meta = { ...attachment, path: file, bytes };
+            delete meta.content;
+            output(meta, flags);
           } else if (flags.quiet) {
             process.stdout.write(`${file}\n`);
           } else {
