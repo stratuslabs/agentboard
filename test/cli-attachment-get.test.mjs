@@ -136,6 +136,33 @@ test("an existing file is never overwritten without --force", async () => {
   assert.equal(fs.readFileSync(target, "utf-8"), NOTES);
 });
 
+test("--force never writes through a symlink, so it can't reach a file outside --out", async () => {
+  const outside = path.join(freshDir("symlink-outside"), "precious.txt");
+  fs.writeFileSync(outside, "keep me");
+  const dir = freshDir("symlink-out");
+  const link = path.join(dir, "notes.md");
+  fs.symlinkSync(outside, link);
+
+  for (const out of [dir, link]) {
+    for (const extra of [[], ["--force"]]) {
+      const r = await run("attachment", "get", "5", "--out", out, ...extra);
+      assert.equal(r.code, 1, `${out} ${extra.join(" ")}`);
+      assert.equal(fs.readFileSync(outside, "utf-8"), "keep me");
+      assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+    }
+  }
+  const forced = await run("attachment", "get", "5", "--out", dir, "--force");
+  assert.match(forced.stderr, /is a symlink.*won't write through it/);
+
+  // A dangling link is refused too, rather than creating its target.
+  const dangling = path.join(freshDir("symlink-dangling"), "notes.md");
+  const target = path.join(tmp, "created-by-link.md");
+  fs.symlinkSync(target, dangling);
+  const d = await run("attachment", "get", "5", "--out", dangling, "--force");
+  assert.equal(d.code, 1);
+  assert.equal(fs.existsSync(target), false);
+});
+
 test("the server's filename can't write outside the --out directory", async () => {
   const dir = freshDir("escape");
   const r = await run("attachment", "get", "6", "--out", dir);

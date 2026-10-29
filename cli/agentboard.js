@@ -271,11 +271,27 @@ function attachmentTarget(out, attachment) {
 
 // Write without replacing an existing file unless asked: "wx" fails if the
 // file is already there, so nothing is overwritten between check and write.
+// --force replaces a file but never writes through a symlink, since the link
+// could point anywhere, outside the --out directory included. The lstat gives
+// a clear message; O_NOFOLLOW closes the gap between it and the open where the
+// platform has it.
 function writeAttachment(file, content, force) {
+  const symlinkError = () => die(`${file} is a symlink; won't write through it. Remove it or pick another --out.`);
+  let flags = "wx";
+  if (force) {
+    try {
+      if (fs.lstatSync(file).isSymbolicLink()) symlinkError();
+    } catch (err) {
+      if (err.code !== "ENOENT") die(`Could not write ${file}: ${err.message}`);
+    }
+    const c = fs.constants;
+    flags = c.O_WRONLY | c.O_CREAT | c.O_TRUNC | (c.O_NOFOLLOW ?? 0);
+  }
   try {
-    fs.writeFileSync(file, content, { encoding: "utf-8", flag: force ? "w" : "wx" });
+    fs.writeFileSync(file, content, { encoding: "utf-8", flag: flags });
   } catch (err) {
     if (err.code === "EEXIST") die(`${file} already exists. Pass --force to overwrite it.`);
+    if (err.code === "ELOOP") symlinkError();
     die(`Could not write ${file}: ${err.message}`);
   }
 }

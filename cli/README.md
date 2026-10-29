@@ -137,7 +137,7 @@ agentboard task reorder --ids 1,2,3
 
 # Attachments (ids come from `task attachments <card-id>`)
 agentboard attachment get <id>                   # print the content to stdout
-agentboard attachment get <id> --out notes.md    # save it; never overwrites without --force
+agentboard attachment get <id> --out notes.md    # save it; never overwrites without --force, never writes through a symlink
 agentboard attachment get <id> --out ./downloads # save under its own filename
 agentboard attachment remove <id>
 
