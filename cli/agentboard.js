@@ -34,6 +34,67 @@ function die(msg, code = 1) {
   process.exit(code);
 }
 
+// ---- Label edits ----------------------------------------------------------
+
+// Labels are stored as one comma-separated string. These split it the same
+// way the web app does (trim, drop empties) and compare case-insensitively,
+// like the board's label filter.
+function splitLabels(value) {
+  return String(value ?? "").split(",").map((l) => l.trim()).filter(Boolean);
+}
+
+// Read --add-label / --remove-label from parsed flags. Returns null when
+// neither is given; dies on usage errors before anything is sent.
+function parseLabelEdit(flags) {
+  const hasAdd = flags["add-label"] !== undefined;
+  const hasRemove = flags["remove-label"] !== undefined;
+  if (!hasAdd && !hasRemove) return null;
+  if (flags.label !== undefined) {
+    die("--label replaces all labels; use it on its own, or use --add-label / --remove-label to change single labels");
+  }
+  const add = [];
+  const remove = [];
+  for (const [flag, list] of [["add-label", add], ["remove-label", remove]]) {
+    if (flags[flag] === undefined) continue;
+    for (const value of flags[flag]) {
+      const labels = splitLabels(value);
+      if (labels.length === 0) die(`--${flag} needs at least one label`);
+      list.push(...labels);
+    }
+  }
+  const removing = new Set(remove.map((l) => l.toLowerCase()));
+  const both = add.find((l) => removing.has(l.toLowerCase()));
+  if (both !== undefined) die(`'${both}' is in both --add-label and --remove-label`);
+  return { add, remove };
+}
+
+// Apply an edit to a card's current labels string. Keeps the order and
+// spelling of labels the card already has, appends new ones, and reports
+// labels that were already there or already absent.
+function applyLabelEdit(current, { add, remove }) {
+  const before = splitLabels(current);
+  const notes = [];
+  const removing = new Set(remove.map((l) => l.toLowerCase()));
+  const kept = before.filter((l) => !removing.has(l.toLowerCase()));
+  const had = new Set(before.map((l) => l.toLowerCase()));
+  for (const l of remove) {
+    if (!had.has(l.toLowerCase())) notes.push(`Card {id} doesn't have label '${l}'`);
+  }
+  const seen = new Set(kept.map((l) => l.toLowerCase()));
+  for (const l of add) {
+    const k = l.toLowerCase();
+    if (seen.has(k)) {
+      if (had.has(k)) notes.push(`Card {id} already has label '${l}'`);
+      continue;
+    }
+    seen.add(k);
+    kept.push(l);
+  }
+  const changed =
+    kept.length !== before.length || kept.some((l, i) => l !== before[i]);
+  return { labels: kept.join(","), changed, notes };
+}
+
 // ---- Arg parser -----------------------------------------------------------
 
 const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version"]);
@@ -46,7 +107,17 @@ const VALUE_FLAGS = new Set([
   "priority", "assignee", "label", "description", "due", "title",
   "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
   "avatar-url", "position", "set", "append", "key", "value",
+  "add-label", "remove-label",
 ]);
+
+// Value flags that may be given more than once. Their values collect into an
+// array, so `--add-label a --add-label b` keeps both instead of the last.
+const REPEATABLE_FLAGS = new Set(["add-label", "remove-label"]);
+
+function setValueFlag(flags, key, value) {
+  if (REPEATABLE_FLAGS.has(key)) (flags[key] ??= []).push(value);
+  else flags[key] = value;
+}
 
 // Flags each command accepts, beyond --json/--quiet/--help/--version.
 // Anything else is an error: an ignored flag reads as success when the
@@ -91,7 +162,7 @@ const COMMAND_FLAGS = {
   "task list": ["product", "board", "column", "assignee", "priority", "label"],
   "task show": [],
   "task move": ["column", "to-product", "to-board"],
-  "task update": ["title", "description", "assignee", "priority", "label", "due", "issue", "pr"],
+  "task update": ["title", "description", "assignee", "priority", "label", "add-label", "remove-label", "due", "issue", "pr"],
   "task done": [],
   "task remove": [],
   "task link": ["issue", "pr", "url", "title"],
@@ -138,7 +209,7 @@ function parseArgs(argv) {
         i++;
       } else if (VALUE_FLAGS.has(key)) {
         if (inline !== undefined) {
-          flags[key] = inline;
+          setValueFlag(flags, key, inline);
           i++;
         } else if (i + 1 < args.length) {
           const next = args[i + 1];
@@ -150,7 +221,7 @@ function parseArgs(argv) {
           if (named && (BOOLEAN_FLAGS.has(named[1]) || VALUE_FLAGS.has(named[1]))) {
             die(`--${key} needs a value, but the next argument is the flag ${next}. To pass '${next}' as the text, write --${key}=${next}`);
           }
-          flags[key] = next;
+          setValueFlag(flags, key, next);
           i += 2;
         } else {
           die(`--${key} requires a value`);
@@ -512,6 +583,9 @@ Management Commands:
     task link <id> --url <url> [--title <text>]   Link any URL: a Slack thread, doc, design
     task link <id> --issue <url> | --pr <url>     Set the card's GitHub issue or PR
     task unlink <id> --url <url>
+    task update <id> --add-label <l>              Add labels, keep the rest (a,b or repeat)
+    task update <id> --remove-label <l>           Remove only these labels
+    task update <id> --label <l>                  Replace all labels ('' clears them)
     task move <id> --column <col>
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
@@ -1144,6 +1218,7 @@ async function main() {
       } else if (sub === "update") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task update <card-id> [--field value]");
+        const labelEdit = parseLabelEdit(flags);
         const updates = {};
         if (flags.title) updates.title = flags.title;
         if (flags.description) updates.description = flags.description;
@@ -1153,6 +1228,19 @@ async function main() {
         if (flags.due) updates.due_date = flags.due;
         if (flags.issue) updates.github_issue_url = flags.issue;
         if (flags.pr) updates.github_pr_url = flags.pr;
+        if (labelEdit) {
+          // Read the card's labels and write back the edited list. This is a
+          // read-then-write, so a label edit made by someone else in between
+          // can be lost; the window is one round trip.
+          const card = await req("GET", `/api/cards/${id}`);
+          const result = applyLabelEdit(card.labels, labelEdit);
+          for (const note of result.notes) process.stderr.write(`${note.replace("{id}", id)}\n`);
+          if (result.changed) updates.labels = result.labels;
+          if (Object.keys(updates).length === 0) {
+            output(card, flags);
+            return;
+          }
+        }
         if (Object.keys(updates).length === 0) die("Provide at least one field to update");
         output(await req("PATCH", `/api/cards/${id}`, updates), flags);
       } else if (sub === "done") {
@@ -1367,4 +1455,6 @@ module.exports = {
   output,
   printUsage,
   COMMAND_FLAGS,
+  parseLabelEdit,
+  applyLabelEdit,
 };

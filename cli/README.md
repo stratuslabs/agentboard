@@ -124,6 +124,9 @@ agentboard task move <id> --column <slug>                       # same board
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
+agentboard task update <id> --add-label bug,cli      # add labels, keep the rest
+agentboard task update <id> --remove-label feedback  # remove one label, keep the rest
+agentboard task update <id> --label "a,b"            # replace all labels ("" clears)
 agentboard task done <id>
 agentboard task remove <id>
 agentboard task link <id> --url <url> [--title <text>]    # any URL: Slack thread, doc, design
