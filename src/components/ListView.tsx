@@ -12,6 +12,11 @@ export interface ViewCard extends Card {
   product_name: string;
   product_emoji: string;
   board_name: string;
+  /** Where the card lives, for the full page's breadcrumbs. */
+  org_id?: number;
+  org_slug?: string;
+  product_slug?: string;
+  board_id?: number;
   column_name: string;
   column_color: string;
 }
@@ -44,7 +49,7 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
     fetch(`/api/cards/${cardId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((c) => {
-        if (c) setHeldCard({ ...c, org_name: "", product_emoji: "", column_color: "" });
+        if (c) setHeldCard({ org_name: "", product_emoji: "", column_color: "", ...c });
         else { setOpenCardId(null); writeCardParam(null); }
       })
       .catch(() => {});
@@ -94,7 +99,17 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
       key={openCard.id}
       mode={cardView}
       card={openCard}
-      context={{ orgName: openCard.org_name || undefined, productEmoji: openCard.product_emoji, productName: openCard.product_name, productKey: openCard.product_key, boardName: openCard.board_name }}
+      context={{
+        orgName: openCard.org_name || undefined,
+        orgId: openCard.org_id,
+        orgSlug: openCard.org_slug,
+        productEmoji: openCard.product_emoji,
+        productName: openCard.product_name,
+        productSlug: openCard.product_slug,
+        productKey: openCard.product_key,
+        boardName: openCard.board_name,
+        boardId: openCard.board_id,
+      }}
       siblings={ordered.some((c) => c.id === openCard.id) ? ordered : undefined}
       siblingsLabel={title}
       onNavigate={(c) => open(ordered.find((o) => o.id === c.id) ?? (c as ViewCard))}

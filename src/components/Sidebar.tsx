@@ -35,19 +35,17 @@ import {
   LogOut,
   PanelLeftClose,
   Pencil,
-  Pin,
   Plus,
   Settings,
-  Star,
   Trash2,
-  X,
 } from "lucide-react";
 import { useBoardStream } from "../lib/useBoardStream";
 import dynamic from "next/dynamic";
 import ConfirmModal from "./ConfirmModal";
+import OrgProductsDialog from "./OrgProductsDialog";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { agentSetupPrompt as coreSetupPrompt, type AgentSetupPrompt } from "../lib/agent-prompt";
-import { Button, Dialog, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
+import { Button, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
   ssr: false,
@@ -311,7 +309,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, 
 export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { prefs, toggleExpandedOrg, setExpandedOrgs, toggleStarredProduct } = usePreferences();
+  const { prefs, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [productsByOrg, setProductsByOrg] = useState<Record<number, Product[]>>({});
   const [addingOrgName, setAddingOrgName] = useState("");
@@ -774,42 +772,8 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       {/* Browse all products overlay */}
       {browsingOrgId !== null && (() => {
         const org = orgs.find((o) => o.id === browsingOrgId);
-        const allProducts = productsByOrg[browsingOrgId] || [];
-        return (
-          <Dialog onClose={() => setBrowsingOrgId(null)} z={50} className="flex max-h-[70vh] w-[340px] flex-col rounded-xl">
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2.5 pl-4">
-              <h3 className="text-[13px] font-semibold text-text-1">{org?.name}</h3>
-              <span className="flex-1 text-[13px] text-text-3">All products</span>
-              <IconButton onClick={() => setBrowsingOrgId(null)} aria-label="Close">
-                <X className="h-4 w-4" />
-              </IconButton>
-            </div>
-            <div className="flex flex-1 flex-col gap-px overflow-y-auto p-1.5">
-              {allProducts.length === 0 && (
-                <div className="py-6 text-center text-[13px] text-text-3">No products yet</div>
-              )}
-              {allProducts.map((product) => {
-                const starred = starredProducts.has(product.id);
-                return (
-                  <div key={product.id} className="flex h-9 items-center gap-2.5 rounded-[7px] pr-2 pl-3 transition-colors hover:bg-surface-3">
-                    <Link href={`/${org!.slug}/${product.slug}`} onClick={() => setBrowsingOrgId(null)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                      <span className="shrink-0 text-[15px]">{product.emoji}</span>
-                      <span className="truncate text-[13px] text-text-1">{product.name}</span>
-                    </Link>
-                    <IconButton onClick={() => toggleStarredProduct(product.id)} aria-label={starred ? "Unstar" : "Star"} aria-pressed={starred}
-                      className={starred ? "text-text-1" : "text-text-3"}>
-                      <Star className="h-[15px] w-[15px]" fill={starred ? "currentColor" : "none"} />
-                    </IconButton>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-2.5">
-              <Pin className="h-3 w-3 text-text-3" />
-              <p className="text-[11.5px] text-text-3">Star products to pin them in the sidebar</p>
-            </div>
-          </Dialog>
-        );
+        if (!org) return null;
+        return <OrgProductsDialog org={org} products={productsByOrg[browsingOrgId] || []} onClose={() => setBrowsingOrgId(null)} />;
       })()}
 
       {/* Context menu */}

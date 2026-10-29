@@ -85,6 +85,9 @@ export default function ProductBoardPage() {
       key={product.id}
       productId={product.id}
       orgName={product.org_name}
+      orgId={product.org_id}
+      orgSlug={product.org_slug}
+      productSlug={product.slug}
       productName={product.name}
       productEmoji={product.emoji}
       productKey={product.key ?? null}

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import Link from "next/link";
 import {
-  ArrowLeft,
   ArrowUpRight,
   Bot,
   Calendar,
@@ -33,6 +33,8 @@ import { Avatar, Button, Chip, GithubIcon, IconButton, MenuDivider, MenuItem, Me
 import RichText from "./RichText";
 import Subtasks from "./Subtasks";
 import CardLinks from "./CardLinks";
+import OrgProductsDialog from "./OrgProductsDialog";
+import { boardHref, isPlainClick, productHref } from "../lib/breadcrumbs";
 import {
   type Card,
   type Column,
@@ -60,11 +62,53 @@ interface Attachment {
 
 export interface CardContext {
   orgName?: string;
+  /** With the org's id and slug, the full page's org crumb opens its "All products" list. */
+  orgId?: number;
+  orgSlug?: string;
   productEmoji?: string;
   productName?: string;
+  /** With orgSlug, the product and board crumbs link to their board. */
+  productSlug?: string;
   /** The product's card key, for a card that doesn't carry its own. */
   productKey?: string | null;
   boardName?: string;
+  boardId?: number;
+  /**
+   * Plain clicks on the product and board crumbs, for a caller already showing
+   * that product, which can switch in place instead of reloading. Cmd-click
+   * and middle-click still follow the link. Without a link or a handler, the
+   * board crumb closes the card.
+   */
+  onOpenProduct?: () => void;
+  onOpenBoard?: () => void;
+}
+
+const CRUMB_LINK = "truncate rounded-[4px] transition-colors hover:text-text-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong";
+
+/**
+ * One breadcrumb: a link when it has somewhere to go, so it opens in a new tab
+ * like any link. A plain click runs `onPlainClick` instead when one is given.
+ */
+function Crumb({ href, onPlainClick, className, children }: { href: string | null; onPlainClick?: () => void; className?: string; children: React.ReactNode }) {
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={cx(CRUMB_LINK, className)}
+        onClick={(e) => {
+          if (!onPlainClick || !isPlainClick(e)) return;
+          e.preventDefault();
+          onPlainClick();
+        }}
+      >
+        {children}
+      </Link>
+    );
+  }
+  if (onPlainClick) {
+    return <button type="button" className={cx(CRUMB_LINK, "text-left", className)} onClick={onPlainClick}>{children}</button>;
+  }
+  return <span className={cx("truncate", className)}>{children}</span>;
 }
 
 interface CardDetailProps {
@@ -227,6 +271,7 @@ export default function CardDetail({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [orgDialogOpen, setOrgDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   // AB-142, or #<id> for a card in a product that has no key yet.
   const label = cardLabel(card, context.productKey);
@@ -370,7 +415,8 @@ export default function CardDetail({
   // Escape leaves a field first, then closes.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape" || showDeleteConfirm) return;
+      // The org's product list closes itself on Escape; the card stays open.
+      if (e.key !== "Escape" || showDeleteConfirm || orgDialogOpen) return;
       const active = document.activeElement as HTMLElement | null;
       if (active && rootRef.current?.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) {
         active.blur();
@@ -381,7 +427,7 @@ export default function CardDetail({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, menuOpen, showDeleteConfirm]);
+  }, [onClose, menuOpen, showDeleteConfirm, orgDialogOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -768,18 +814,46 @@ export default function CardDetail({
   );
 
   // --- Full page ---
+  // Breadcrumbs are the way back: the board crumb shows at every width, the
+  // product and org crumbs from md up. A crumb with no link to follow closes
+  // the card, so the page is never a dead end.
+  const productLink = productHref(context.orgSlug, context.productSlug);
+  const boardLink = boardHref(context.orgSlug, context.productSlug, context.boardId);
+  const hasBoardCrumb = Boolean(context.boardName);
+  const boardFallback = boardLink ? undefined : onClose;
+  const orgDialogTarget = context.orgName && context.orgId && context.orgSlug
+    ? { id: context.orgId, name: context.orgName, slug: context.orgSlug }
+    : null;
   if (isPage) {
     return (
       <div ref={rootRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border pr-4 pl-7 text-[13px] max-md:pl-3">
-          <IconButton size={28} aria-label="Back to board" title="Back" onClick={onClose} className="-ml-1.5">
-            <ArrowLeft className="h-[15px] w-[15px]" />
-          </IconButton>
-          <span className="flex min-w-0 items-center gap-2 text-text-3 max-md:hidden">
-            {context.orgName && <><span className="truncate">{context.orgName}</span><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /></>}
-            {context.productName && <><span className="truncate">{context.productEmoji} {context.productName}</span><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /></>}
-            {context.boardName && <><span className="truncate">{context.boardName}</span><ChevronRight className="h-3 w-3 shrink-0 text-text-4" /></>}
-          </span>
+          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-text-3">
+            {context.orgName && (
+              <span className="flex min-w-0 items-center gap-2 max-md:hidden">
+                {orgDialogTarget ? (
+                  <button type="button" className={cx(CRUMB_LINK, "text-left")} aria-haspopup="dialog" onClick={() => setOrgDialogOpen(true)}>{context.orgName}</button>
+                ) : (
+                  <span className="truncate">{context.orgName}</span>
+                )}
+                <ChevronRight className="h-3 w-3 shrink-0 text-text-4" />
+              </span>
+            )}
+            {context.productName && (
+              <span className={cx("flex min-w-0 items-center gap-2", hasBoardCrumb && "max-md:hidden")}>
+                <Crumb href={productLink} onPlainClick={context.onOpenProduct ?? (hasBoardCrumb ? undefined : boardFallback)}>
+                  {context.productEmoji} {context.productName}
+                </Crumb>
+                <ChevronRight className="h-3 w-3 shrink-0 text-text-4" />
+              </span>
+            )}
+            {hasBoardCrumb && (
+              <span className="flex min-w-0 items-center gap-2">
+                <Crumb href={boardLink} onPlainClick={context.onOpenBoard ?? boardFallback}>{context.boardName}</Crumb>
+                <ChevronRight className="h-3 w-3 shrink-0 text-text-4" />
+              </span>
+            )}
+          </nav>
           <span className="font-mono text-xs text-text-2">{label}</span>
           <span className="flex-1" />
           {saveIndicator}
@@ -813,6 +887,18 @@ export default function CardDetail({
           </aside>
         </div>
         {deleteConfirm}
+        {orgDialogOpen && orgDialogTarget && (
+          <OrgProductsDialog
+            org={orgDialogTarget}
+            onClose={() => setOrgDialogOpen(false)}
+            onProductClick={(e, product) => {
+              // The product this card is on: switch in place, like its crumb.
+              if (product.slug !== context.productSlug || !context.onOpenProduct || !isPlainClick(e)) return;
+              e.preventDefault();
+              context.onOpenProduct();
+            }}
+          />
+        )}
       </div>
     );
   }
