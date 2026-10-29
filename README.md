@@ -354,6 +354,7 @@ notifies the board. The GitHub issue and PR stay separate card fields
 ```
 GET    /api/cards/:id/attachments
 POST   /api/cards/:id/attachments  { filename, content }   # content capped at 1 MiB
+GET    /api/attachments/:id        # one attachment, with its content
 DELETE /api/attachments/:id
 ```
 
