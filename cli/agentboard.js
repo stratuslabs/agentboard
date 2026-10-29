@@ -300,7 +300,9 @@ function notFound(what, tried, where, items, describe, kind) {
 // a slug or name that matches ignoring case, then a legacy alias. A renamed
 // Backlog is named "Inbox" but keeps the slug `backlog`, so `inbox` has to
 // reach it. When the case-insensitive pass matches more than one column (say
-// "Review" and "review"), refuse rather than pick one.
+// "Review" and "review"), refuse rather than pick one, and suggest slugs: they
+// are unique per board and exact slugs win, whereas one column's exact name
+// can be another column's slug.
 function findColumn(cols, input) {
   const exact = cols.find((c) => c.slug === input) || cols.find((c) => c.name === input);
   if (exact) return exact;
@@ -312,7 +314,7 @@ function findColumn(cols, input) {
   if (loose.length > 1) {
     die(
       `Column '${input}' matches more than one column: ${describeNamed(loose)}. ` +
-        "Use its exact name or slug."
+        `Use one of these slugs: ${loose.map((c) => c.slug).join(", ")}.`
     );
   }
   const alias = Object.hasOwn(STATUS_ALIASES, want) ? STATUS_ALIASES[want] : null;

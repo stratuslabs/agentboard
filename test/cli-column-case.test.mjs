@@ -135,6 +135,22 @@ test("a name matching two columns only case-insensitively moves nothing", async 
   assert.match(r.stderr, /'REVIEW' matches more than one column: review \(Review\), review-2 \(review\)/);
 });
 
+// The ambiguity error has to point at something that resolves to the column
+// you meant. An exact name can't: the second column's name, "review", is the
+// first column's slug, and exact slugs win. Slugs are unique per board.
+test("the ambiguity error suggests slugs, and each slug reaches its own column", async () => {
+  const r = await run("status", "8", "REVIEW");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /Use one of these slugs: review, review-2\./);
+  assert.doesNotMatch(r.stderr, /exact name/);
+
+  for (const [slug, id] of [["review", 51], ["review-2", 52]]) {
+    const ok = await run("status", "8", slug);
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.deepEqual(moved(), [{ method: "PATCH", url: "/api/cards/8/move", body: { column_id: id } }]);
+  }
+});
+
 test("an unknown column is still refused", async () => {
   const r = await run("status", "7", "nope");
   assert.notEqual(r.code, 0);
