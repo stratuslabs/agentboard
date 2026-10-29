@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { Button, IconButton, cx } from "../ui";
 import { DEFAULT_COLUMNS } from "../../lib/default-columns";
+import { saveSetting } from "../../lib/settings-save";
 
 interface ColumnDef {
   name: string;
@@ -26,17 +27,26 @@ function useSetting<T>(key: string, fallback: T) {
   return [value, setValue] as const;
 }
 
+type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
+
+/**
+ * Saves one setting. "Saved" only shows when the server stored it; a failed
+ * save shows why and leaves the list as edited, so Save can simply be retried.
+ */
 function useSaver(key: string) {
-  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const [state, setState] = useState<SaveState>({ kind: "idle" });
+  const attempt = useRef(0);
   async function save(value: unknown) {
-    setState("saving");
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value }),
-    });
-    setState("saved");
-    setTimeout(() => setState("idle"), 2000);
+    const mine = ++attempt.current;
+    setState({ kind: "saving" });
+    const result = await saveSetting(key, value);
+    if (mine !== attempt.current) return;
+    if (!result.ok) {
+      setState({ kind: "error", message: result.message });
+      return;
+    }
+    setState({ kind: "saved" });
+    setTimeout(() => { if (mine === attempt.current) setState({ kind: "idle" }); }, 2000);
   }
   return { state, save };
 }
@@ -71,13 +81,16 @@ function ListRow({ index, count, onMove, onRemove, children }: {
   );
 }
 
-function Footer({ addLabel, onAdd, state, onSave }: { addLabel: string; onAdd: () => void; state: "idle" | "saving" | "saved"; onSave: () => void }) {
+function Footer({ addLabel, onAdd, state, onSave }: { addLabel: string; onAdd: () => void; state: SaveState; onSave: () => void }) {
   return (
-    <div className="flex items-center justify-between">
-      <Button variant="ghost" size="sm" onClick={onAdd}><Plus className="h-3.5 w-3.5" />{addLabel}</Button>
-      <Button variant="primary" onClick={onSave} disabled={state === "saving"}>
-        {state === "saving" ? "Saving…" : state === "saved" ? <><Check className="h-3.5 w-3.5" />Saved</> : "Save"}
-      </Button>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={onAdd}><Plus className="h-3.5 w-3.5" />{addLabel}</Button>
+        <Button variant="primary" onClick={onSave} disabled={state.kind === "saving"}>
+          {state.kind === "saving" ? "Saving…" : state.kind === "saved" ? <><Check className="h-3.5 w-3.5" />Saved</> : "Save"}
+        </Button>
+      </div>
+      {state.kind === "error" && <p role="alert" className="text-right text-xs text-danger">{state.message}</p>}
     </div>
   );
 }
