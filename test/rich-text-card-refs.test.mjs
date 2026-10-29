@@ -91,3 +91,16 @@ test("a bare #57 stays text: in this team it usually means a PR or issue", () =>
 test("with links off, references stay text", () => {
   assert.deepEqual(parseInline("AB-142 and card #5", { links: false }), [text("AB-142 and card #5")]);
 });
+
+test("a rejected Markdown link stays exactly as written, label included", () => {
+  for (const s of ["[AB-142](/cards/42)", "[AB-142](javascript:alert)", "[see AB-142](ftp://host/x)"]) {
+    assert.deepEqual(parseInline(s), [text(s)], s);
+  }
+  assert.deepEqual(parseInline("[AB-142](/x) then AB-7"), [text("[AB-142](/x) then "), card("AB-7")]);
+});
+
+test("a key that starts a path or an address stays text", () => {
+  for (const s of ["AB-142/path", "owner+AB-142@example.com", "AB-142@host"]) {
+    assert.deepEqual(parseInline(s), [text(s)], s);
+  }
+});
