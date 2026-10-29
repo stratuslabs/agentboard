@@ -2,7 +2,8 @@
 //
 // Descriptions stay plain text in the database and the API. This turns that
 // text into a small tree for display: paragraphs with line breaks, bullet and
-// numbered lists, headings, links, `code` and **bold**. It is deliberately not
+// numbered lists, headings, links, `code`, **bold** and references to other
+// cards (AB-142, "card #57"). It is deliberately not
 // a full Markdown parser, and it never produces HTML, so nothing in a
 // description can inject markup. Links are only made for http(s) and mailto.
 //
@@ -13,7 +14,8 @@
  * @typedef {{ type: "text", text: string }
  *   | { type: "code", text: string }
  *   | { type: "strong", children: Inline[] }
- *   | { type: "link", href: string, children: Inline[] }} Inline
+ *   | { type: "link", href: string, children: Inline[] }
+ *   | { type: "card", ref: string, children: Inline[] }} Inline
  * @typedef {Inline[]} Line
  * @typedef {{ type: "paragraph", lines: Line[] }
  *   | { type: "heading", level: number, content: Line }
@@ -134,7 +136,43 @@ export function parseInline(line, options = {}) {
     pos = end;
   }
   pushText(line.slice(pos));
-  return out;
+  return links ? out.flatMap((n) => (n.type === "text" ? linkCardRefs(n.text) : [n])) : out;
+}
+
+// A card key as the app prints it, AB-142: uppercase only, so prose like
+// "covid-19" stays prose. Not glued to a word, path, mention or version
+// (repo/AB-1, #AB-1, AB-1.5, AB-1-2).
+const CARD_KEY = /(?<![A-Za-z0-9_/#@.\-])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})(?![A-Za-z0-9_]|[-.][0-9])/;
+// A card without a key, written the way the app labels it, "#57", but only
+// after the word "card": on its own, #57 is usually a PR or an issue.
+const CARD_ID = /(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})(?![A-Za-z0-9_])/;
+const CARD_REF = new RegExp(`${CARD_KEY.source}|${CARD_ID.source}`, "g");
+
+// Prefixes that read like a card key but are standards, hashes or time zones:
+// UTF-8, ISO-8601, SHA-256, CVE-2026, UTC-5.
+const NOT_CARD_KEYS = new Set(["UTF", "ISO", "SHA", "CVE", "RFC", "HTTP", "TLS", "PEP", "ES", "GPT", "UTC", "GMT"]);
+
+/**
+ * Split plain text into text and card references. A reference only names the
+ * card: it links to /c/<ref>, which the app resolves (old keys included) or
+ * answers with its not-found page.
+ * @param {string} t
+ * @returns {Inline[]}
+ */
+function linkCardRefs(t) {
+  /** @type {Inline[]} */
+  const out = [];
+  let pos = 0;
+  for (const m of t.matchAll(CARD_REF)) {
+    const key = m[1];
+    if (key && NOT_CARD_KEYS.has(key.slice(0, key.indexOf("-")))) continue;
+    const start = /** @type {number} */ (m.index);
+    if (start > pos) out.push({ type: "text", text: t.slice(pos, start) });
+    out.push({ type: "card", ref: key ?? m[2], children: [{ type: "text", text: m[0] }] });
+    pos = start + m[0].length;
+  }
+  if (pos < t.length) out.push({ type: "text", text: t.slice(pos) });
+  return out.length ? out : [{ type: "text", text: t }];
 }
 
 /** Drop sentence punctuation and unbalanced closing parens from a bare URL. */

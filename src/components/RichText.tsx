@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Link from "next/link";
 import { parseRichText, type Block, type Inline, type Line } from "../lib/rich-text";
 import { cx } from "./ui";
 
@@ -19,6 +20,14 @@ function Inlines({ nodes }: { nodes: Line }) {
                 className="break-words text-text-1 underline decoration-text-4 underline-offset-2 transition-colors hover:decoration-text-2">
                 <Inlines nodes={n.children} />
               </a>
+            );
+          case "card":
+            // Same tab: it's a link inside the app, to the card's permanent URL.
+            return (
+              <Link key={i} href={`/c/${encodeURIComponent(n.ref)}`}
+                className="text-text-1 underline decoration-text-4 underline-offset-2 transition-colors hover:decoration-text-2">
+                <Inlines nodes={n.children} />
+              </Link>
             );
         }
       })}
@@ -56,7 +65,8 @@ function BlockView({ block }: { block: Block }) {
 
 /**
  * A card description with its light formatting shown: line breaks, lists,
- * headings, links, `code` and **bold**. Built from React elements, never HTML.
+ * headings, links, `code`, **bold** and card references (AB-142), which link
+ * to the card. Built from React elements, never HTML.
  */
 export default function RichText({ text, className }: { text: string; className?: string }) {
   const blocks = parseRichText(text);
