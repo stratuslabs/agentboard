@@ -24,7 +24,16 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   const values: unknown[] = [teamId];
   let paramIdx = 2;
 
-  const baseQuery = `SELECT cards.*, m.name AS assignee_name, m.type AS assignee_type, m.color AS assignee_color
+  // Each row says where the card lives, with the same fields as a single card
+  // (getCardWithLocation), so a list needs no lookup per column to read.
+  const baseQuery = `SELECT cards.*, m.name AS assignee_name, m.type AS assignee_type, m.color AS assignee_color,
+      columns.slug AS column_slug, columns.name AS column_name,
+      b.id AS board_id, b.slug AS board_slug, b.name AS board_name,
+      p.id AS product_id, p.slug AS product_slug, p.name AS product_name,
+      p.key AS product_key,
+      CASE WHEN p.key IS NOT NULL AND cards.number IS NOT NULL
+        THEN p.key || '-' || cards.number END AS key,
+      o.slug AS org_slug
     FROM cards
     JOIN columns ON cards.column_id = columns.id
     JOIN boards b ON b.id = columns.board_id

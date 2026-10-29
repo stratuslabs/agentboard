@@ -27,7 +27,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.emoji AS product_emoji,
         p.key AS product_key,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id
@@ -78,7 +81,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.emoji AS product_emoji,
         p.key AS product_key,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id
@@ -109,7 +115,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.emoji AS product_emoji,
         p.key AS product_key,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id

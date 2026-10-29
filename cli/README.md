@@ -44,6 +44,7 @@ These use `AGENTBOARD_PRODUCT` and `AGENTBOARD_BOARD` env vars (or `--product`/`
 agentboard list
 agentboard list --column todo --priority high
 agentboard list --assignee MyAgent --include-done
+agentboard list --fields id,column,title  # pick the table's columns
 
 # Create a task
 agentboard new "Build login page"
@@ -72,6 +73,7 @@ agentboard attention <id> off
 
 # View commands
 agentboard my-tasks                       # tasks assigned to AGENTBOARD_AGENT_NAME
+agentboard my-tasks --fields id,product,column,title
 agentboard today                          # tasks due today
 agentboard past-due                       # overdue tasks
 ```
@@ -175,6 +177,9 @@ When an organization, product, board or column isn't found, the error names what
 
 - `--json` — JSON output
 - `--quiet` — IDs only
+- `--fields id,product,column,title` — on `list`, `task list` and `my-tasks`, the fields to print, in that order. Any card field works (`labels`, `due_date`, `key`, ...), plus `product` and `board` (slug, or name from an older server), `column` (name) and `assignee` (member name, or the legacy text assignee). With `--json`, each card keeps only these fields. An unknown field is an error that lists the available ones.
+
+`list` prints a short table, `id title column assignee priority`, under a `Board: <product>/<board>` line naming the board it read, so a product set by `AGENTBOARD_PRODUCT` is never a surprise. `my-tasks` prints `id title product board column priority`. `--json` still returns every field, and each card from `list` and `task list` carries `column_name`, `column_slug`, `board_slug`, `board_name`, `product_slug` and `product_name`, filled in by the CLI when the server is too old to send them.
 
 ## Agent Integration
 
