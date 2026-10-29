@@ -710,8 +710,8 @@ async function main() {
       if (flags.label) params.set("label", flags.label);
       if (flags.assignee) params.set("assignee", flags.assignee);
 
-      let cards = await req("GET", `/api/cards?${params.toString()}`);
       const cols = await req("GET", `/api/columns?board_id=${boardId}`);
+      let cards = await req("GET", `/api/cards?${params.toString()}`);
 
       // Filter out done unless --include-done
       if (!flags["include-done"]) {
@@ -1188,8 +1188,8 @@ async function main() {
         if (flags.assignee) params.set("assignee", flags.assignee);
         if (flags.priority) params.set("priority", flags.priority);
         if (flags.label) params.set("label", flags.label);
-        const cards = await req("GET", `/api/cards?${params.toString()}`);
         const cols = await req("GET", `/api/columns?board_id=${boardId}`);
+        const cards = await req("GET", `/api/cards?${params.toString()}`);
         outputCards(withLocation(cards, product, board, cols), flags, { product, board });
       } else if (sub === "show") {
         const id = positional[2];
