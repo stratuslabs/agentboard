@@ -415,8 +415,9 @@ export default function CardDetail({
   // Escape leaves a field first, then closes.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // The org's product list closes itself on Escape; the card stays open.
-      if (e.key !== "Escape" || showDeleteConfirm || orgDialogOpen) return;
+      // A dialog over the card (the org's products, delete confirm) takes
+      // Escape for itself and marks it handled; the card stays open.
+      if (e.key !== "Escape" || e.defaultPrevented || showDeleteConfirm || orgDialogOpen) return;
       const active = document.activeElement as HTMLElement | null;
       if (active && rootRef.current?.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) {
         active.blur();
