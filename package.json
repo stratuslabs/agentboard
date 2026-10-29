@@ -36,7 +36,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/",
     "test:realtime": "node scripts/verify-realtime.mjs",
-    "test:card-links": "node scripts/verify-card-links.mjs"
+    "test:card-links": "node scripts/verify-card-links.mjs",
+    "test:login-next": "node scripts/verify-login-next.mjs"
   },
   "bin": {
     "agentboard": "./bin/agentboard.js"
@@ -173,6 +174,7 @@
     "./lib/default-columns": "./src/lib/default-columns.js",
     "./lib/emoji-suggest": "./src/lib/emoji-suggest.ts",
     "./lib/env": "./src/lib/env.ts",
+    "./lib/login-next": "./src/lib/login-next.js",
     "./lib/members": "./src/lib/members.ts",
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
