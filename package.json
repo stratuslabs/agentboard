@@ -33,6 +33,7 @@
     "lint": "eslint .",
     "db:setup": "node scripts/setup-db.js",
     "db:seed": "node scripts/seed.js",
+    "demo": "node scripts/demo.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/",
     "test:realtime": "node scripts/verify-realtime.mjs",

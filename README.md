@@ -48,6 +48,35 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). If `APP_PASSWORD` is not set, no login is required.
 
+### Try it with sample data
+
+To look around, or to test a change against a board that already has work on
+it, one command does the lot:
+
+```bash
+npm install
+npm run demo
+```
+
+It starts the Docker Compose Postgres, creates a separate `agentboard_demo`
+database (so it never touches the database in your `.env.local`), sets it up,
+fills it with sample data and starts the app at
+[http://localhost:3000](http://localhost:3000). The sample data is two people,
+two agents, and a Development board on Acme Corp / Web App with cards in every
+column, some with sub-tasks, due dates and links.
+
+Running it again keeps whatever you changed and adds nothing. Options:
+
+- `npm run demo -- --reset` drops `agentboard_demo` and starts over.
+- `npm run demo -- --no-start` sets up and seeds, then exits.
+- `npm run demo -- --port 3001` uses another port.
+- Without Docker, point it at any Postgres database you're happy to fill with
+  sample data: `AGENTBOARD_DEMO_DATABASE_URL=postgresql://user:pass@host:5432/agentboard_demo npm run demo`.
+  The database has to exist already, and `--reset` doesn't apply.
+
+`node scripts/seed.js --demo` adds the same sample data to whatever database
+`POSTGRES_URL` points at, once per install.
+
 ### Deploy to Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)][deploy]
