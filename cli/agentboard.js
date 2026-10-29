@@ -239,6 +239,55 @@ function output(data, flags, idField = "id") {
   }
 }
 
+// ---- Created cards --------------------------------------------------------
+
+/** The POST /api/cards body for `new` and `task add`, minus the column. */
+function newCardFields(title, flags) {
+  const fields = {
+    title,
+    description: flags.description || "",
+    priority: flags.priority || "medium",
+    labels: flags.label || "",
+  };
+  if (flags.assignee) fields.assignee = flags.assignee;
+  if (flags.due) fields.due_date = flags.due;
+  return fields;
+}
+
+/**
+ * A created card with its product, board and column. Values the server sent
+ * win; the CLI's own resolution only fills fields an older server left out.
+ */
+function withCreatedLocation(card, product, board, column) {
+  const pick = (v, fallback) => (v === undefined || v === null ? fallback : v);
+  return {
+    ...card,
+    column_slug: pick(card.column_slug, column.slug),
+    column_name: pick(card.column_name, column.name),
+    board_id: pick(card.board_id, board.id),
+    board_slug: pick(card.board_slug, board.slug),
+    board_name: pick(card.board_name, board.name),
+    product_id: pick(card.product_id, product.id),
+    product_slug: pick(card.product_slug, product.slug),
+    product_name: pick(card.product_name, product.name),
+  };
+}
+
+/** "Created AB-12 on agentboard/development in Todo" */
+function createdLine(card) {
+  const label = card.key ? card.key : `card ${card.id}`;
+  const product = card.product_slug || card.product_name;
+  const board = card.board_slug || card.board_name;
+  const column = card.column_name || card.column_slug;
+  return `Created ${label} on ${product}/${board} in ${column}`;
+}
+
+/** --json and --quiet as usual; the text output leads with where it landed. */
+function outputCreated(card, flags) {
+  if (!flags.json && !flags.quiet) process.stdout.write(createdLine(card) + "\n");
+  output(card, flags);
+}
+
 // ---- Status aliases -------------------------------------------------------
 
 const STATUS_ALIASES = {
@@ -414,21 +463,29 @@ function makeResolvers(req) {
   }
 
   /** `productLabel` names the product in the error; the slug when known. */
-  async function resolveBoardId(productId, slugOrName, productLabel) {
+  async function resolveBoard(productId, slugOrName, productLabel) {
     const boards = await req("GET", `/api/boards?product_id=${productId}`);
     const b = boards.find((x) => x.slug === slugOrName || x.name === slugOrName);
     if (!b) {
       const where = productLabel ? `product '${productLabel}'` : "this product";
       die(notFound("Board", slugOrName, where, boards, describeBoards, "boards"));
     }
-    return b.id;
+    return b;
   }
 
-  async function resolveColumnId(boardId, slugOrName) {
+  async function resolveBoardId(productId, slugOrName, productLabel) {
+    return (await resolveBoard(productId, slugOrName, productLabel)).id;
+  }
+
+  async function resolveColumn(boardId, slugOrName) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     const c = findColumn(cols, slugOrName);
     if (!c) die(notFound("Column", slugOrName, "this board", cols, describeNamed, "columns"));
-    return c.id;
+    return c;
+  }
+
+  async function resolveColumnId(boardId, slugOrName) {
+    return (await resolveColumn(boardId, slugOrName)).id;
   }
 
   /**
@@ -438,11 +495,12 @@ function makeResolvers(req) {
   async function resolveProductAndBoard(productSlug, boardSlug) {
     const product = await resolveProduct(productSlug);
     if (boardSlug) {
-      return { productId: product.id, boardId: await resolveBoardId(product.id, boardSlug, product.slug) };
+      const board = await resolveBoard(product.id, boardSlug, product.slug);
+      return { productId: product.id, boardId: board.id, product, board };
     }
     const boards = await req("GET", `/api/boards?product_id=${product.id}`);
     const picked = pickDefaultBoard(product, boards);
-    if (picked) return { productId: product.id, boardId: picked.id };
+    if (picked) return { productId: product.id, boardId: picked.id, product, board: picked };
     if (!boards || boards.length === 0) die(`Product '${product.slug}' has no boards`);
     die(
       `Product '${product.slug}' has no default board. Pick one with --board <slug> or ` +
@@ -451,11 +509,28 @@ function makeResolvers(req) {
     );
   }
 
-  async function findFirstColumnId(boardId) {
+  async function findFirstColumn(boardId) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     if (!cols || cols.length === 0) die("Board has no columns");
     cols.sort((a, b) => a.position - b.position);
-    return cols[0].id;
+    return cols[0];
+  }
+
+  async function findFirstColumnId(boardId) {
+    return (await findFirstColumn(boardId)).id;
+  }
+
+  /**
+   * Create a card on a product's board, in the named column or the board's
+   * first. Returns the card with where it landed: the server's location fields
+   * when it sends them, otherwise what this command resolved (older servers
+   * return only the row).
+   */
+  async function createCard(productSlug, boardSlug, columnSlug, fields) {
+    const { product, board } = await resolveProductAndBoard(productSlug, boardSlug);
+    const column = columnSlug ? await resolveColumn(board.id, columnSlug) : await findFirstColumn(board.id);
+    const card = await req("POST", "/api/cards", { column_id: column.id, ...fields });
+    return withCreatedLocation(card, product, board, column);
   }
 
   return {
@@ -466,6 +541,7 @@ function makeResolvers(req) {
     resolveColumnId,
     resolveProductAndBoard,
     findFirstColumnId,
+    createCard,
   };
 }
 
@@ -623,27 +699,8 @@ async function main() {
       const scope = requireScope();
       const title = positional[1];
       if (!title) die("Usage: agentboard new <title>");
-      const { boardId } = await resolve.resolveProductAndBoard(scope.product, scope.board);
-
-      let columnId;
-      if (flags.column) {
-        columnId = await resolve.resolveColumnId(boardId, flags.column);
-      } else {
-        columnId = await resolve.findFirstColumnId(boardId);
-      }
-
-      const body = {
-        column_id: columnId,
-        title,
-        description: flags.description || "",
-        priority: flags.priority || "medium",
-        labels: flags.label || "",
-      };
-      if (flags.assignee) body.assignee = flags.assignee;
-      if (flags.due) body.due_date = flags.due;
-
-      const data = await req("POST", "/api/cards", body);
-      output(data, flags);
+      const card = await resolve.createCard(scope.product, scope.board, flags.column, newCardFields(title, flags));
+      outputCreated(card, flags);
     }
 
     // ---- status ----
@@ -1050,25 +1107,8 @@ async function main() {
         if (!productSlug) die("--product is required (or set AGENTBOARD_PRODUCT)");
         const title = positional[2];
         if (!title) die("Usage: agentboard task add <title> --product <slug> --board <slug>");
-        const { boardId } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
-
-        let columnId;
-        if (flags.column) {
-          columnId = await resolve.resolveColumnId(boardId, flags.column);
-        } else {
-          columnId = await resolve.findFirstColumnId(boardId);
-        }
-
-        const body = {
-          column_id: columnId,
-          title,
-          description: flags.description || "",
-          priority: flags.priority || "medium",
-          labels: flags.label || "",
-        };
-        if (flags.assignee) body.assignee = flags.assignee;
-        if (flags.due) body.due_date = flags.due;
-        output(await req("POST", "/api/cards", body), flags);
+        const card = await resolve.createCard(productSlug, boardSlug, flags.column, newCardFields(title, flags));
+        outputCreated(card, flags);
       } else if (sub === "list") {
         const productSlug = flags.product || envProduct;
         const boardSlug = flags.board || envBoard;
@@ -1365,6 +1405,8 @@ module.exports = {
   parseArgs,
   formatTable,
   output,
+  createdLine,
+  withCreatedLocation,
   printUsage,
   COMMAND_FLAGS,
 };

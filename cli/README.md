@@ -48,6 +48,8 @@ agentboard list --assignee MyAgent --include-done
 # Create a task
 agentboard new "Build login page"
 agentboard new "Fix bug" --priority urgent --assignee MyAgent --due 2025-03-15
+# Both print where the card landed first, e.g. "Created AB-12 on my-app/development in Backlog".
+# With --json the card includes product_slug, board_slug and column_slug (and their names).
 
 # Update status (backlog | todo | doing | in-progress | in-review | done | blocked)
 agentboard status <id> doing
