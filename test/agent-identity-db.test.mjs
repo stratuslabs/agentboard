@@ -374,3 +374,91 @@ test("the migration renames existing duplicate agents instead of failing", { ski
   );
   assert.equal(idx.length, 1);
 });
+
+// Card 838: assignee (text) and assignee_id (member) must never name two
+// different people. Card 699 read assignee "Nova" and assignee_id Blair.
+
+/** Text and member never both set, and the text never names another member. */
+function assertAgree(card, label) {
+  assert.ok(card.assignee_id === null || card.assignee === null,
+    `${label}: assignee ${JSON.stringify(card.assignee)} beside assignee_id ${card.assignee_id} (${card.assignee_name})`);
+}
+
+async function patch(team, id, body, opts = {}) {
+  return call(team, api.card.PATCH, `/api/cards/${id}`, { method: "PATCH", id, body, ...opts });
+}
+
+test("assigning by id replaces a name the card had (card 838)", { skip }, async () => {
+  const nova = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Nova838", type: "agent" } });
+  const blair = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Blair838", type: "agent" } });
+
+  const card = await newCard(A, { assignee: "Nova838" });
+  assert.equal(card.data.assignee_id, nova.data.id);
+  assertAgree(card.data, "create by name");
+
+  const moved = await patch(A, card.data.id, { assignee_id: blair.data.id });
+  assert.equal(moved.status, 200, JSON.stringify(moved.data));
+  assert.equal(moved.data.assignee_id, blair.data.id);
+  assert.equal(moved.data.assignee_name, "Blair838");
+  assertAgree(moved.data, "patch by id");
+});
+
+test("assigning a name that matches nobody doesn't leave the old member", { skip }, async () => {
+  const owner = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Holder838", type: "agent" } });
+  const card = await newCard(A, { assignee_id: owner.data.id });
+
+  const renamed = await patch(A, card.data.id, { assignee: "Pat Outside" });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.data));
+  assert.equal(renamed.data.assignee, "Pat Outside");
+  assert.equal(renamed.data.assignee_id, null, "the old member must not stay beside a new name");
+});
+
+test("assigning by name on update stores the member", { skip }, async () => {
+  const named = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Target838", type: "agent" } });
+  const card = await newCard(A, { assignee: "Pat Outside" });
+  assert.equal(card.data.assignee_id, null);
+
+  const assigned = await patch(A, card.data.id, { assignee: "target838" });
+  assert.equal(assigned.data.assignee_id, named.data.id);
+  assertAgree(assigned.data, "patch by name");
+});
+
+test("unassigning clears both fields, by name or by id", { skip }, async () => {
+  const owner = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Leaver838", type: "agent" } });
+
+  const byName = await newCard(A, { assignee_id: owner.data.id });
+  const clearedByName = await patch(A, byName.data.id, { assignee: "" });
+  assert.equal(clearedByName.data.assignee_id, null, "an empty name unassigns the member too");
+  assert.equal(clearedByName.data.assignee, null);
+
+  // A text-only assignee would otherwise still show after the id is cleared.
+  const outside = await newCard(A, { assignee: "Pat Outside" });
+  const clearedById = await patch(A, outside.data.id, { assignee_id: null });
+  assert.equal(clearedById.data.assignee_id, null);
+  assert.equal(clearedById.data.assignee, null, "unassigning must not leave the old name showing");
+});
+
+test("an update with X-Agent-Name that claims a card drops its old name", { skip }, async () => {
+  const card = await newCard(A, { assignee: "Pat Outside" });
+  const claimed = await patch(A, card.data.id, { priority: "high" }, { headers: { "x-agent-name": "Claimer838" } });
+  assert.equal(claimed.status, 200, JSON.stringify(claimed.data));
+  assert.equal(claimed.data.assignee_name, "Claimer838");
+  assertAgree(claimed.data, "header claim");
+});
+
+test("filtering by assignee name follows the member, not a stale name", { skip }, async () => {
+  const nova = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Stale838", type: "agent" } });
+  const blair = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Fresh838", type: "agent" } });
+  const card = await newCard(A, { assignee_id: blair.data.id });
+  // A row written before this fix: text naming one member, id another.
+  await db.query("UPDATE cards SET assignee = 'Stale838' WHERE id = $1", [card.data.id]);
+  assert.ok(nova.data.id);
+
+  const ids = async (name) => (await call(A, api.cards.GET, `/api/cards?assignee=${name}`)).data.map((c) => c.id);
+  assert.ok((await ids("Fresh838")).includes(card.data.id));
+  assert.ok(!(await ids("Stale838")).includes(card.data.id), "a card filed under Fresh838 isn't Stale838's");
+
+  // A text-only assignee is still found by its name.
+  const outside = await newCard(A, { assignee: "Pat Filter838" });
+  assert.ok((await ids("Pat%20Filter838")).includes(outside.data.id));
+});

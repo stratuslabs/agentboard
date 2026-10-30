@@ -163,6 +163,7 @@
     "./lib/agent-names": "./src/lib/agent-names.js",
     "./lib/agent-prompt": "./src/lib/agent-prompt.ts",
     "./lib/api-not-found": "./src/lib/api-not-found.ts",
+    "./lib/assignee": "./src/lib/assignee.js",
     "./lib/auth": "./src/lib/auth.ts",
     "./lib/card-keys": "./src/lib/card-keys.js",
     "./lib/card-links": "./src/lib/card-links.js",
