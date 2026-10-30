@@ -1,3 +1,4 @@
+const { describeDbError } = require("./db-script");
 const { sql, db, end } = require("../src/lib/sql");
 const { ensureProductKeys } = require("../src/lib/card-keys");
 const { ensureDefaultTeam } = require("../src/lib/tenancy");
@@ -109,7 +110,7 @@ async function seed() {
 seed()
   .then(() => end())
   .catch(async (err) => {
-    console.error("Seed failed:", err.message);
+    console.error("Seed failed:", describeDbError(err));
     await end().catch(() => {});
     process.exit(1);
   });
