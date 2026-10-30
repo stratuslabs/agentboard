@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { normalizeCollapsed, toggleCollapsed, replayToggles, type CollapsedGroups } from '../lib/list-groups';
+import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups } from '../lib/list-groups';
 
 interface Preferences {
   expandedOrgs: number[];
@@ -86,12 +86,12 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Keys changed locally since mount. The initial GET may carry an older server
   // value for these, so it must not overwrite them.
   const touched = useRef<Set<string>>(new Set());
-  // Collapsed-group clicks made before the initial GET lands. They are replayed onto
+  // Collapsed-group choices made before the initial GET lands. They are replayed onto
   // the server's value when it arrives, and nothing is saved until then, so an early
   // click neither snaps back nor wipes groups collapsed in another browser. If the GET
   // fails, they stay local for this page load and are never saved.
   const serverLoaded = useRef(false);
-  const earlyToggles = useRef<Array<[string, string]>>([]);
+  const earlyToggles = useRef<Array<[string, string, boolean]>>([]);
 
   // Debounced PATCH to server
   const flushToServer = useCallback(() => {
@@ -129,7 +129,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
         serverLoaded.current = true;
         const early = earlyToggles.current;
         earlyToggles.current = [];
-        const collapsed = replayToggles(normalizeCollapsed(received[SERVER_KEYS.collapsedGroups]), early);
+        const collapsed = replayChoices(normalizeCollapsed(received[SERVER_KEYS.collapsedGroups]), early);
         setPrefs((local) => {
           const merged: Preferences = { ...local };
           // Drop keys the user changed while this request was in flight.
@@ -244,9 +244,11 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const toggleCollapsedGroup = useCallback((list: string, key: string) => {
     const early = !serverLoaded.current;
-    if (early) earlyToggles.current.push([list, key]);
     setPrefs((prev) => {
       const next = toggleCollapsed(prev.collapsedGroups, list, key);
+      // Record what the user now sees, so the replay keeps it even where the
+      // server disagrees with the local cache. Idempotent if the updater reruns.
+      if (early) earlyToggles.current.push([list, key, isCollapsed(next, list, key)]);
       writeLS(LS_KEYS.collapsedGroups, next);
       if (!early) queuePatch(SERVER_KEYS.collapsedGroups, next);
       return { ...prev, collapsedGroups: next };

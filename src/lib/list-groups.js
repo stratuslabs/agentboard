@@ -77,12 +77,17 @@ export function toggleCollapsed(state, list, key) {
 }
 
 /**
- * Apply toggles, in order, on top of a state. Used to replay clicks made before
- * the stored preference arrived onto the server's value.
+ * Apply early clicks, in order, on top of a state: each says whether the user
+ * left that group collapsed. Used to replay clicks made before the stored
+ * preference arrived onto the server's value. Recording the chosen state, not
+ * a flip, keeps the user's choice when the local cache and the server disagree.
  * @param {CollapsedGroups} state
- * @param {Array<[string, string]>} toggles  [list, key] pairs
+ * @param {Array<[string, string, boolean]>} choices  [list, key, collapsed]
  * @returns {CollapsedGroups}
  */
-export function replayToggles(state, toggles) {
-  return toggles.reduce((acc, [list, key]) => toggleCollapsed(acc, list, key), state);
+export function replayChoices(state, choices) {
+  return choices.reduce(
+    (acc, [list, key, collapsed]) => (isCollapsed(acc, list, key) === collapsed ? acc : toggleCollapsed(acc, list, key)),
+    state,
+  );
 }

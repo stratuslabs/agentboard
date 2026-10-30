@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupByProduct, normalizeCollapsed, toggleCollapsed, isCollapsed, replayToggles } from "../src/lib/list-groups.js";
+import { groupByProduct, normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices } from "../src/lib/list-groups.js";
 
 const card = (id, product_id, product_name, extra = {}) => ({
   id, product_id, product_name, product_emoji: "📦", org_name: "Labs", ...extra,
@@ -65,15 +65,24 @@ test("a stored value that isn't the right shape reads as nothing collapsed", () 
   assert.deepEqual(normalizeCollapsed({ today: ["product:1", 2, "product:1"], x: "y" }), { today: ["product:1"] });
 });
 
-test("replaying early toggles keeps the server's other collapsed groups", () => {
+test("replaying early clicks keeps the server's other collapsed groups", () => {
   const server = { today: ["product:2"], assigned: ["product:5"] };
-  const out = replayToggles(server, [["today", "product:1"]]);
+  const out = replayChoices(server, [["today", "product:1", true]]);
   assert.deepEqual(out, { today: ["product:2", "product:1"], assigned: ["product:5"] });
   assert.deepEqual(server, { today: ["product:2"], assigned: ["product:5"] });
 });
 
-test("replaying a toggle made twice is no change", () => {
+test("an early click replays the state the user chose, not a flip (#76 review)", () => {
+  // The local cache showed product:1 collapsed, the server has it expanded, and
+  // the user clicked to expand it: it stays expanded.
+  assert.deepEqual(replayChoices({}, [["today", "product:1", false]]), {});
+  // Server has it collapsed, user chose collapsed: still collapsed, once.
+  assert.deepEqual(replayChoices({ today: ["product:1"] }, [["today", "product:1", true]]), { today: ["product:1"] });
+});
+
+test("the last early click for a group wins", () => {
   const server = { today: ["product:2"] };
-  assert.deepEqual(replayToggles(server, [["today", "product:1"], ["today", "product:1"]]), server);
-  assert.deepEqual(replayToggles(server, []), server);
+  assert.deepEqual(replayChoices(server, [["today", "product:1", true], ["today", "product:1", false]]), server);
+  assert.deepEqual(replayChoices(server, [["today", "product:2", false], ["today", "product:2", true]]), server);
+  assert.deepEqual(replayChoices(server, []), server);
 });
