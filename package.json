@@ -36,7 +36,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/",
     "test:realtime": "node scripts/verify-realtime.mjs",
-    "test:card-links": "node scripts/verify-card-links.mjs"
+    "test:card-links": "node scripts/verify-card-links.mjs",
+    "test:login-next": "node scripts/verify-login-next.mjs"
   },
   "bin": {
     "agentboard": "./bin/agentboard.js"
@@ -163,6 +164,7 @@
     "./lib/agent-names": "./src/lib/agent-names.js",
     "./lib/agent-prompt": "./src/lib/agent-prompt.ts",
     "./lib/api-not-found": "./src/lib/api-not-found.ts",
+    "./lib/assignee": "./src/lib/assignee.js",
     "./lib/auth": "./src/lib/auth.ts",
     "./lib/card-keys": "./src/lib/card-keys.js",
     "./lib/card-links": "./src/lib/card-links.js",
@@ -178,6 +180,7 @@
     "./lib/done-cards": "./src/lib/done-cards.js",
     "./lib/emoji-suggest": "./src/lib/emoji-suggest.ts",
     "./lib/env": "./src/lib/env.ts",
+    "./lib/login-next": "./src/lib/login-next.js",
     "./lib/members": "./src/lib/members.ts",
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
@@ -189,6 +192,7 @@
     "./lib/realtime/notify": "./src/lib/realtime/notify.ts",
     "./lib/rich-text": "./src/lib/rich-text.js",
     "./lib/scope-params": "./src/lib/scope-params.ts",
+    "./lib/settings-save": "./src/lib/settings-save.js",
     "./lib/slug": "./src/lib/slug.js",
     "./lib/sql": "./src/lib/sql.js",
     "./lib/subtasks": "./src/lib/subtasks.js",
