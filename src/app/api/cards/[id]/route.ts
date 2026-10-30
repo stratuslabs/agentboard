@@ -5,6 +5,7 @@ import { boardIdForCard, notifyBoards } from "../../../../lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "../../../../lib/card-location";
 import { checkCardText } from "../../../../lib/card-text";
 import { memberIdByName, resolveAgentMember } from "../../../../lib/members";
+import { settleAssignee } from "../../../../lib/assignee";
 import { assertColumn, assertMember, withTenantParams } from "../../../../lib/tenant";
 
 export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
@@ -47,19 +48,20 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   // whose watchers also need to hear that it left.
   const boardBefore = await boardIdForCard(id);
 
-  // A named assignee is the caller's choice, so it's resolved first.
-  if (body.assignee && body.assignee_id === undefined) {
-    const named = await memberIdByName(teamId, body.assignee);
-    if (named !== null) {
-      body.assignee_id = named;
-    }
+  // A named assignee is the caller's choice, so it's resolved first, and
+  // both fields are written together so they can't name different people.
+  const named = await settleAssignee(body, (name) => memberIdByName(teamId, name));
+  if (named) {
+    body.assignee_id = named.assignee_id;
+    body.assignee = named.assignee;
   }
 
   // Auto-register agent from X-Agent-Name header. The header is only a claim:
   // a caller whose credential already names its agent is not reassigned by it.
   const agentName = request.headers.get("x-agent-name");
-  if (agentName && body.assignee_id === undefined && !body.assignee && (credentialMember ?? null) === null) {
+  if (agentName && !named && (credentialMember ?? null) === null) {
     body.assignee_id = await resolveAgentMember(teamId, agentName);
+    body.assignee = null;
   }
 
   const allowedFields = [

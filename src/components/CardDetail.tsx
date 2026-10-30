@@ -139,7 +139,11 @@ const PRIORITY_DOT: Record<string, string> = {
   low: "bg-priority-low",
 };
 
-/** A textarea that grows with its content, so long titles and descriptions read as text. */
+/**
+ * A textarea that grows with its content, so long titles and descriptions read as text.
+ * `shrink-0` matters: its parent is often a scrolling flex column, and an
+ * overflow-hidden flex item may shrink to 0px once that column overflows.
+ */
 function AutoTextarea({ value, onChange, className, ...rest }: Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange"> & { value: string; onChange: (v: string) => void }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -154,7 +158,7 @@ function AutoTextarea({ value, onChange, className, ...rest }: Omit<React.Textar
       rows={1}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={cx("block w-full resize-none overflow-hidden bg-transparent focus:outline-none", className)}
+      className={cx("block w-full shrink-0 resize-none overflow-hidden bg-transparent focus:outline-none", className)}
       {...rest}
     />
   );
