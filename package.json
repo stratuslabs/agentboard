@@ -182,6 +182,7 @@
     "./lib/realtime/notify": "./src/lib/realtime/notify.ts",
     "./lib/rich-text": "./src/lib/rich-text.js",
     "./lib/scope-params": "./src/lib/scope-params.ts",
+    "./lib/sibling-names": "./src/lib/sibling-names.js",
     "./lib/slug": "./src/lib/slug.js",
     "./lib/sql": "./src/lib/sql.js",
     "./lib/subtasks": "./src/lib/subtasks.js",
