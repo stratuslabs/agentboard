@@ -66,6 +66,34 @@ function upgradeDefaultColumnsSetting(stored) {
 }
 
 /**
+ * The columns a new board starts with, from the stored `default_columns`
+ * value. New products' boards and boards added to an existing product both
+ * use this, so they can't drift apart. A value that can't be read (not JSON,
+ * not a list, or entries with no name) gives the built-in list rather than an
+ * error. A saved empty list is kept: it's what someone chose in Settings.
+ * Entries without a color get the Backlog gray.
+ * @param {string | null | undefined} stored
+ * @returns {ColumnDef[]}
+ */
+function columnsFromSetting(stored) {
+  if (typeof stored !== "string") return DEFAULT_COLUMNS;
+  let parsed;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return DEFAULT_COLUMNS;
+  }
+  if (!Array.isArray(parsed)) return DEFAULT_COLUMNS;
+  /** @type {ColumnDef[]} */
+  const columns = [];
+  for (const c of parsed) {
+    if (c === null || typeof c !== "object" || typeof c.name !== "string" || !c.name.trim()) continue;
+    columns.push({ name: c.name, color: typeof c.color === "string" && c.color ? c.color : DEFAULT_COLUMNS[0].color });
+  }
+  return parsed.length > 0 && columns.length === 0 ? DEFAULT_COLUMNS : columns;
+}
+
+/**
  * Stores the default list for a team on a fresh install, and upgrades a team
  * still on the untouched old default. The update compares against the value
  * it read, so an edit saved in between is never overwritten. Shared by
@@ -98,5 +126,6 @@ module.exports = {
   DEFAULT_COLUMNS,
   LEGACY_DEFAULT_COLUMNS,
   upgradeDefaultColumnsSetting,
+  columnsFromSetting,
   ensureDefaultColumnsSetting,
 };
