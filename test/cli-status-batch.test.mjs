@@ -24,7 +24,12 @@ const BOARD_6 = [
   { id: 201, board_id: 6, name: "Ideas", slug: "ideas", position: 0 },
   { id: 202, board_id: 6, name: "Shipped", slug: "shipped", position: 1 },
 ];
-const BOARD_OF = { 1: BOARD_5, 2: BOARD_5, 3: BOARD_5, 4: BOARD_6, 6: BOARD_5 };
+// Card 7 lives on board 7, where "todo" matches two columns that differ only by case.
+const BOARD_7 = [
+  { id: 301, board_id: 7, name: "ToDo", slug: "to-do", position: 0 },
+  { id: 302, board_id: 7, name: "TODO", slug: "todo-2", position: 1 },
+];
+const BOARD_OF = { 1: BOARD_5, 2: BOARD_5, 3: BOARD_5, 4: BOARD_6, 6: BOARD_5, 7: BOARD_7 };
 // Card 5 doesn't exist. Card 6's move fails on the server.
 
 /** @type {{ method: string, url: string, body: unknown }[]} */
@@ -165,4 +170,13 @@ test("task move refuses several ids with --to-board and moves nothing", async ()
   assert.equal(r.code, 1);
   assert.deepEqual(requests, []);
   assert.match(r.stderr, /several cards to another board isn't supported/);
+});
+
+test("an ambiguous column on one card is that card's failure, not the end of the batch (#95 review)", async () => {
+  const { code, stdout, stderr } = await run("status", "7", "1", "todo", "--json");
+  assert.equal(code, 1);
+  const results = JSON.parse(stdout);
+  assert.deepEqual(results.map((r) => [r.id, r.ok]), [["7", false], ["1", true]]);
+  assert.match(results[0].error, /matches more than one column/);
+  assert.match(stderr, /7: Column 'todo' matches more than one column/);
 });

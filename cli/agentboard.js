@@ -450,7 +450,9 @@ function findColumn(cols, input) {
   );
   if (loose.length === 1) return loose[0];
   if (loose.length > 1) {
-    die(
+    // Thrown, not die(): in a batch move it's that card's failure. Uncaught,
+    // main() exits with it as before.
+    throw new CliError(
       `Column '${input}' matches more than one column: ${describeNamed(loose)}. ` +
         `Use one of these slugs: ${loose.map((c) => c.slug).join(", ")}.`
     );
