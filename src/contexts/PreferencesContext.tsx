@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups } from '../lib/list-groups';
 
 interface Preferences {
   expandedOrgs: number[];
@@ -10,6 +11,8 @@ interface Preferences {
   profileMemberId: number | null;
   /** Today hides cards in a Done column (card 206). */
   hideDoneToday: boolean;
+  /** Collapsed product groups on the list pages, per list (card 297). */
+  collapsedGroups: CollapsedGroups;
 }
 
 interface PreferencesContextType {
@@ -22,6 +25,7 @@ interface PreferencesContextType {
   setShowAllOrg: (orgId: number, showAll: boolean) => void;
   setProfileMemberId: (id: number) => void;
   setHideDoneToday: (hide: boolean) => void;
+  toggleCollapsedGroup: (list: string, key: string) => void;
   isLoaded: boolean;
 }
 
@@ -32,6 +36,7 @@ const DEFAULT_PREFS: Preferences = {
   selectedProduct: null,
   profileMemberId: null,
   hideDoneToday: false,
+  collapsedGroups: {},
 };
 
 const LS_KEYS = {
@@ -41,6 +46,7 @@ const LS_KEYS = {
   selectedProduct: 'agentboard-selected',
   profileMemberId: 'agentboard-profile-member-id',
   hideDoneToday: 'agentboard-hide-done-today',
+  collapsedGroups: 'agentboard-collapsed-groups',
 } as const;
 
 const SERVER_KEYS = LS_KEYS; // Same keys used on server
@@ -72,6 +78,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     selectedProduct: readLS(LS_KEYS.selectedProduct, null),
     profileMemberId: readLS(LS_KEYS.profileMemberId, null),
     hideDoneToday: readLS<unknown>(LS_KEYS.hideDoneToday, false) === true,
+    collapsedGroups: normalizeCollapsed(readLS<unknown>(LS_KEYS.collapsedGroups, {})),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,6 +86,12 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Keys changed locally since mount. The initial GET may carry an older server
   // value for these, so it must not overwrite them.
   const touched = useRef<Set<string>>(new Set());
+  // Collapsed-group choices made before the initial GET lands. They are replayed onto
+  // the server's value when it arrives, and nothing is saved until then, so an early
+  // click neither snaps back nor wipes groups collapsed in another browser. If the GET
+  // fails, they stay local for this page load and are never saved.
+  const serverLoaded = useRef(false);
+  const earlyToggles = useRef<Array<[string, string, boolean]>>([]);
 
   // Debounced PATCH to server
   const flushToServer = useCallback(() => {
@@ -102,11 +115,21 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     flushToServer();
   }, [flushToServer]);
 
-  // Fetch from server on mount, server wins on conflict
+  // Fetch from server on mount, server wins on conflict. A superseded request (React
+  // Strict Mode mounts effects twice in development) is aborted, so a stale second
+  // response can't land after the first and undo a click made in between.
   useEffect(() => {
-    fetch('/api/preferences')
+    const request = new AbortController();
+    fetch('/api/preferences', { signal: request.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
       .then((received: Record<string, unknown>) => {
+        if (request.signal.aborted) return;
+        // Computed once, outside the updater, so a double-invoked updater can't replay twice.
+        // Early collapse clicks send no PATCH, so this key is never in `touched` here.
+        serverLoaded.current = true;
+        const early = earlyToggles.current;
+        earlyToggles.current = [];
+        const collapsed = replayChoices(normalizeCollapsed(received[SERVER_KEYS.collapsedGroups]), early);
         setPrefs((local) => {
           const merged: Preferences = { ...local };
           // Drop keys the user changed while this request was in flight.
@@ -142,15 +165,24 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
             merged.hideDoneToday = serverPrefs[SERVER_KEYS.hideDoneToday] === true;
             writeLS(LS_KEYS.hideDoneToday, merged.hideDoneToday);
           }
+          // Also server-authoritative, with early clicks replayed on top (see above).
+          merged.collapsedGroups = collapsed;
+          writeLS(LS_KEYS.collapsedGroups, collapsed);
 
           return merged;
         });
+        if (early.length) queuePatch(SERVER_KEYS.collapsedGroups, collapsed);
         setIsLoaded(true);
       })
       .catch(() => {
+        if (request.signal.aborted) return;
+        // Keep the local state. Collapse clicks stay local for this page load: the
+        // local cache was never merged with the server value, so saving it could
+        // wipe groups collapsed in another browser. serverLoaded stays false.
         setIsLoaded(true); // Even on error, mark loaded so app works with localStorage data
       });
-  }, []);
+    return () => request.abort();
+  }, [queuePatch]);
 
   const updatePref = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((prev) => ({ ...prev, [key]: value }));
@@ -210,6 +242,19 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     updatePref('hideDoneToday', hide);
   }, [updatePref]);
 
+  const toggleCollapsedGroup = useCallback((list: string, key: string) => {
+    const early = !serverLoaded.current;
+    setPrefs((prev) => {
+      const next = toggleCollapsed(prev.collapsedGroups, list, key);
+      // Record what the user now sees, so the replay keeps it even where the
+      // server disagrees with the local cache. Idempotent if the updater reruns.
+      if (early) earlyToggles.current.push([list, key, isCollapsed(next, list, key)]);
+      writeLS(LS_KEYS.collapsedGroups, next);
+      if (!early) queuePatch(SERVER_KEYS.collapsedGroups, next);
+      return { ...prev, collapsedGroups: next };
+    });
+  }, [queuePatch]);
+
   return (
     <PreferencesContext.Provider value={{
       prefs,
@@ -221,6 +266,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setShowAllOrg,
       setProfileMemberId,
       setHideDoneToday,
+      toggleCollapsedGroup,
       isLoaded,
     }}>
       {children}

@@ -36,6 +36,7 @@ export default function TodayPage() {
     <ListView
       cards={shown}
       title="Today"
+      listId="today"
       icon={<CalendarDays />}
       note={hidden > 0 ? `${hidden} done hidden` : undefined}
       actions={cards.length > 0 && (

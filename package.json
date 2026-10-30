@@ -184,6 +184,7 @@
     "./lib/done-cards": "./src/lib/done-cards.js",
     "./lib/emoji-suggest": "./src/lib/emoji-suggest.ts",
     "./lib/env": "./src/lib/env.ts",
+    "./lib/list-groups": "./src/lib/list-groups.js",
     "./lib/login-next": "./src/lib/login-next.js",
     "./lib/member-save": "./src/lib/member-save.js",
     "./lib/members": "./src/lib/members.ts",
