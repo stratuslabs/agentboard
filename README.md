@@ -122,7 +122,9 @@ npm run build
 POSTGRES_URL=postgresql://... APP_PASSWORD=... npm start    # port 3000; set PORT to change it
 ```
 
-`npm start` also reads `.env.local` if you would rather keep the variables there. Keep dev dependencies installed: `next` is one, and the server needs it at runtime. Behind a reverse proxy, read the proxy notes in [Security](#security).
+`npm start` also reads `.env.local` if you would rather keep the variables there. Behind a reverse proxy, read the proxy notes in [Security](#security).
+
+**Keep dev dependencies installed.** `next`, `react` and `react-dom` are dev dependencies here (the app is also a package, and those are its peer dependencies), but `npm start` needs them at runtime. So don't run `npm prune --omit=dev` or `npm ci --omit=dev` after building, and don't copy a pruned `node_modules` into a Docker image. `NODE_ENV=production` makes `npm ci` skip them too, so if your environment sets it, install with `npm ci --include=dev`. If `npm start` fails with `next: command not found`, this is why.
 
 ## Configuration
 
