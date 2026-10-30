@@ -53,8 +53,8 @@ export function orgSlugFromName(name: string): string {
  * its URLs) has no org page: /today is the Today page. This runs in the
  * browser, where configure() isn't loaded, so it checks only the core's own
  * list. Slugs the consuming app reserved are the server's call: the board
- * gets `org_page` from /api/products/by-slug and passes no orgSlug when it's
- * false.
+ * gets `org_page` from /api/products/by-slug and passes it on as the
+ * KanbanBoard `orgPage` prop.
  */
 /**
  * Whether /<slug> is that org's page, on the server: the app mounts org pages
