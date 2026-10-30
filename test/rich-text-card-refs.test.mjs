@@ -121,3 +121,46 @@ test("a key ending a sentence still links", () => {
   ]);
   assert.deepEqual(parseInline("(AB-142.)"), [text("("), card("AB-142"), text(".)")]);
 });
+
+// The boundary is an allowlist: a key links only when it stands alone as a
+// word, with nothing on either side but whitespace, brackets, quotes or
+// sentence punctuation. Anything else glued to it (an address, a path, a
+// query, an operator) keeps the whole thing as text.
+test("a key glued to any other character stays text", () => {
+  for (const c of ["+", "=", "~", "*", "%", "&", "$", "^", "|", "\\", "-", "_", "/", "@", "#", ":", "."]) {
+    assert.deepEqual(parseInline(`${c}AB-142`), [text(`${c}AB-142`)], `${c}AB-142`);
+  }
+  for (const c of ["+", "=", "~", "*", "%", "&", "$", "^", "|", "\\", "#", "/", "@"]) {
+    assert.deepEqual(parseInline(`AB-142${c}x`), [text(`AB-142${c}x`)], `AB-142${c}x`);
+  }
+  for (const s of ["AB-142+alerts@example.com", "AB-142:8080", "AB-142?x=1", "AB-142!x", "AB-142;x", "AB-142,x", "card #57+x", "card #57.md", "card #57/x"]) {
+    assert.deepEqual(parseInline(s), [text(s)], s);
+  }
+});
+
+test("brackets, quotes and sentence punctuation around a key are fine", () => {
+  assert.deepEqual(parseInline("(AB-142)"), [text("("), card("AB-142"), text(")")]);
+  assert.deepEqual(parseInline("[AB-142]"), [text("["), card("AB-142"), text("]")]);
+  assert.deepEqual(parseInline("\"AB-142\""), [text("\""), card("AB-142"), text("\"")]);
+  assert.deepEqual(parseInline("“AB-142”"), [text("“"), card("AB-142"), text("”")]);
+  assert.deepEqual(parseInline("AB-142's owner"), [card("AB-142"), text("'s owner")]);
+  assert.deepEqual(parseInline("AB-142: fix it"), [card("AB-142"), text(": fix it")]);
+  assert.deepEqual(parseInline("AB-142? AB-143! AB-144;"), [
+    card("AB-142"), text("? "), card("AB-143"), text("! "), card("AB-144"), text(";"),
+  ]);
+  assert.deepEqual(parseInline("see card #57, then AB-1"), [text("see card "), card("57", "#57"), text(", then "), card("AB-1")]);
+});
+
+test("every printable ASCII neighbor: only the allowed ones let a key link", () => {
+  const opens = new Set([" ", "(", "[", "{", "<", "\"", "'"]);
+  const closes = new Set([" ", ")", "]", "}", ">", "\"", "'"]);
+  // Checks the ref, not just "some card": AAB-142 is a different, valid key.
+  const linked = (s) => parseInline(s).some((n) => n.type === "card" && n.ref === "AB-142");
+  for (let code = 0x21; code <= 0x7e; code++) {
+    const c = String.fromCharCode(code);
+    // Before the key. Backtick and [ ... ]( ... ) are code and links, not plain text.
+    if (c !== "`") assert.equal(linked(`x ${c}AB-142 y`), opens.has(c), `before: ${c}`);
+    // After the key, with a letter after that so punctuation isn't a sentence end.
+    if (c !== "`") assert.equal(linked(`x AB-142${c}y`), closes.has(c), `after: ${c}`);
+  }
+});

@@ -147,15 +147,22 @@ export function parseInline(line, options = {}) {
   return out;
 }
 
+// A reference links only when it stands alone as a word: what touches it on
+// either side must be whitespace, an opening or closing bracket or quote, or
+// sentence punctuation that is itself followed by one of those. This is an
+// allowlist on purpose. Anything else glued on (repo/AB-1, #AB-1, AB-1/path,
+// AB-1+tag@host, AB-1.example.com, AB-1.5, AB-1:8080) keeps it all as text.
+const OPEN = `\\s(\\[{<"'\u201c\u2018`;
+const CLOSE = `\\s)\\]}>"'\u201d\u2019`;
+const BEFORE = `(?<=^|[${OPEN}])`;
+const AFTER = `(?=$|[${CLOSE}]|[.,:;!?](?=$|[${CLOSE}]))`;
 // A card key as the app prints it, AB-142: uppercase only, so prose like
-// "covid-19" stays prose. Not glued to a word, path, mention or version
-// (repo/AB-1, #AB-1, AB-1/path, owner+AB-1@host, AB-1.5, AB-1-2) or the
-// first label of a host or file name (AB-1.example.com, AB-1.md).
-const CARD_KEY = /(?<![A-Za-z0-9_/#@.\-])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})(?![A-Za-z0-9_/@]|-[0-9]|\.[A-Za-z0-9])/;
+// "covid-19" stays prose.
+const CARD_KEY = `${BEFORE}([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})${AFTER}`;
 // A card without a key, written the way the app labels it, "#57", but only
 // after the word "card": on its own, #57 is usually a PR or an issue.
-const CARD_ID = /(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})(?![A-Za-z0-9_])/;
-const CARD_REF = new RegExp(`${CARD_KEY.source}|${CARD_ID.source}`, "g");
+const CARD_ID = `(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})${AFTER}`;
+const CARD_REF = new RegExp(`${CARD_KEY}|${CARD_ID}`, "g");
 
 // Prefixes that read like a card key but are standards, hashes or time zones:
 // UTF-8, ISO-8601, SHA-256, CVE-2026, UTC-5.
