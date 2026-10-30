@@ -18,6 +18,7 @@ import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import type { AgentSetupPrompt } from "../lib/agent-prompt";
 import ProfileSetup from "./ProfileSetup";
+import QuickSearch from "./QuickSearch";
 import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
 
 export interface BoardLayoutProps {
@@ -43,6 +44,7 @@ function BoardLayoutInner({ children, sidebarFooter, sidebarRail, agentSetupProm
   return (
     <div className="h-screen flex overflow-hidden bg-bg">
       <ProfileSetup />
+      <QuickSearch />
       {showSidebar && (
         <Sidebar
           collapsed={isMobile ? false : collapsed}

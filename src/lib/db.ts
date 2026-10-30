@@ -1,6 +1,6 @@
 import { sql, db } from "./sql";
 import { DEFAULT_BOARD_MIGRATION } from "./default-board-migration";
-import { DEFAULT_COLUMNS } from "./default-columns";
+import { columnsFromSetting } from "./default-columns";
 import { SHADOWED_ORG_SLUGS } from "./org-slug";
 import { slugify, uniqueBySlug } from "./slug";
 import { planColumnReslug } from "./column-slug";
@@ -225,21 +225,28 @@ export async function ensureTables() {
 export { slugify };
 
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
-const FALLBACK_COLUMNS = DEFAULT_COLUMNS;
+
+/**
+ * The columns a new board in this team starts with: the Default columns
+ * setting, or the built-in list. A saved column that makes the same slug as
+ * an earlier one is skipped (Can't, then Cant), rather than failing the
+ * insert after the board exists.
+ */
+export async function teamDefaultColumns(teamId: number) {
+  const { rows } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_columns'`;
+  return uniqueBySlug(columnsFromSetting(rows[0]?.value), (col) => col.name);
+}
 
 export async function createDefaultBoards(teamId: number, productId: number) {
   // Read the team's default boards from settings
   const { rows: boardSettings } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_boards'`;
   const boardNames: string[] = boardSettings.length > 0 ? JSON.parse(boardSettings[0].value) : FALLBACK_BOARDS;
 
-  // Read the team's default columns from settings
-  const { rows: colSettings } = await sql`SELECT value FROM settings WHERE team_id = ${teamId} AND key = 'default_columns'`;
-  const columns: { name: string; color: string }[] = colSettings.length > 0 ? JSON.parse(colSettings[0].value) : FALLBACK_COLUMNS;
+  const cols = await teamDefaultColumns(teamId);
 
   // A default that makes the same slug as an earlier one is skipped, rather
   // than failing the insert after the product and some boards exist.
   const boards = uniqueBySlug(boardNames, (name) => name);
-  const cols = uniqueBySlug(columns, (col) => col.name);
 
   for (let i = 0; i < boards.length; i++) {
     const { item: boardName, slug: boardSlug } = boards[i];

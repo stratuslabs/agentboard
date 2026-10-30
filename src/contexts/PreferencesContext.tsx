@@ -9,6 +9,8 @@ interface Preferences {
   showAllOrgs: Record<number, boolean>;
   selectedProduct: { productId: number; orgId: number } | null;
   profileMemberId: number | null;
+  /** Today hides cards in a Done column (card 206). */
+  hideDoneToday: boolean;
   /** Collapsed product groups on the list pages, per list (card 297). */
   collapsedGroups: CollapsedGroups;
 }
@@ -22,6 +24,7 @@ interface PreferencesContextType {
   setSelectedProduct: (productId: number, orgId: number) => void;
   setShowAllOrg: (orgId: number, showAll: boolean) => void;
   setProfileMemberId: (id: number) => void;
+  setHideDoneToday: (hide: boolean) => void;
   toggleCollapsedGroup: (list: string, key: string) => void;
   isLoaded: boolean;
 }
@@ -32,6 +35,7 @@ const DEFAULT_PREFS: Preferences = {
   showAllOrgs: {},
   selectedProduct: null,
   profileMemberId: null,
+  hideDoneToday: false,
   collapsedGroups: {},
 };
 
@@ -41,6 +45,7 @@ const LS_KEYS = {
   showAllOrgs: 'agentboard-show-all-orgs',
   selectedProduct: 'agentboard-selected',
   profileMemberId: 'agentboard-profile-member-id',
+  hideDoneToday: 'agentboard-hide-done-today',
   collapsedGroups: 'agentboard-collapsed-groups',
 } as const;
 
@@ -72,11 +77,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     showAllOrgs: readLS(LS_KEYS.showAllOrgs, {}),
     selectedProduct: readLS(LS_KEYS.selectedProduct, null),
     profileMemberId: readLS(LS_KEYS.profileMemberId, null),
+    hideDoneToday: readLS<unknown>(LS_KEYS.hideDoneToday, false) === true,
     collapsedGroups: normalizeCollapsed(readLS<unknown>(LS_KEYS.collapsedGroups, {})),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Record<string, unknown>>({});
+  // Keys changed locally since mount. The initial GET may carry an older server
+  // value for these, so it must not overwrite them.
+  const touched = useRef<Set<string>>(new Set());
   // Collapsed-group clicks made before the initial GET lands. They are replayed onto
   // the server's value when it arrives, and nothing is saved until then, so an early
   // click neither snaps back nor wipes groups collapsed in another browser.
@@ -101,6 +110,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const queuePatch = useCallback((key: string, value: unknown) => {
     pendingPatches.current[key] = value;
+    touched.current.add(key);
     flushToServer();
   }, [flushToServer]);
 
@@ -108,14 +118,20 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     fetch('/api/preferences')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
-      .then((serverPrefs: Record<string, unknown>) => {
+      .then((received: Record<string, unknown>) => {
         // Computed once, outside the updater, so a double-invoked updater can't replay twice.
+        // Early collapse clicks send no PATCH, so this key is never in `touched` here.
         serverLoaded.current = true;
         const early = earlyToggles.current;
         earlyToggles.current = [];
-        const collapsed = replayToggles(normalizeCollapsed(serverPrefs[SERVER_KEYS.collapsedGroups]), early);
+        const collapsed = replayToggles(normalizeCollapsed(received[SERVER_KEYS.collapsedGroups]), early);
         setPrefs((local) => {
           const merged: Preferences = { ...local };
+          // Drop keys the user changed while this request was in flight.
+          const serverPrefs: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(received)) {
+            if (!touched.current.has(key)) serverPrefs[key] = value;
+          }
 
           if (serverPrefs[SERVER_KEYS.expandedOrgs] !== undefined) {
             merged.expandedOrgs = serverPrefs[SERVER_KEYS.expandedOrgs] as number[];
@@ -137,8 +153,14 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
             merged.profileMemberId = serverPrefs[SERVER_KEYS.profileMemberId] as number | null;
             writeLS(LS_KEYS.profileMemberId, merged.profileMemberId);
           }
-          // The server is the authority: no row means nothing collapsed. The local
-          // cache is unscoped, so on a shared browser it may hold another user's choice.
+          // The server is the authority for this one: no row means the default.
+          // The local cache is unscoped, so on a shared browser it may hold another
+          // user's choice, and hiding cards that user never hid is worse than a flash.
+          if (!touched.current.has(SERVER_KEYS.hideDoneToday)) {
+            merged.hideDoneToday = serverPrefs[SERVER_KEYS.hideDoneToday] === true;
+            writeLS(LS_KEYS.hideDoneToday, merged.hideDoneToday);
+          }
+          // Also server-authoritative, with early clicks replayed on top (see above).
           merged.collapsedGroups = collapsed;
           writeLS(LS_KEYS.collapsedGroups, collapsed);
 
@@ -216,6 +238,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     updatePref('profileMemberId', id);
   }, [updatePref]);
 
+  const setHideDoneToday = useCallback((hide: boolean) => {
+    updatePref('hideDoneToday', hide);
+  }, [updatePref]);
+
   const toggleCollapsedGroup = useCallback((list: string, key: string) => {
     const early = !serverLoaded.current;
     if (early) earlyToggles.current.push([list, key]);
@@ -237,6 +263,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setSelectedProduct,
       setShowAllOrg,
       setProfileMemberId,
+      setHideDoneToday,
       toggleCollapsedGroup,
       isLoaded,
     }}>

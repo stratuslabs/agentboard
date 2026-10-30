@@ -5,6 +5,7 @@ import { boardIdForColumn, notifyBoard } from "../../../lib/realtime/notify";
 import { checkCardText } from "../../../lib/card-text";
 import { getCardWithLocation } from "../../../lib/card-location";
 import { memberIdByName, resolveAgentMember } from "../../../lib/members";
+import { settleAssignee } from "../../../lib/assignee";
 import { assertColumn, assertMember, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
 
@@ -56,8 +57,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     conditions.push(`cards.assignee_id = $${paramIdx++}`);
     values.push(assigneeId);
   } else if (assignee) {
-    // Support filtering by old text assignee OR by member name
-    conditions.push(`(cards.assignee = $${paramIdx} OR m.name = $${paramIdx})`);
+    // By member name, or by the text name of a card filed under no member. A
+    // card written before card 838 can carry stale text beside its member;
+    // the member is who it's filed under.
+    conditions.push(`(m.name = $${paramIdx} OR (cards.assignee_id IS NULL AND cards.assignee = $${paramIdx}))`);
     values.push(assignee);
     paramIdx++;
   }
@@ -89,25 +92,28 @@ export const POST = withTenant(async (request: NextRequest, { teamId, memberId }
   if (textError) {
     return NextResponse.json({ error: textError }, { status: 400 });
   }
-  const { title, description, assignee, priority, labels, github_issue_url, github_pr_url, due_date } = body;
-  let { assignee_id } = body;
+  const { title, description, priority, labels, github_issue_url, github_pr_url, due_date } = body;
 
   if (!body.column_id || !title) {
     return NextResponse.json({ error: "column_id and title are required" }, { status: 400 });
   }
   const column_id = await assertColumn(teamId, body.column_id);
   // An assignee from another team is refused, not silently attached.
-  if (assignee_id) assignee_id = await assertMember(teamId, assignee_id);
+  const namedId = body.assignee_id ? await assertMember(teamId, body.assignee_id) : undefined;
 
   // Who the card is filed under, most explicit first. A named assignee, by id
-  // or by name, is the caller's choice and wins. Without one, the card goes to
-  // whoever is calling: a credential issued to one agent says who that is, and
-  // X-Agent-Name is only a claim, so it counts only when the credential
-  // doesn't name an agent. A name that matches nobody stays as text rather
-  // than being quietly filed under the caller.
-  if (!assignee_id && assignee) {
-    assignee_id = await memberIdByName(teamId, assignee);
-  }
+  // or by name, is the caller's choice and wins, and is stored as one field
+  // (a member, or text for a name that matches nobody), never both. Without
+  // one, the card goes to whoever is calling: a credential issued to one
+  // agent says who that is, and X-Agent-Name is only a claim, so it counts
+  // only when the credential doesn't name an agent. A name that matches
+  // nobody stays as text rather than being quietly filed under the caller.
+  const named = await settleAssignee(
+    { assignee: body.assignee, assignee_id: namedId },
+    (name) => memberIdByName(teamId, name),
+  );
+  let assignee_id = named?.assignee_id ?? null;
+  const assignee = named?.assignee ?? null;
   const credentialMember = memberId ?? null;
   if (!assignee_id && !assignee && credentialMember !== null) {
     assignee_id = await assertMember(teamId, credentialMember);
