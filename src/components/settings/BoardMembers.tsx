@@ -5,6 +5,7 @@ import { Palette, Pencil, UserMinus } from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 import { Button, ColorSwatches, Input, MenuDivider, MenuItem, PRESET_COLORS, Select } from "../ui";
 import { MemberEditor, MemberGroupHeader, MemberListCard, MemberRow, RowMenu } from "./MemberList";
+import { saveMember } from "../../lib/member-save";
 
 export interface BoardMember {
   id: number;
@@ -39,13 +40,16 @@ export function announceMembersChanged() {
   window.dispatchEvent(new Event(MEMBERS_CHANGED));
 }
 
-export async function updateBoardMember(id: number, name: string, color: string) {
-  await fetch(`/api/members/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, color }),
-  });
+/**
+ * Rename or recolour a member. Resolves to null when the server stored it, or
+ * to the message to show when it didn't (a 409 when another agent on the team
+ * already has that name), so the caller can keep the edit open.
+ */
+export async function updateBoardMember(id: number, name: string, color: string): Promise<string | null> {
+  const result = await saveMember(id, { name, color });
+  if (!result.ok) return result.message;
   announceMembersChanged();
+  return null;
 }
 
 /** The add-a-member form: name, human or agent, and a colour. */
@@ -98,6 +102,17 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
   onRemove: () => void;
 }) {
   const [editing, setEditing] = useState<"name" | "color" | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  function startEditing(focus: "name" | "color") { setSaveError(null); setEditing(focus); }
+  async function save(name: string, color: string) {
+    setSaving(true);
+    setSaveError(null);
+    const error = await updateBoardMember(member.id, name, color);
+    setSaving(false);
+    if (error) setSaveError(error);
+    else setEditing(null);
+  }
   const isAgent = member.type === "agent";
   return (
     <MemberRow
@@ -111,7 +126,9 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
           initialColor={member.color}
           focus={editing}
           onCancel={() => setEditing(null)}
-          onSave={async (name, color) => { await updateBoardMember(member.id, name, color); setEditing(null); }}
+          onSave={save}
+          error={saveError}
+          saving={saving}
         />
       )}
       trailing={
@@ -120,8 +137,8 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
           <RowMenu label={`${member.name} options`}>
             {(close) => (
               <>
-                <MenuItem icon={<Pencil />} onClick={() => { close(); setEditing("name"); }}>Rename</MenuItem>
-                <MenuItem icon={<Palette />} onClick={() => { close(); setEditing("color"); }}>Change color</MenuItem>
+                <MenuItem icon={<Pencil />} onClick={() => { close(); startEditing("name"); }}>Rename</MenuItem>
+                <MenuItem icon={<Palette />} onClick={() => { close(); startEditing("color"); }}>Change color</MenuItem>
                 {extraMenu?.(close)}
                 <MenuDivider />
                 <MenuItem danger icon={<UserMinus />} onClick={() => { close(); onRemove(); }}>Remove from team</MenuItem>

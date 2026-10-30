@@ -173,6 +173,7 @@
     "./lib/default-columns": "./src/lib/default-columns.js",
     "./lib/emoji-suggest": "./src/lib/emoji-suggest.ts",
     "./lib/env": "./src/lib/env.ts",
+    "./lib/member-save": "./src/lib/member-save.js",
     "./lib/members": "./src/lib/members.ts",
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
