@@ -20,15 +20,21 @@ interface ListViewProps {
   cards: ViewCard[];
   title: string;
   icon: React.ReactNode;
-  /** Shown under "No cards found". */
+  /** Shown under the empty-state title. */
   emptyMessage: string;
+  /** Empty-state title. Defaults to "No cards found". */
+  emptyTitle?: string;
+  /** A short note after the card count, such as "2 done hidden". */
+  note?: string;
+  /** Controls at the right of the header. */
+  actions?: React.ReactNode;
   emptyIcon?: React.ReactNode;
   tone?: "default" | "danger";
   onRefresh: () => void;
   onBack?: () => void;
 }
 
-export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, tone = "default", onRefresh, onBack }: ListViewProps) {
+export default function ListView({ cards, title, icon, emptyMessage, emptyTitle = "No cards found", note, actions, emptyIcon, tone = "default", onRefresh, onBack }: ListViewProps) {
   const [openCardId, setOpenCardId] = useState<number | null>(null);
   const [cardView, setCardView] = useState<"panel" | "page">("panel");
   // The open card, held here as well as read from `cards`: an edit can take it
@@ -118,15 +124,17 @@ export default function ListView({ cards, title, icon, emptyMessage, emptyIcon, 
         )}
         <span className={cx("flex [&>svg]:h-[17px] [&>svg]:w-[17px]", tone === "danger" ? "text-danger" : "text-text-1")}>{icon}</span>
         <h1 className="text-base font-semibold tracking-[-0.2px] text-text-1">{title}</h1>
-        <span className="font-mono text-[11.5px] text-text-3">
+        <span className="whitespace-nowrap font-mono text-[11.5px] text-text-3">
           {cards.length} {cards.length === 1 ? "card" : "cards"}
         </span>
+        {note && <span className="whitespace-nowrap font-mono text-[11.5px] text-text-4 max-md:hidden">· {note}</span>}
+        {actions && <div className="ml-auto flex items-center gap-1.5">{actions}</div>}
       </div>
 
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-y-auto px-8 py-7 max-md:px-4">
         {cards.length === 0 ? (
-          <EmptyState className="flex-1 pb-20" icon={emptyIcon ?? icon} title="No cards found" body={emptyMessage} />
+          <EmptyState className="flex-1 pb-20" icon={emptyIcon ?? icon} title={emptyTitle} body={emptyMessage} />
         ) : (
           <div className="flex max-w-[880px] flex-col gap-6">
             {Object.entries(grouped).map(([key, group]) => (

@@ -171,6 +171,7 @@
     "./lib/default-board": "./src/lib/default-board.js",
     "./lib/default-board-migration": "./src/lib/default-board-migration.js",
     "./lib/default-columns": "./src/lib/default-columns.js",
+    "./lib/done-cards": "./src/lib/done-cards.js",
     "./lib/emoji-suggest": "./src/lib/emoji-suggest.ts",
     "./lib/env": "./src/lib/env.ts",
     "./lib/members": "./src/lib/members.ts",
