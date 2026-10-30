@@ -5,10 +5,11 @@
 // rename is never silently dropped.
 
 /**
- * PATCH /api/members/:id with `{ name, color }`.
+ * PATCH /api/members/:id with the fields given in `changes`. A field left
+ * undefined isn't sent, so the server keeps its current value.
  *
  * @param {number} id
- * @param {{ name: string, color: string }} changes
+ * @param {{ name?: string, color?: string }} changes
  * @param {typeof fetch} [fetchImpl]
  * @returns {Promise<{ ok: true, member: unknown } | { ok: false, message: string }>}
  */

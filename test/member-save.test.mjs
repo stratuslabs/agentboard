@@ -37,6 +37,12 @@ test("a 200 is a successful save, sent as PATCH /api/members/:id {name, color}",
   assert.deepEqual(JSON.parse(calls[0].init.body), { name: "Nova", color: "#6B7280" });
 });
 
+test("only the fields given are sent, so a color save can't resend a stale name", async () => {
+  const { impl, calls } = fakeFetch(() => json(200, { id: 7 }));
+  await saveMember(7, { color: "#EF4444" }, impl);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { color: "#EF4444" });
+});
+
 test("a 409 duplicate agent name is a failure carrying the server's reason", async () => {
   const { impl } = fakeFetch(() => json(409, { error: "Another agent on this team already uses that name." }));
   const result = await saveMember(7, { name: "Blair", color: "#6B7280" }, impl);

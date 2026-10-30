@@ -45,7 +45,8 @@ export function announceMembersChanged() {
  * to the message to show when it didn't (a 409 when another agent on the team
  * already has that name), so the caller can keep the edit open.
  */
-export async function updateBoardMember(id: number, name: string, color: string): Promise<string | null> {
+/** Save a member's name and/or color; a field left undefined isn't sent. */
+export async function updateBoardMember(id: number, name: string | undefined, color: string | undefined): Promise<string | null> {
   const result = await saveMember(id, { name, color });
   if (!result.ok) return result.message;
   announceMembersChanged();
@@ -108,14 +109,25 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
   // sent it: after Cancel (and maybe a reopen) its result is dropped, so a slow
   // failure can't show on the new edit and a slow success can't close it.
   const session = useRef(0);
+  // What the editor showed when it opened. Only fields changed from these are
+  // sent: a save from an earlier session may have changed the other one since,
+  // and the editor's copy of it is stale.
+  const opened = useRef({ name: member.name, color: member.color });
   function endSession() { session.current += 1; setSaving(false); setSaveError(null); }
-  function startEditing(focus: "name" | "color") { endSession(); setEditing(focus); }
+  function startEditing(focus: "name" | "color") {
+    endSession();
+    opened.current = { name: member.name, color: member.color };
+    setEditing(focus);
+  }
   function cancelEditing() { endSession(); setEditing(null); }
   async function save(name: string, color: string) {
+    const changedName = name !== opened.current.name ? name : undefined;
+    const changedColor = color !== opened.current.color ? color : undefined;
+    if (changedName === undefined && changedColor === undefined) { cancelEditing(); return; }
     const mine = session.current;
     setSaving(true);
     setSaveError(null);
-    const error = await updateBoardMember(member.id, name, color);
+    const error = await updateBoardMember(member.id, changedName, changedColor);
     if (session.current !== mine) return;
     setSaving(false);
     if (error) setSaveError(error);
