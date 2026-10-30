@@ -76,6 +76,7 @@
   },
   "exports": {
     "./app/(board)/[orgSlug]/[productSlug]/page": "./src/app/(board)/[orgSlug]/[productSlug]/page.tsx",
+    "./app/(board)/[orgSlug]/page": "./src/app/(board)/[orgSlug]/page.tsx",
     "./app/(board)/assigned/page": "./src/app/(board)/assigned/page.tsx",
     "./app/(board)/c/[id]/not-found": "./src/app/(board)/c/[id]/not-found.tsx",
     "./app/(board)/c/[id]/page": "./src/app/(board)/c/[id]/page.tsx",
@@ -123,6 +124,7 @@
     "./app/providers": "./src/app/providers.tsx",
     "./app/settings/page": "./src/app/settings/page.tsx",
     "./components/BoardLayout": "./src/components/BoardLayout.tsx",
+    "./components/CardContextMenu": "./src/components/CardContextMenu.tsx",
     "./components/CardDetail": "./src/components/CardDetail.tsx",
     "./components/CardLinks": "./src/components/CardLinks.tsx",
     "./components/ConfirmModal": "./src/components/ConfirmModal.tsx",
@@ -185,6 +187,7 @@
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
     "./lib/product-update": "./src/lib/product-update.js",
+    "./lib/products-changed": "./src/lib/products-changed.ts",
     "./lib/quick-search": "./src/lib/quick-search.ts",
     "./lib/rate-limit": "./src/lib/rate-limit.ts",
     "./lib/realtime/listen": "./src/lib/realtime/listen.ts",

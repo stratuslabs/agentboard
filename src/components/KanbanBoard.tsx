@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useBoardStream } from "../lib/useBoardStream";
 import {
   DndContext,
@@ -28,11 +29,13 @@ import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, L
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
+import CardContextMenu, { type CardMenuTarget } from "./CardContextMenu";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
+import { orgPageHref } from "../lib/org-slug";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { type Card, type Member, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, type Member, cardLink, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
 import { cardMatchesSearch, parseSearchQuery } from "../lib/card-search";
 import { OPEN_CARD_EVENT, type OpenCardDetail } from "../lib/quick-search";
 
@@ -84,6 +87,8 @@ interface Board {
 interface KanbanBoardProps {
   productId: number;
   orgName: string;
+  /** The org's slug. When given, the org name in the breadcrumb links to its page, /<orgSlug>. */
+  orgSlug?: string;
   productName: string;
   productEmoji: string;
   /** The product's card key, the AB in AB-142, so cards can show theirs. */
@@ -94,6 +99,7 @@ interface KanbanBoardProps {
 export default function KanbanBoard({
   productId,
   orgName,
+  orgSlug,
   productName,
   productEmoji,
   productKey = null,
@@ -131,6 +137,7 @@ export default function KanbanBoard({
   const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; action: () => void } | null>(null);
   const [renameBoardName, setRenameBoardName] = useState("");
   const [columnContextMenu, setColumnContextMenu] = useState<{ columnId: number; x: number; y: number } | null>(null);
+  const [cardMenu, setCardMenu] = useState<CardMenuTarget | null>(null);
   const [renamingColumnId, setRenamingColumnId] = useState<number | null>(null);
   const [renameColumnName, setRenameColumnName] = useState("");
   const [renameColumnError, setRenameColumnError] = useState<string | null>(null);
@@ -532,6 +539,38 @@ export default function KanbanBoard({
     closeCard();
   }
 
+  const closeCardMenu = useCallback(() => setCardMenu(null), []);
+
+  // Right-click and Shift+F10 fire no click, so the window click handler that closes
+  // the board-tab and column menus never runs. Close them here so only one menu shows.
+  function openCardMenu(target: CardMenuTarget) {
+    setBoardContextMenu(null);
+    setColumnContextMenu(null);
+    setCardMenu(target);
+  }
+
+  async function copyCardLink(card: Card) {
+    try {
+      await navigator.clipboard.writeText(cardLink(card, productKey));
+    } catch {
+      // Clipboard can be denied; the card's own Copy link shows the same URL.
+    }
+  }
+
+  function confirmDeleteCard(cardId: number) {
+    setConfirmAction({
+      title: "Delete card",
+      message: "This card will be permanently deleted.",
+      action: async () => {
+        setConfirmAction(null);
+        const res = await fetch(`/api/cards/${cardId}`, { method: "DELETE" });
+        if (!res.ok) return;
+        setCards((prev) => prev.filter((c) => c.id !== cardId));
+        if (openCardId === cardId) closeCard();
+      },
+    });
+  }
+
   function openCard(cardId: number, view: "panel" | "page" = cardView) {
     setOpenCardId(cardId);
     setCardView(view);
@@ -782,6 +821,7 @@ export default function KanbanBoard({
     );
   }
 
+  const cardMenuCard = cardMenu ? cards.find((c) => c.id === cardMenu.cardId) : undefined;
   const columnMenuColumn = columnContextMenu ? columns.find((c) => c.id === columnContextMenu.columnId) : null;
   const columnMenuIndex = columnContextMenu ? columns.findIndex((c) => c.id === columnContextMenu.columnId) : -1;
 
@@ -794,7 +834,11 @@ export default function KanbanBoard({
             <ArrowLeft className="h-4 w-4" />
           </IconButton>
         )}
-        <span className="truncate text-text-3">{orgName}</span>
+        {orgSlug && orgPageHref(orgSlug) ? (
+          <Link href={orgPageHref(orgSlug)!} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
+        ) : (
+          <span className="truncate text-text-3">{orgName}</span>
+        )}
         <ChevronRight className="h-[13px] w-[13px] shrink-0 text-text-4" />
         <span className="text-[14px]">{productEmoji}</span>
         <span className="truncate font-semibold text-text-1">{productName}</span>
@@ -1123,6 +1167,7 @@ export default function KanbanBoard({
                           productKey={productKey}
                           selected={openCardId === card.id}
                           onClick={() => openCard(card.id)}
+                          onOpenMenu={(point, el) => openCardMenu({ cardId: card.id, title: card.title, ...point, returnFocus: el })}
                         />
                       ))}
                     </SortableContext>
@@ -1222,6 +1267,17 @@ export default function KanbanBoard({
           mode="panel"
           {...cardDetailProps(openCardObj)}
           onMove={() => loadCards()}
+        />
+      )}
+
+      {cardMenuCard && cardMenu && (
+        <CardContextMenu
+          target={cardMenu}
+          onClose={closeCardMenu}
+          onOpen={() => openCard(cardMenuCard.id, "panel")}
+          onOpenFull={() => openCard(cardMenuCard.id, "page")}
+          onCopyLink={() => void copyCardLink(cardMenuCard)}
+          onDelete={() => confirmDeleteCard(cardMenuCard.id)}
         />
       )}
 
