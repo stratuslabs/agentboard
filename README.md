@@ -1,81 +1,109 @@
 # AgentBoard
 
-Lightweight kanban project management for AI agents and humans. Self-hostable, API-first, agent-friendly.
+A kanban board that people and AI agents share. You use the web board; your agents use a CLI or the REST API on the same cards. It is a small Next.js app on Postgres that you run yourself.
+
+![A product board in AgentBoard: cards from a person and two agents across Backlog, Todo, In Progress, In Review and Done](docs/images/board.png)
 
 [![Deploy with Vercel](https://vercel.com/button)][deploy]
 
-## Features
+## How it works
 
-- **Kanban boards** — drag-and-drop cards across configurable columns
-- **Multi-product** — organize projects under orgs and products
-- **Agent-first CLI** — designed for AI agents to create, update, and query tasks
-- **REST API** — every action is available via HTTP
-- **Auth optional** — run open or protected with a single password
-- **Vercel-ready** — deploy in minutes with Vercel Postgres
-- **Self-hostable** — runs on any Postgres, locally with Docker or on your own box
+- **People** plan in the browser: orgs, products, boards, drag-and-drop columns, priorities, due dates, sub-tasks and links.
+- **Agents** pick up and update the same cards from a shell with the `agentboard` CLI (`npm install -g agentboard`) or plain HTTP. An agent registers itself the first time it touches a card, so its work is attributed to it.
+- **Changes show up live** for everyone on the board, whoever made them.
+- **One password** protects the web app and the API, or none for a board on localhost.
 
-## Quick Start
+## Quick start
 
-### Local Development
-
-**Prerequisites:** Node.js 20+, Docker
+You need Node.js 20.9 or newer and a Postgres database. The repo includes a Docker Compose file for a local one.
 
 ```bash
-# 1. Clone
 git clone https://github.com/stratuslabs/agentboard.git
 cd agentboard
-
-# 2. Install dependencies
 npm install
 
-# 3. Start Postgres
-docker compose up -d
+docker compose up -d           # local Postgres on port 5432
+cp .env.example .env.local     # then set POSTGRES_URL, below
+```
 
-# 4. Configure environment
-cp .env.example .env.local
-# Edit .env.local and set:
-#   POSTGRES_URL=postgresql://agentboard:agentboard@localhost:5432/agentboard
+In `.env.local`, point `POSTGRES_URL` at the database. For the Docker one:
 
-# 5. Set up the database schema
+```
+POSTGRES_URL=postgresql://agentboard:agentboard@localhost:5432/agentboard
+```
+
+Then create the tables, optionally add sample data, and start it:
+
+```bash
 npm run db:setup
-
-# 6. (Optional) Seed with sample data
-npm run db:seed
-
-# 7. Start
+npm run db:seed                # optional: two sample orgs with a few products
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). If `APP_PASSWORD` is not set, no login is required.
+Open [http://localhost:3000](http://localhost:3000). With `APP_PASSWORD` unset there is no login, which is fine on your own machine and nowhere else (see [Security](#security)).
 
-### Deploy to Vercel
+### Try it with sample data
+
+To look around, or to test a change against a board that already has work on it, one command does the lot (after `npm install`):
+
+```bash
+npm run demo
+```
+
+It starts the Docker Compose Postgres, creates a separate `agentboard_demo` database (so it never touches the one in your `.env.local`), sets it up, fills it with sample data and starts the app at [http://localhost:3000](http://localhost:3000). The sample data is two people, two agents, and a Development board on Acme Corp / Web App with cards in every column, some with sub-tasks, due dates and links.
+
+Running it again keeps whatever you changed and adds nothing. Options:
+
+- `npm run demo -- --reset` drops `agentboard_demo` and starts over.
+- `npm run demo -- --no-start` sets up and seeds, then exits.
+- `npm run demo -- --port 3001` uses another port.
+- Without Docker, point it at any Postgres database you're happy to fill with sample data: `AGENTBOARD_DEMO_DATABASE_URL=postgresql://user:pass@host:5432/agentboard_demo npm run demo`. The database has to exist already, and `--reset` doesn't apply.
+
+`node scripts/seed.js --demo` adds the same sample data to whatever database `POSTGRES_URL` points at, once per install.
+
+## Connect an agent
+
+In the app, open **Settings → Connect an agent** and copy the prompt into your agent (Claude Code, Codex, Cursor, or anything with a shell). It tells the agent how to install the CLI and which variables to set. To do it by hand:
+
+```bash
+npm install -g agentboard
+
+export AGENTBOARD_URL=http://localhost:3000
+export AGENTBOARD_TOKEN=your-app-password    # only if APP_PASSWORD is set
+export AGENTBOARD_AGENT_NAME=Claude          # cards it creates are filed under this name
+export AGENTBOARD_PRODUCT=web-app            # the product slug, as in /acme-corp/web-app
+
+agentboard list                    # what's on the board
+agentboard new "Fix the login bug" --priority high
+agentboard status <id> doing
+agentboard notes <id> --append "Found it: the session cookie expired early"
+agentboard status <id> done
+```
+
+The CLI has no dependencies. Every command takes `--json` for scripts and `--quiet` for ids only. The full command list is in [cli/README.md](cli/README.md).
+
+Prefer HTTP? Every action is an API route, authenticated with `Authorization: Bearer <APP_PASSWORD>`. See the [API reference](docs/api.md).
+
+## Deploy
+
+### Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)][deploy]
 
-The button clones the repo, provisions a Neon Postgres database through the
-Vercel Marketplace, and prompts you for `APP_PASSWORD`. **Set one** — without it
-the board and its entire API are open to anyone who has the URL.
+The button clones the repo, provisions a Neon Postgres database through the Vercel Marketplace, and asks for `APP_PASSWORD`. **Set one.** Without it, the board and its whole API are open to anyone with the URL.
 
-There is no database setup step: the integration supplies the connection
-string — as `POSTGRES_URL` or as `DATABASE_URL`, depending on its version, and
-the app reads either — and the schema is created on the first request.
-
-If the flow does not offer to create a database, add one afterwards from the
-project's **Storage** tab and redeploy — any Postgres works, and the schema is
-still created on the first request.
+There is no database step: the integration supplies the connection string (as `POSTGRES_URL` or `DATABASE_URL`, depending on its version, and the app reads either) and the schema is created on the first request. If the flow doesn't offer a database, add one from the project's **Storage** tab and redeploy. Any Postgres works.
 
 <details>
-<summary>Deploying manually instead</summary>
+<summary>Deploying to Vercel by hand</summary>
 
 1. Fork this repo
-2. Create a Vercel project and connect it to your fork
-3. Add Postgres under Storage → Create Database (the Neon integration sets the
-   connection string for you, as `POSTGRES_URL` or `DATABASE_URL`)
-4. Set `APP_PASSWORD` (see the table below)
+2. Create a Vercel project from your fork
+3. Add Postgres under Storage → Create Database
+4. Set `APP_PASSWORD`
 5. Deploy
 
-The schema is created lazily on the first request. To create it up front
-instead:
+The schema is created on the first request. To create it up front instead:
 
 ```bash
 vercel env pull .env.local
@@ -84,453 +112,57 @@ npm run db:setup
 
 </details>
 
-## Environment Variables
+### Your own server
+
+Any machine with Node.js 20.9+ and a Postgres it can reach:
+
+```bash
+npm ci
+npm run build
+POSTGRES_URL=postgresql://... APP_PASSWORD=... npm start    # port 3000; set PORT to change it
+```
+
+`npm start` also reads `.env.local` if you would rather keep the variables there. Keep dev dependencies installed: `next` is one, and the server needs it at runtime. Behind a reverse proxy, read the proxy notes in [Security](#security).
+
+## Configuration
 
 | Variable | Required | Description |
 |---|---|---|
-| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works. `DATABASE_URL` is accepted as a fallback, which is the name some versions of the Vercel/Neon integration set |
+| `POSTGRES_URL` | Yes | Postgres connection string. Any Postgres works: local, Neon, Supabase, RDS. `DATABASE_URL` is accepted as a fallback |
+| `APP_PASSWORD` | No | One password for the web app and the API. Unset means no auth at all |
 | `POSTGRES_POOL_MAX` | No | Max pooled connections per process (default `5`) |
-| `DIRECT_POSTGRES_URL` | No | Direct (unpooled) connection string used only for `LISTEN`, which a transaction-mode pooler cannot do. Needed only when `POSTGRES_URL` points at a pooled endpoint. Unset means the event stream polls instead |
-| `SSE_MAX_SECONDS` | No | How long an event stream stays open before asking the client to reconnect (default `240`). The reconnect is invisible; this exists because serverless platforms cap streaming responses |
-| `SSE_POLL_MS` | No | Poll interval for the event stream when no `LISTEN` connection is available (default `2000`) |
-| `APP_PASSWORD` | No | Single password for web UI and API. If unset, app is open (no auth) |
-| `TZ` | No | Default timezone for date calculations (e.g. `America/New_York`) |
-
-## CLI
-
-```bash
-npm install -g agentboard
-```
-
-The CLI declares no dependencies, so that is the whole install. To run it from
-a checkout of this repository instead:
-
-```bash
-git clone https://github.com/stratuslabs/agentboard.git
-npm install -g ./agentboard/cli
-```
-
-The CLI source of truth lives in `cli/agentboard.js`. The root `bin/agentboard.js` is just a compatibility wrapper.
-
-Configure it:
-
-```bash
-export AGENTBOARD_URL=https://your-instance.vercel.app
-export AGENTBOARD_TOKEN=your-password      # if APP_PASSWORD is set
-export AGENTBOARD_AGENT_NAME=MyAgent       # auto-registers as member
-export AGENTBOARD_PRODUCT=my-product       # default product slug
-# export AGENTBOARD_BOARD=ops              # optional: override the product's default board
-```
-
-Without `AGENTBOARD_BOARD` or `--board`, the CLI uses the product's default board (Settings → Agent default board). A product with a single board needs no default. A product with several boards and no default makes the CLI stop and list them.
-
-### Commands
-
-```bash
-# List tasks
-agentboard list
-agentboard list --include-done
-
-# Create a task
-agentboard new "Build the login page"
-agentboard new "Fix auth bug" --priority urgent --assignee MyAgent --due 2026-03-15
-
-# Update status
-# Statuses: backlog | todo | doing | in-progress | in-review | done | blocked
-agentboard status <id> doing
-# A board made before Blocked was a default column needs one first:
-#   agentboard column add "Blocked" --color "#EF4444"
-agentboard status <id> done
-
-# View task details
-agentboard show <id>
-
-# Rename a task
-agentboard rename <id> "New title"
-
-# Manage notes
-agentboard notes <id>                     # view notes
-agentboard notes <id> --set "Full text"   # replace notes
-agentboard notes <id> --append "More"     # append to notes
-
-# Toggle attention flag
-agentboard attention <id> on
-agentboard attention <id> off
-
-# Sub-tasks: a checklist on a card
-agentboard subtask add <card-id> "Write the migration"
-agentboard subtask list <card-id>         # [x]/[ ] per item, then "1/3 done"
-agentboard subtask done <subtask-id>      # or: undo
-agentboard subtask rename <subtask-id> "New title"
-agentboard subtask remove <subtask-id>
-
-# Links: point a card at anything, such as a Slack thread, a doc or a design
-agentboard task link <id> --url <url> [--title "Launch thread"]
-agentboard task links <id>
-agentboard task unlink <id> --url <url>
-agentboard task link <id> --pr <url>      # or --issue: the card's GitHub fields
-```
-
-### Output Flags
-
-- `--json` — JSON output for programmatic use
-- `--quiet` — minimal output (IDs only)
-
-The commands above are the common ones. The CLI also has full CRUD subcommands
-for orgs, products, boards, columns, members, tasks, sub-tasks, attachments, settings and
-preferences — see [cli/README.md](cli/README.md) for the complete reference.
-
-## API Reference
-
-All API routes require authentication via cookie or `Authorization: Bearer <password>` header when `APP_PASSWORD` is set. If `APP_PASSWORD` is unset, all routes are open.
-
-Errors are JSON, `{ "error": "..." }`. A path no route serves is a `404`
-(`No API route for GET /api/tasks`), never the app's HTML.
-
-The list endpoints take a slug wherever they take an id: `org=` for `org_id=`,
-`product=` for `product_id=`, `board=` for `board_id=`, `column=` for
-`column_id=`. Slugs are unique within their parent, so a board or column slug
-needs its parent too, and a product slug used in more than one organization
-needs `org=`:
-
-```
-GET /api/boards?product=agentboard
-GET /api/columns?product=agentboard&board=development
-GET /api/cards?org=labs&product=agentboard&board=development&column=todo
-```
-
-A slug that matches nothing is a `404` naming it. Pass an id or a slug for a
-level, not both.
-
-### Auth
-
-```
-POST /api/auth/login     { password }
-POST /api/auth/logout
-```
-
-### Organizations
-
-```
-GET    /api/orgs
-POST   /api/orgs           { name, slug? }
-PATCH  /api/orgs/:id       { name }
-DELETE /api/orgs/:id
-PATCH  /api/orgs/reorder   { ids: [1, 2, 3] }
-```
-
-### Products
-
-```
-GET    /api/products?org_id=|org=
-GET    /api/products/by-slug?org_slug=&product_slug=
-POST   /api/products         { org_id, name, emoji? }   # emoji auto-picked from name if omitted
-PATCH  /api/products/:id     { name?, emoji? }
-DELETE /api/products/:id
-PATCH  /api/products/move    { product_id, org_id, position? }
-PATCH  /api/products/reorder { ids: [1, 2, 3] }
-```
-
-### Boards
-
-```
-GET    /api/boards?product_id=|product=   # product= may need org=
-GET    /api/boards/:id
-POST   /api/boards         { product_id, name }
-PATCH  /api/boards/:id     { name?, position? }
-DELETE /api/boards/:id
-PATCH  /api/boards/reorder { ids: [1, 2, 3] }
-```
-
-### Columns
-
-```
-GET    /api/columns?board_id=|board=      # board= needs product= or product_id=
-GET    /api/columns/by-card/:id
-POST   /api/columns       { board_id, name }
-PATCH  /api/columns/:id   { name?, position?, color? }
-DELETE /api/columns/:id
-```
-
-### Cards
-
-```
-GET    /api/cards?org=&product=&board_id=|board=&column_id=|column=&assignee=&priority=&label=
-POST   /api/cards          { column_id, title, description?, assignee?, priority?, labels?, github_issue_url?, github_pr_url?, due_date? }
-GET    /api/cards/:id
-PATCH  /api/cards/:id      { ...partial update }
-DELETE /api/cards/:id
-PATCH  /api/cards/:id/move { column_id, position? }
-PATCH  /api/cards/reorder  { ids: [1, 2, 3] }
-GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_id=
-```
-
-Card creation accepts an `X-Agent-Name` header. The named agent is registered
-as a member on first use and assigned to the card, unless the request names
-an `assignee` or `assignee_id`, which always wins. Agent names are unique per
-team in any case, so `claude` and `Claude` are one agent, and registering an
-agent that exists (`POST /api/members` with `type: "agent"`) returns it with
-`200` instead of adding another. People may share a name.
-
-### Live updates
-
-One request for everything a board screen renders, and one event stream that
-says when to ask again.
-
-```
-GET /api/board?product_id=1
-GET /api/board?product_id=1&board_id=4
-GET /api/board?product_id=1&board_id=4&updated_since=<server_time>
-GET /api/board?product=agentboard&board=development
-
-GET /api/stream              # every board
-GET /api/stream?board_id=4   # one board
-```
-
-`GET /api/board` returns `{ server_time, boards, active_board_id, columns, cards }`.
-A `board_id` that no longer exists opens the product's first board; a `board=`
-slug that matches nothing is a `404`.
-Boards and columns always come back whole — they are a handful of rows, and
-filtering them would only cost the client a second reconciliation path.
-
-Pass the `server_time` from the previous response back as `updated_since` and
-`cards` narrows to what changed, alongside `card_ids`: every card id on the
-board, in order. That list is how a delta reports a deletion, since a row that
-no longer exists can never appear in a "changed since" result — reconcile
-membership from the ids rather than inferring it from the changes. Treat
-`server_time` as an opaque cursor; it is the database's clock, not the caller's.
-
-The response also carries a weak `ETag`, so an unchanged board answers
-`If-None-Match` with a `304` and an empty body.
-
-`GET /api/stream` is Server-Sent Events. It carries invalidation, not data:
-
-```
-event: hello       data: {"board_id":4,"mode":"listen"}
-event: change      data: {"board_id":4}
-event: reconnect   data: {"reason":"max-duration"}
-```
-
-A `change` event means "fetch a delta", which keeps live updates and reconnect
-catch-up on the same code path. `mode` reports whether the server is sourcing
-changes from `LISTEN/NOTIFY` or falling back to polling — see
-`DIRECT_POSTGRES_URL`. The server closes the stream on its own schedule and
-sends `reconnect` first, so a platform timeout never cuts a response mid-write;
-reconnect and resume from your last cursor.
-
-### Sub-tasks
-
-```
-GET    /api/cards/:id/subtasks
-POST   /api/cards/:id/subtasks     { title, done? }       # added to the end
-GET    /api/subtasks/:id
-PATCH  /api/subtasks/:id           { title?, done? }
-DELETE /api/subtasks/:id
-```
-
-Titles are one line (newlines become spaces), trimmed, and at most 500
-characters; `done` must be a boolean. Unknown fields in a PATCH are a 400.
-Every write bumps the card's `updated_at` and notifies the board, so live
-views pick it up. Board cards and `GET /api/cards/:id` include
-`subtask_total` and `subtask_done`.
-
-### Links
-
-```
-GET    /api/cards/:id/links
-POST   /api/cards/:id/links    { url, title? }    # 201 new, 200 already linked
-DELETE /api/cards/:id/links    { url }
-```
-
-A link is any absolute `http://` or `https://` URL, up to 2048 characters;
-other schemes are a 400. A card holds each URL once: posting a URL it already
-has keeps one link and replaces its title if you send one. Titles are one
-line, at most 200 characters. Every write bumps the card's `updated_at` and
-notifies the board. The GitHub issue and PR stay separate card fields
-(`github_issue_url`, `github_pr_url`).
-
-### Attachments
-
-```
-GET    /api/cards/:id/attachments
-POST   /api/cards/:id/attachments  { filename, content }   # content capped at 1 MiB
-GET    /api/attachments/:id        # one attachment, with its content
-DELETE /api/attachments/:id
-```
-
-### Members, Settings & Preferences
-
-```
-GET    /api/members
-POST   /api/members       { name, type?, color?, avatar_url? }
-PATCH  /api/members/:id   { name?, type?, color?, avatar_url? }
-DELETE /api/members/:id
-
-GET    /api/settings
-PATCH  /api/settings      { key, value }
-
-GET    /api/preferences
-PATCH  /api/preferences   { key, value }
-```
-
-## Data Model
-
-```
-Organization
-  └── Product
-       └── Board (e.g. Development, Marketing, Sales)
-            └── Column (e.g. Backlog, Todo, In Progress, Done)
-                 └── Card
-                      ├── assignee
-                      ├── priority (low | medium | high | urgent)
-                      ├── labels
-                      ├── description
-                      ├── due_date
-                      ├── github_issue_url
-                      ├── github_pr_url
-                      ├── Sub-tasks (title, done)
-                      └── Attachments
-```
-
-## Tech Stack
-
-- **Framework:** Next.js 15 (App Router)
-- **Styling:** Tailwind CSS v4
-- **Database:** Postgres via `pg` (any Postgres — local, Neon, Supabase, RDS)
-- **Drag & Drop:** @dnd-kit
-- **Auth:** Single password, httpOnly cookie + Bearer token
+| `DIRECT_POSTGRES_URL` | No | A direct (unpooled) connection, used only for `LISTEN`, which a transaction-mode pooler can't do. Needed only when `POSTGRES_URL` is a pooled endpoint; without it live updates poll instead |
+| `SSE_MAX_SECONDS` | No | How long a live-update stream stays open before the client reconnects (default `240`). Exists because serverless platforms cap streaming responses |
+| `SSE_POLL_MS` | No | Poll interval for live updates when there's no `LISTEN` connection (default `2000`) |
+| `TZ` | No | Default timezone for date calculations, e.g. `America/New_York` |
+
+[.env.example](.env.example) explains each one in more detail.
 
 ## Security
 
-AgentBoard uses a single shared password rather than per-user accounts. That is
-a deliberate trade-off for a small self-hosted tool, and it shapes how you
-should deploy it:
+AgentBoard uses one shared password rather than user accounts. That's a deliberate trade-off for a small self-hosted tool, and it shapes how you should run it:
 
-- **Set `APP_PASSWORD` on anything reachable from the internet.** With it unset
-  the app is fully open — every board and every API route, no login. That mode
-  is meant for localhost only.
-- **Use a long, random password.** It doubles as the API bearer token, so treat
-  it like an API key. The session cookie stores a SHA-256 derivation of it
-  rather than the password itself, and comparisons are constant-time.
-- **There is no per-user access control.** Anyone with the password can read and
-  write every org, product, board and card.
-- Requests are rejected when a browser sends a cross-site `Origin` on a
-  state-changing request, and the session cookie is `httpOnly` + `SameSite=Lax`.
-- Failed logins and failed API credentials are throttled per client, 10 per 10
-  minutes. This is in-memory per instance, so treat it as friction rather than a
-  guarantee.
-- **Behind a reverse proxy**, forward `X-Forwarded-Host` (or preserve `Host`)
-  and set `X-Real-IP`. The first is required for the origin check to pass, the
-  second for throttling to tell clients apart. See [SECURITY.md](SECURITY.md).
+- **Set `APP_PASSWORD` on anything reachable from the internet.** Unset, every board and every API route is open with no login. That mode is for localhost only.
+- **Use a long, random password.** It doubles as the API bearer token, so treat it like an API key. The session cookie stores a SHA-256 derivation of it, not the password, and comparisons are constant-time.
+- **There is no per-user access control.** Anyone with the password can read and change every org, product, board and card.
+- State-changing requests with a cross-site `Origin` are rejected, and the session cookie is `httpOnly` and `SameSite=Lax`.
+- Failed logins and failed API credentials are throttled per client, 10 per 10 minutes. That's in memory per instance, so treat it as friction, not a guarantee.
+- **Behind a reverse proxy**, forward `X-Forwarded-Host` (or preserve `Host`) and set `X-Real-IP`. The first is needed for the origin check to pass, the second for throttling to tell clients apart.
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
-## Using the core in another Next app
+## More
 
-The app is also a package, `@stratuslabs/agentboard-core`, that another Next app can mount: its pages, API routes and components, with that app deciding which team a request acts for. This is how a hosted edition is built on the same code instead of a copy. It is early: not published to npm, and the import paths below are the source layout, not a stable API yet.
+- [CLI reference](cli/README.md): every command, including orgs, boards, columns, members, sub-tasks, links and attachments
+- [API reference](docs/api.md): routes, slugs, live updates and the data model
+- [Using the core in another Next app](docs/embedding.md): the app is also a package, `@stratuslabs/agentboard-core`, that a larger app can mount. Early, and not published to npm
+- [Roadmap](ROADMAP.md): what's planned, and what stays free
+- [Contributing](CONTRIBUTING.md) and [releasing the CLI](RELEASING.md)
 
-**Install** a commit of this repository (npm installs it with `npm pack`, so you get `src/` as TypeScript):
-
-```bash
-npm install "github:stratuslabs/agentboard#<commit>" next@^16.4.3 react@^19.3.1 react-dom@^19.3.1 tailwindcss@^4.3.3 @tailwindcss/postcss@^4.3.3
-```
-
-`next`, `react`, `react-dom`, `tailwindcss` and `@tailwindcss/postcss` are peer dependencies: the core ships source, and your app compiles it.
-
-**Build settings.** In `next.config.ts`, `transpilePackages: ["@stratuslabs/agentboard-core"]`. Add a `postcss.config.mjs` with the `@tailwindcss/postcss` plugin. Some of the core's modules are JavaScript with JSDoc types, so your `tsconfig.json` needs `"allowJs": true` and `"maxNodeModuleJsDepth": 10` for `next build`'s type-check to see them.
-
-**Mount what you need** by re-exporting it from your own `app/` directory. Each module is importable at its path under `src/`, without the extension:
-
-```ts
-// app/layout.tsx: the core's root layout, with its stylesheet and fonts
-export { default, metadata } from "@stratuslabs/agentboard-core/app/layout";
-
-// app/(board)/[orgSlug]/[productSlug]/page.tsx
-export { default } from "@stratuslabs/agentboard-core/app/(board)/[orgSlug]/[productSlug]/page";
-
-// app/api/cards/route.ts
-export { GET, POST } from "@stratuslabs/agentboard-core/app/api/cards/route";
-```
-
-Route segment options (`runtime`, `dynamic`, `maxDuration`) can't be re-exported; Next reads them from your file, so copy them. `app/api/stream/route.ts` is the one route that has them. Files in `public/` (the logo and icons) aren't part of the package either.
-
-**Tell the core who is asking** with `configure()`, once, from `instrumentation.ts`:
-
-```ts
-export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { configure } = await import("@stratuslabs/agentboard-core/configure");
-  const { TenantError } = await import("@stratuslabs/agentboard-core/lib/tenant");
-  configure({
-    tenant: {
-      // Route handlers: from the request's session or API key.
-      fromRequest: async (request) => {
-        const team = await yourAuth(request);
-        if (!team) throw new TenantError(401, "Unauthorized");
-        return { teamId: team.id, userId: team.userId ?? null };
-      },
-      // Server components, which have no Request: read next/headers or cookies.
-      fromPage: async () => { /* same, from headers() */ },
-    },
-  });
-}
-```
-
-A resolver may also return `memberId`, the agent member the caller's credential belongs to (an API key issued to one agent). A new card with no assignee is filed under it, and `X-Agent-Name` is ignored for that caller, since the credential already says who it is, on updates too. A named `assignee` or `assignee_id` still wins. Updates never reassign a card to the credential's agent.
-
-Every query the core runs is scoped to the `teamId` this returns, and it is the only place a team comes from. Throw a `TenantError` to refuse a request with that status (401, 402 for a lapsed subscription, 403); the route never runs. Teams are rows in the core's `teams` table, which your app creates (`ensureTeamDefaults` from `lib/tenancy` gives a new one the default boards and columns).
-
-`configure({ members: { beforeTypeChange } })` runs before a member changes between agent and human, with `{ teamId, memberId, from, to }`. Throw a `TenantError` to refuse it (for example, 409 while the agent still holds API keys).
-
-`configure({ reservedOrgSlugs: ["signup", "billing"] })` names the top-level pages your app adds. An organization lives at `/<org-slug>`, so an org named "Billing" would be hidden behind your billing page; with this it gets `billing-org` instead, and a request for one of these slugs outright is refused. The core's own paths (`api`, `c`, `settings`, ...) are always reserved.
-
-Without `configure()`, every request acts for the single self-hosted team, which is what self-hosted AgentBoard is. For a multi-team app that means a missed `configure()` fails open, so test that an unauthenticated request is refused. The self-hosted password check lives in `src/middleware.ts` and is not part of `configure()`; a consuming app authenticates in its resolver.
-
-**Add your own UI** by rendering the core's components from your files instead of re-exporting them. The board layout takes sidebar slots, rendered above Settings, and the settings screen takes a scope label and a list of sections, which you build from the core's defaults by `id` (`members`, `connect`, `agent-board`, `default-boards`, `default-columns`):
-
-```tsx
-// app/(board)/layout.tsx
-"use client";
-import BoardLayout from "@stratuslabs/agentboard-core/components/BoardLayout";
-
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <BoardLayout sidebarFooter={<TeamSwitcher />} sidebarRail={<TeamSwitcher collapsed />}>
-      {children}
-    </BoardLayout>
-  );
-}
-
-// app/settings/page.tsx
-"use client";
-import SettingsShell from "@stratuslabs/agentboard-core/components/settings/SettingsShell";
-import { defaultSettingsSections } from "@stratuslabs/agentboard-core/components/settings/sections";
-
-const sections = [
-  ...defaultSettingsSections().filter((s) => s.id !== "agent-board"),
-  { id: "billing", group: "Team", label: "Billing", icon: <CreditCard />, description: "Your plan.", content: <Billing /> },
-];
-
-export default function SettingsPage() {
-  return <SettingsShell scope={<ActiveTeamName />} sections={sections} />;
-}
-```
-
-If your app sets agents up differently (per-agent API keys instead of a shared token, say), give both the same prompt function, `(boardUrl: string) => string`, and the sidebar's get-started card and the settings connect section show yours instead of the core's: `<BoardLayout agentSetupPrompt={myPrompt}>` and `defaultSettingsSections({ agentSetupPrompt: myPrompt })`. It's a function, so the files that pass it must be client components, as above.
-
-[test/consumer](test/consumer) is a working example, and CI builds and drives it (`scripts/verify-consumer.mjs`) against the lowest and newest supported Next 16.
-
-## Roadmap
-
-What is planned, what stays free, and where the line with the hosted edition
-sits: [ROADMAP.md](ROADMAP.md).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). CLI releases are published to npm from `cli-v*` tags; see [RELEASING.md](RELEASING.md).
+Built with Next.js 16, React 19, Tailwind CSS 4, `pg` and dnd-kit.
 
 ## License
 
-Source available — free to use for yourself and your team, but you can't resell it or offer it as a hosted service. See [LICENSE](LICENSE) for details.
+Source available: free to use for yourself and your team, but you can't resell it or offer it as a hosted service. See [LICENSE](LICENSE).
 
 [deploy]: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard&project-name=agentboard&repository-name=agentboard&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D&env=APP_PASSWORD&envDescription=Password%20protecting%20the%20board%20and%20its%20API.%20A%20deployment%20with%20this%20left%20blank%20is%20fully%20open%20to%20anyone%20with%20the%20URL.&envLink=https%3A%2F%2Fgithub.com%2Fstratuslabs%2Fagentboard%23security

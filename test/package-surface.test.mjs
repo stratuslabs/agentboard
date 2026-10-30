@@ -1,5 +1,5 @@
 // The core is consumed by another Next app as a package (see
-// test/consumer and README "Using the core as a package"). These checks keep
+// test/consumer and docs/embedding.md). These checks keep
 // the parts of that contract that are easy to break without noticing.
 
 import { test } from "node:test";
