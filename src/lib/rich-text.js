@@ -172,8 +172,10 @@ const AFTER = `(?=$|[${CLOSE}]|[.,:;!?](?=$|[${CLOSE}]))`;
 // "covid-19" stays prose.
 const CARD_KEY = `${BEFORE}([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})${AFTER}`;
 // A card without a key, written the way the app labels it, "#57", but only
-// after the word "card": on its own, #57 is usually a PR or an issue.
-const CARD_ID = `(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})${AFTER}`;
+// after the word "card": on its own, #57 is usually a PR or an issue. The word
+// "card" needs the same allowed neighbor before it as a key does, so a
+// formatting marker that vanishes when rendered (**see**card #57) doesn't count.
+const CARD_ID = `(?<=(?<=^|[${OPEN}])[Cc]ards? )#([1-9][0-9]{0,9})${AFTER}`;
 const CARD_REF = new RegExp(`${CARD_KEY}|${CARD_ID}`, "g");
 
 // Prefixes that read like a card key but are standards, hashes or time zones:

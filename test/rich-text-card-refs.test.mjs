@@ -198,3 +198,14 @@ test("a Markdown link whose target has parentheses is one construct (card 837 re
   // A plain parenthesized key is still a card reference.
   assert.deepEqual(parseInline("(AB-142)"), [text("("), card("AB-142"), text(")")]);
 });
+
+test("'card #N' glued to a formatting construct stays text (card 837 review)", () => {
+  // The closing marker disappears when rendered, so these read "seecard #57".
+  for (const s of ["**see**card #57", "`see`card #57", "[see](https://x.example)card #57"]) {
+    assert.ok(!parseInline(s).some((n) => n.type === "card"), s);
+  }
+  // The same allowlist as keys: start of line, whitespace, opening bracket or quote.
+  for (const s of ["card #57", "(card #57)", "\"card #57\"", "**see** card #57"]) {
+    assert.ok(parseInline(s).some((n) => n.type === "card"), s);
+  }
+});
