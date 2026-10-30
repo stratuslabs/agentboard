@@ -114,7 +114,9 @@ test("--demo fills a board: cards in every column, people and agents, sub-tasks 
   assert.ok(cards.length >= 8, `only ${cards.length} cards`);
   for (const card of cards) {
     assert.ok(card.number, "card has a number");
-    if (card.assignee) assert.equal(card.member_name, card.assignee);
+    // A member-backed assignment is stored by id only (card 838), never as text too.
+    if (card.assignee_id) assert.equal(card.assignee, null, "assigned by id, no text copy");
+    assert.ok(!card.assignee || card.member_name === card.assignee);
   }
   assert.ok(cards.some((c) => c.assignee_id), "some cards are assigned");
 

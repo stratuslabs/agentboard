@@ -52,6 +52,12 @@ test("the scripts and the app get the demo URL in both variables the app reads",
   assert.equal(env.PATH, "/bin");
 });
 
+test("the child's direct (LISTEN) connection also goes to the demo database", () => {
+  // Set, not removed: Next would otherwise load the one in .env.local.
+  const env = childEnv({ DIRECT_POSTGRES_URL: "postgres://prod/direct" }, "postgres://demo/db");
+  assert.equal(env.DIRECT_POSTGRES_URL, "postgres://demo/db");
+});
+
 test("flags: --reset, --no-start and --port", () => {
   assert.deepEqual(parseArgs([]), { reset: false, start: true, port: null });
   assert.deepEqual(parseArgs(["--reset", "--no-start", "--port", "3456"]), { reset: true, start: false, port: "3456" });

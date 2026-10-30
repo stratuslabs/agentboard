@@ -44,9 +44,13 @@ export function demoTarget(env) {
   return { url: withDatabase(COMPOSE_URL, DEMO_DATABASE), compose: true };
 }
 
-/** `env` with both connection variables the app reads pointed at `url`. */
+/**
+ * `env` with every connection variable the app reads pointed at `url`,
+ * including the direct one realtime LISTEN prefers. Set rather than removed,
+ * since Next would otherwise fill them in from .env.local.
+ */
 export function childEnv(env, url) {
-  return { ...env, POSTGRES_URL: url, DATABASE_URL: url };
+  return { ...env, POSTGRES_URL: url, DATABASE_URL: url, DIRECT_POSTGRES_URL: url };
 }
 
 /** @param {string[]} argv */

@@ -187,6 +187,8 @@ async function seedDemo(teamId) {
         if (!columnId) throw new Error(`demo board has no ${card.column} column`);
         const position = positions.get(card.column) ?? 0;
         positions.set(card.column, position + 1);
+        // A member is stored by id only, with no text copy, as the API does (card 838).
+        const memberId = card.assignee ? (members.get(card.assignee) ?? null) : null;
         const { rows } = await client.query(
           `INSERT INTO cards (column_id, title, description, assignee, assignee_id, priority, labels, due_date, position)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
@@ -194,8 +196,8 @@ async function seedDemo(teamId) {
             columnId,
             card.title,
             card.description ?? "",
-            card.assignee ?? null,
-            card.assignee ? members.get(card.assignee) : null,
+            memberId ? null : (card.assignee ?? null),
+            memberId,
             card.priority ?? "medium",
             card.labels ?? "",
             dueDate(card.due),
