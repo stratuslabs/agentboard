@@ -34,6 +34,11 @@ function die(msg, code = 1) {
   process.exit(code);
 }
 
+// A failure with a message meant for the user. Requests throw it instead of
+// exiting so a command working through several cards can report one card's
+// failure and carry on; anything that doesn't catch it exits as die() would.
+class CliError extends Error {}
+
 // ---- Label edits ----------------------------------------------------------
 
 // Labels are stored as one comma-separated string. These split it the same
@@ -502,13 +507,51 @@ function findColumn(cols, input) {
   );
   if (loose.length === 1) return loose[0];
   if (loose.length > 1) {
-    die(
+    // Thrown, not die(): in a batch move it's that card's failure. Uncaught,
+    // main() exits with it as before.
+    throw new CliError(
       `Column '${input}' matches more than one column: ${describeNamed(loose)}. ` +
         `Use one of these slugs: ${loose.map((c) => c.slug).join(", ")}.`
     );
   }
   const alias = Object.hasOwn(STATUS_ALIASES, want) ? STATUS_ALIASES[want] : null;
   return (alias && cols.find((c) => c.slug === alias)) || null;
+}
+
+// Move each card in `ids`, in order. `moveOne(id)` resolves to
+// { card, column } or throws a CliError. One id keeps the single-card output:
+// the moved card, or that card's error and exit 1. With several, every card
+// gets a line, a failed card doesn't stop the rest, and the exit code is 1 if
+// any move failed, followed by a count and the ids that failed.
+async function moveEach(ids, flags, moveOne) {
+  if (ids.length === 1) {
+    output((await moveOne(ids[0])).card, flags);
+    return;
+  }
+  const results = [];
+  for (const id of ids) {
+    try {
+      const { card, column } = await moveOne(id);
+      results.push({ id, ok: true, column: column.slug, card });
+      if (flags.json) continue;
+      if (flags.quiet) process.stdout.write(`${id}\n`);
+      else process.stdout.write(`Moved ${id} to ${column.name || column.slug}\n`);
+    } catch (err) {
+      if (!(err instanceof CliError)) throw err;
+      results.push({ id, ok: false, error: err.message });
+      process.stderr.write(`Error: ${id}: ${err.message}\n`);
+    }
+  }
+  if (flags.json) process.stdout.write(JSON.stringify(results, null, 2) + "\n");
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0) {
+    process.stderr.write(
+      `Moved ${results.length - failed.length} of ${results.length} cards; ` +
+        `${failed.length} failed: ${failed.map((r) => r.id).join(", ")}\n`
+    );
+    // exitCode rather than exit(), so piped output is flushed first.
+    process.exitCode = 1;
+  }
 }
 
 // ===========================================================================
@@ -548,7 +591,7 @@ function makeReq(baseUrl, password, agentName) {
       if (!location) break;
       const nextUrl = new URL(location, url);
       if (nextUrl.origin !== origin) {
-        die(`Refusing to follow cross-origin redirect to ${nextUrl.origin}`);
+        throw new CliError(`Refusing to follow cross-origin redirect to ${nextUrl.origin}`);
       }
       const redirectOpts = { method, headers, redirect: "manual" };
       if (body !== undefined) {
@@ -568,14 +611,14 @@ function makeReq(baseUrl, password, agentName) {
         // not JSON; show the body as it came
       }
       const hint = hints[res.status];
-      die(`HTTP ${res.status}: ${snippet(msg) || res.statusText}${hint ? `. ${hint}` : ""}`);
+      throw new CliError(`HTTP ${res.status}: ${snippet(msg) || res.statusText}${hint ? `. ${hint}` : ""}`);
     }
     if (!text) return {};
     try {
       return JSON.parse(text);
     } catch {
       // A proxy, login page or wrong AGENTBOARD_URL answers 200 with HTML.
-      die(
+      throw new CliError(
         `Expected JSON from ${method} ${url} but got ${res.headers.get("content-type") || "an unknown content type"}: ${snippet(text)}`
       );
     }
@@ -588,7 +631,7 @@ function makeReq(baseUrl, password, agentName) {
       return await fetch(target, opts);
     } catch (err) {
       const cause = err.cause && (err.cause.code || err.cause.message);
-      die(`Could not reach ${base}${cause ? ` (${cause})` : ""}: ${err.message}`);
+      throw new CliError(`Could not reach ${base}${cause ? ` (${cause})` : ""}: ${err.message}`);
     }
   }
 
@@ -818,7 +861,7 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   new <title>                          Create a task
     --priority <p>  --assignee <name>  --label <l>  --description <text>
     --column <col>  --due <date>
-  status <id> <column>                 Move card to a column slug or name (any case)
+  status <id> [<id> ...] <column>      Move cards to a column slug or name (any case)
                                        (doing/wip -> in-progress, review -> in-review
                                         when the board has no column by that slug)
   show <id>                            Show card details, with its link (url)
@@ -850,7 +893,7 @@ Management Commands:
     task update <id> --add-label <l>              Add labels, keep the rest (a,b or repeat)
     task update <id> --remove-label <l>           Remove only these labels
     task update <id> --label <l>                  Replace all labels ('' clears them)
-    task move <id> --column <col>
+    task move <id> [<id> ...] --column <col>
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
   settings [--key <k> --value <v>]
@@ -973,23 +1016,26 @@ async function main() {
 
     // ---- status ----
     else if (cmd === "status") {
-      const cardId = positional[1];
-      const statusName = positional[2];
-      if (!cardId || !statusName) die("Usage: agentboard status <id> <status>");
+      // status <id> [<id> ...] <column>: the last argument is the column.
+      const cardIds = positional.slice(1, -1);
+      const statusName = positional.at(-1);
+      if (cardIds.length === 0) die("Usage: agentboard status <id> [<id> ...] <column>");
 
-      // Get columns for the card's board
-      const cols = await req("GET", `/api/columns/by-card/${cardId}`);
-      if (!cols || cols.length === 0) die("Could not determine board for card");
+      await moveEach(cardIds, flags, async (cardId) => {
+        // Each card's own board: the cards needn't share one.
+        const cols = await req("GET", `/api/columns/by-card/${cardId}`);
+        if (!cols || cols.length === 0) throw new CliError("Could not determine board for card");
 
-      const targetCol = findColumn(cols, statusName);
-      if (!targetCol) {
-        die(`Column '${statusName}' not found on this board. Available: ${describeNamed(cols)}`);
-      }
+        const targetCol = findColumn(cols, statusName);
+        if (!targetCol) {
+          throw new CliError(`Column '${statusName}' not found on this board. Available: ${describeNamed(cols)}`);
+        }
 
-      const data = await req("PATCH", `/api/cards/${cardId}/move`, {
-        column_id: targetCol.id,
+        const card = await req("PATCH", `/api/cards/${cardId}/move`, {
+          column_id: targetCol.id,
+        });
+        return { card, column: targetCol };
       });
-      output(data, flags);
     }
 
     // ---- show ----
@@ -1398,59 +1444,62 @@ async function main() {
         if (!id) die("Usage: agentboard task show <card-id>");
         output(withCardUrl(await req("GET", `/api/cards/${id}`), remoteUrl), flags);
       } else if (sub === "move") {
-        const id = positional[2];
+        const ids = positional.slice(2);
         const usage =
-          "Usage: agentboard task move <card-id> --column <slug>\n" +
+          "Usage: agentboard task move <card-id> [<card-id> ...] --column <slug>\n" +
           "       agentboard task move <card-id> --to-board <slug> [--column <slug>]\n" +
           "       agentboard task move <card-id> --to-product <slug> --to-board <slug> [--column <slug>]";
-        if (!id || !(flags.column || flags["to-board"] || flags["to-product"])) die(usage);
+        if (ids.length === 0 || !(flags.column || flags["to-board"] || flags["to-product"])) die(usage);
         // A product has several boards; picking one silently would be a guess.
         if (flags["to-product"] && !flags["to-board"]) {
           die("--to-product requires --to-board (a product has several boards)");
         }
-
-        const card = await req("GET", `/api/cards/${id}`);
-        // Servers before this CLI release don't say where a card lives, which
-        // only matters when we need its product or current column.
-        const needsLocation =
-          (flags["to-board"] && !flags["to-product"]) || !flags.column;
-        if (needsLocation && (card.product_id === undefined || card.column_slug === undefined)) {
-          die("This server is too old for that move; update AgentBoard, or pass --to-product and --column.");
+        if (ids.length > 1 && flags["to-board"]) {
+          die("Moving several cards to another board isn't supported; move them one at a time.");
         }
 
-        let cols;
-        let where;
-        if (flags["to-board"]) {
-          const product = flags["to-product"] ? await resolve.resolveProduct(flags["to-product"]) : null;
-          const productId = product ? product.id : card.product_id;
-          const boardId = await resolve.resolveBoardId(
-            productId,
-            flags["to-board"],
-            product ? product.slug : card.product_slug
-          );
-          cols = await req("GET", `/api/columns?board_id=${boardId}`);
-          where = `board '${flags["to-board"]}'`;
-        } else {
-          cols = await req("GET", `/api/columns/by-card/${id}`);
-          where = "this board";
-        }
-        if (!cols || cols.length === 0) die(`No columns found on ${where}`);
+        await moveEach(ids, flags, async (id) => {
+          const card = await req("GET", `/api/cards/${id}`);
+          // Servers before this CLI release don't say where a card lives, which
+          // only matters when we need its product or current column.
+          const needsLocation =
+            (flags["to-board"] && !flags["to-product"]) || !flags.column;
+          if (needsLocation && (card.product_id === undefined || card.column_slug === undefined)) {
+            throw new CliError("This server is too old for that move; update AgentBoard, or pass --to-product and --column.");
+          }
 
-        // Keep the card's current column unless one is named; never fall back
-        // to some other column when the slug is missing on the destination.
-        const colSlug = flags.column || card.column_slug;
-        const targetCol = flags.column
-          ? findColumn(cols, flags.column)
-          : cols.find((c) => c.slug === colSlug);
-        if (!targetCol) {
-          die(
-            `Column '${colSlug}' not found on ${where}. Available: ${cols.map((c) => c.slug).join(", ")}`
-          );
-        }
-        output(
-          await req("PATCH", `/api/cards/${id}/move`, { column_id: targetCol.id }),
-          flags
-        );
+          let cols;
+          let where;
+          if (flags["to-board"]) {
+            const product = flags["to-product"] ? await resolve.resolveProduct(flags["to-product"]) : null;
+            const productId = product ? product.id : card.product_id;
+            const boardId = await resolve.resolveBoardId(
+              productId,
+              flags["to-board"],
+              product ? product.slug : card.product_slug
+            );
+            cols = await req("GET", `/api/columns?board_id=${boardId}`);
+            where = `board '${flags["to-board"]}'`;
+          } else {
+            cols = await req("GET", `/api/columns/by-card/${id}`);
+            where = "this board";
+          }
+          if (!cols || cols.length === 0) throw new CliError(`No columns found on ${where}`);
+
+          // Keep the card's current column unless one is named; never fall back
+          // to some other column when the slug is missing on the destination.
+          const colSlug = flags.column || card.column_slug;
+          const targetCol = flags.column
+            ? findColumn(cols, flags.column)
+            : cols.find((c) => c.slug === colSlug);
+          if (!targetCol) {
+            throw new CliError(
+              `Column '${colSlug}' not found on ${where}. Available: ${cols.map((c) => c.slug).join(", ")}`
+            );
+          }
+          const moved = await req("PATCH", `/api/cards/${id}/move`, { column_id: targetCol.id });
+          return { card: moved, column: targetCol };
+        });
       } else if (sub === "update") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task update <card-id> [--field value]");
@@ -1695,6 +1744,7 @@ async function main() {
       die(`Unknown command: ${cmd}. Run 'agentboard help' for usage.`);
     }
   } catch (err) {
+    if (err instanceof CliError) throw err;
     if (
       err.message &&
       (err.message.includes("unique") || err.message.includes("duplicate"))
@@ -1707,6 +1757,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
+    if (err instanceof CliError) die(err.message);
     process.stderr.write(`${err.message || err}\n`);
     process.exit(1);
   });
