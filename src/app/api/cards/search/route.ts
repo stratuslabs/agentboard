@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db as pool } from "../../../../lib/sql";
 import { withTenant } from "../../../../lib/tenant";
 import { parseSearchQuery, escapeLike } from "../../../../lib/card-search";
+import { withCardUrl } from "../../../../lib/public-url";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -91,6 +92,6 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
      LIMIT ${param(limit)}`,
     values,
   );
-  return NextResponse.json(rows);
+  return NextResponse.json(withCardUrl(request, rows));
 });
 

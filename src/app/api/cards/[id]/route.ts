@@ -7,15 +7,16 @@ import { checkCardText } from "../../../../lib/card-text";
 import { memberIdByName, resolveAgentMember } from "../../../../lib/members";
 import { settleAssignee } from "../../../../lib/assignee";
 import { assertColumn, assertMember, withTenantParams } from "../../../../lib/tenant";
+import { withCardUrl } from "../../../../lib/public-url";
 
-export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
+export const GET = withTenantParams<{ id: string }>(async (request, { teamId }, { params }) => {
   await initDb();
   const { id } = await params;
   const card = await getCardWithLocation(teamId, id);
   if (!card) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(card);
+  return NextResponse.json(withCardUrl(request, card));
 });
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId, memberId: credentialMember }, { params }) => {
@@ -81,7 +82,7 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   }
 
   if (sets.length === 0) {
-    return NextResponse.json(existing[0]);
+    return NextResponse.json(withCardUrl(request, existing[0]));
   }
 
   sets.push("updated_at = NOW()");
@@ -94,7 +95,7 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
 
   // Re-read with member, location and readable key: a column change may have
   // given the card a new number in another product.
-  return NextResponse.json(await getCardWithLocation(teamId, id));
+  return NextResponse.json(withCardUrl(request, await getCardWithLocation(teamId, id)));
 });
 
 export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {

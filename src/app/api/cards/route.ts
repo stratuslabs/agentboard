@@ -8,6 +8,7 @@ import { memberIdByName, resolveAgentMember } from "../../../lib/members";
 import { settleAssignee } from "../../../lib/assignee";
 import { assertColumn, assertMember, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
+import { withCardUrl } from "../../../lib/public-url";
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
@@ -82,7 +83,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   query += " ORDER BY cards.position, cards.id";
 
   const { rows } = await pool.query(query, values);
-  return NextResponse.json(rows);
+  return NextResponse.json(withCardUrl(request, rows));
 });
 
 export const POST = withTenant(async (request: NextRequest, { teamId, memberId }) => {
@@ -134,5 +135,5 @@ export const POST = withTenant(async (request: NextRequest, { teamId, memberId }
   await notifyBoard(teamId, await boardIdForColumn(column_id));
 
   // With member info, location and the readable key the trigger assigned.
-  return NextResponse.json(await getCardWithLocation(teamId, rows[0].id), { status: 201 });
+  return NextResponse.json(withCardUrl(request, await getCardWithLocation(teamId, rows[0].id)), { status: 201 });
 });

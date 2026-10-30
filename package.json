@@ -187,6 +187,7 @@
     "./lib/page-title": "./src/lib/page-title.ts",
     "./lib/product-update": "./src/lib/product-update.js",
     "./lib/products-changed": "./src/lib/products-changed.ts",
+    "./lib/public-url": "./src/lib/public-url.ts",
     "./lib/quick-search": "./src/lib/quick-search.ts",
     "./lib/rate-limit": "./src/lib/rate-limit.ts",
     "./lib/realtime/listen": "./src/lib/realtime/listen.ts",
