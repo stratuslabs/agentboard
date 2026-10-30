@@ -234,6 +234,17 @@ test("lists only ever show the caller's team", { skip }, async () => {
   assert.equal(bySlug.status, 404);
 });
 
+test("an attachment can be read by id, by its own team", { skip }, async () => {
+  const own = await call(A, api.attachment.GET, "", { id: A.attachment.id });
+  assert.equal(own.status, 200, JSON.stringify(own.data));
+  assert.equal(own.data.id, A.attachment.id);
+  assert.equal(own.data.card_id, A.card.id);
+  assert.equal(own.data.filename, "a.txt");
+  assert.equal(own.data.content, "secret");
+  assert.equal((await call(A, api.attachment.GET, "", { id: "abc" })).status, 400);
+  assert.equal((await call(A, api.attachment.GET, "", { id: 999999 })).status, 404);
+});
+
 test("another team's rows read as missing", { skip }, async () => {
   const notFound = async (r, what) => assert.equal((await r).status, 404, what);
   await notFound(call(A, api.card.GET, "", { id: B.card.id }), "card by id");
@@ -241,6 +252,7 @@ test("another team's rows read as missing", { skip }, async () => {
   await notFound(call(A, api.cardSubtasks.GET, "", { id: B.card.id }), "card's sub-tasks");
   await notFound(call(A, api.subtask.GET, "", { id: B.subtask.id }), "sub-task");
   await notFound(call(A, api.cardLinks.GET, "", { id: B.card.id }), "card's links");
+  await notFound(call(A, api.attachment.GET, "", { id: B.attachment.id }), "attachment");
   await notFound(call(A, api.stream.GET, `/api/stream?board_id=${B.board.id}`), "stream of B's board");
   assert.deepEqual((await call(A, api.cardAttachments.GET, "", { id: B.card.id })).data, []);
   assert.deepEqual((await call(A, api.columnsByCard.GET, "", { id: B.card.id })).data, []);
