@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AuthLayout, { FormError } from "../../components/auth/AuthLayout";
 import PasswordInput from "../../components/auth/PasswordInput";
 import { Button, Field } from "../../components/ui";
+import { safeNextPath } from "../../lib/login-next";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -25,7 +26,9 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.push("/");
+        // Back to the page that sent us here (/login?next=/c/609), if it is
+        // a path on this site; home otherwise.
+        router.push(safeNextPath(new URLSearchParams(window.location.search).get("next")));
       } else {
         const data = await res.json();
         setError(data.error || "Login failed");

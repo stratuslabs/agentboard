@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookieName, isAuthenticatedFromRequest } from "./lib/auth";
 import { clientKey, FailureThrottle } from "./lib/rate-limit";
 import { publicHost } from "./lib/public-url";
+import { loginPath } from "./lib/login-next";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -106,7 +107,7 @@ function deny(
 ) {
   const response = isApi
     ? NextResponse.json({ error: message }, { status })
-    : NextResponse.redirect(new URL("/login", request.url));
+    : NextResponse.redirect(new URL(loginRedirect(request), request.url));
 
   // Drop a cookie we just rejected. Without this a browser holding a stale
   // session (after a password rotation, or the v1 cookie format) would replay
@@ -115,6 +116,15 @@ function deny(
     response.cookies.delete(getSessionCookieName());
   }
   return response;
+}
+
+/**
+ * /login, carrying the page a signed-out browser asked for in ?next= so the
+ * login page can send it back there. Only page loads (GET/HEAD) carry it.
+ */
+function loginRedirect(request: NextRequest): string {
+  if (request.method !== "GET" && request.method !== "HEAD") return "/login";
+  return loginPath(request.nextUrl.pathname, request.nextUrl.search);
 }
 
 export const config = {
