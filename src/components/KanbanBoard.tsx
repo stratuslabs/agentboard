@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useBoardStream } from "../lib/useBoardStream";
 import {
@@ -25,7 +25,7 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
-import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, ListFilter, Pencil, Plus, Star, Tag, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, ListFilter, Pencil, Plus, Search, Star, Tag, Trash2, X } from "lucide-react";
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
@@ -35,6 +35,8 @@ import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { type Card, type Member, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
+import { cardMatchesSearch, parseSearchQuery } from "../lib/card-search";
+import { OPEN_CARD_EVENT, type OpenCardDetail } from "../lib/quick-search";
 
 function DroppableColumn({ columnId, children }: { columnId: number; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id: `column-${columnId}` });
@@ -124,6 +126,8 @@ export default function KanbanBoard({
   const [filterAssignee, setFilterAssignee] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterLabel, setFilterLabel] = useState("");
+  const [filterText, setFilterText] = useState("");
+  const textQuery = useMemo(() => parseSearchQuery(filterText), [filterText]);
   const [members, setMembers] = useState<Member[]>([]);
   const [addingBoard, setAddingBoard] = useState(false);
   const [newBoardName, setNewBoardName] = useState("");
@@ -376,9 +380,10 @@ export default function KanbanBoard({
             (c.labels &&
               c.labels.toLowerCase().includes(filterLabel.toLowerCase()))
         )
+        .filter((c) => cardMatchesSearch(c, textQuery, productKey))
         .sort((a, b) => a.position - b.position);
     },
-    [cards, filterAssignee, filterPriority, filterLabel]
+    [cards, filterAssignee, filterPriority, filterLabel, textQuery, productKey]
   );
 
   function handleDragStart(event: DragStartEvent) {
@@ -551,6 +556,21 @@ export default function KanbanBoard({
     const { cardId, full } = readCardParam();
     if (cardId) deepLinkRef.current = { cardId, full, resolved: false };
   }, []);
+  // Quick search opening a card in this product: the same path as a link,
+  // without remounting the board. The tick reruns the effect below.
+  const [deepLinkTick, setDeepLinkTick] = useState(0);
+  useEffect(() => {
+    function onOpenCard(e: Event) {
+      const cardId = (e as CustomEvent<OpenCardDetail>).detail?.cardId;
+      if (!cardId) return;
+      e.preventDefault(); // tells quick search this board took it
+      deepLinkRef.current = { cardId, full: false, resolved: false };
+      writeCardParam(cardId);
+      setDeepLinkTick((t) => t + 1);
+    }
+    window.addEventListener(OPEN_CARD_EVENT, onOpenCard);
+    return () => window.removeEventListener(OPEN_CARD_EVENT, onOpenCard);
+  }, []);
   useEffect(() => {
     const link = deepLinkRef.current;
     if (!link || activeBoardId === null) return;
@@ -573,7 +593,7 @@ export default function KanbanBoard({
         }
       })
       .catch(() => { deepLinkRef.current = null; });
-  }, [cards, loadedBoardId, activeBoardId, productId]);
+  }, [cards, loadedBoardId, activeBoardId, productId, deepLinkTick]);
 
   async function handleAddBoard() {
     if (!newBoardName.trim()) return;
@@ -729,7 +749,7 @@ export default function KanbanBoard({
     return () => window.removeEventListener("click", handler);
   }, [boardContextMenu, columnContextMenu]);
 
-  const hasFilters = filterAssignee || filterPriority || filterLabel;
+  const hasFilters = filterAssignee || filterPriority || filterLabel || textQuery.terms.length > 0;
 
   const openCardObj = openCardId !== null ? cards.find((c) => c.id === openCardId) ?? null : null;
   const activeBoard = boards.find((b) => b.id === activeBoardId);
@@ -951,6 +971,23 @@ export default function KanbanBoard({
           <ListFilter className="h-3.5 w-3.5" />
           Filter
         </span>
+        <span className="relative">
+          <input
+            type="search"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && filterText) {
+                e.stopPropagation();
+                setFilterText("");
+              }
+            }}
+            aria-label="Filter by text"
+            className="h-[30px] w-52 rounded-md border border-border-strong bg-surface-1 pr-3 pl-8 text-[12.5px] text-text-2 placeholder:text-text-4 focus:border-text-4 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+            placeholder="Title, text or AB-12"
+          />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+        </span>
         <Select
           aria-label="Filter by assignee"
           value={filterAssignee}
@@ -997,6 +1034,7 @@ export default function KanbanBoard({
               setFilterAssignee("");
               setFilterPriority("");
               setFilterLabel("");
+              setFilterText("");
             }}
           >
             <X className="h-3.5 w-3.5" />
