@@ -4,6 +4,18 @@ import { sql } from "../../../../lib/sql";
 import { boardIdForCard, notifyBoard } from "../../../../lib/realtime/notify";
 import { assertAttachment, withTenantParams } from "../../../../lib/tenant";
 
+// One attachment with its content, so a client that only has the attachment's
+// id (the CLI's `attachment get`) can read it without listing the whole card.
+export const GET = withTenantParams<{ id: string }>(async (_request: NextRequest, { teamId }, { params }) => {
+  await initDb();
+  const id = await assertAttachment(teamId, (await params).id);
+  const { rows } = await sql`SELECT * FROM attachments WHERE id = ${id}`;
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  return NextResponse.json(rows[0]);
+});
+
 export const DELETE = withTenantParams<{ id: string }>(async (_request: NextRequest, { teamId }, { params }) => {
   await initDb();
   const id = await assertAttachment(teamId, (await params).id);

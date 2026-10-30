@@ -97,7 +97,7 @@ function applyLabelEdit(current, { add, remove }) {
 
 // ---- Arg parser -----------------------------------------------------------
 
-const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version"]);
+const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version", "force"]);
 
 // Flags that always take a value. The next argument is consumed even when it
 // starts with "--", so `--description "--dry-run is broken"` keeps its text
@@ -106,7 +106,7 @@ const VALUE_FLAGS = new Set([
   "product", "board", "board-id", "column", "to-product", "to-board",
   "priority", "assignee", "label", "description", "due", "title",
   "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
-  "avatar-url", "position", "set", "append", "key", "value", "fields",
+  "avatar-url", "position", "set", "append", "key", "value", "out", "fields",
   "add-label", "remove-label",
 ]);
 
@@ -173,6 +173,7 @@ const COMMAND_FLAGS = {
   "task reorder": ["ids"],
   settings: ["key", "value"],
   preferences: ["key", "value"],
+  "attachment get": ["out", "force"],
   "attachment remove": [],
   "subtask list": [],
   "subtask add": [],
@@ -307,6 +308,62 @@ function output(data, flags, idField = "id") {
     }
   } else {
     process.stdout.write(String(data) + "\n");
+  }
+}
+
+// ---- Attachments ----------------------------------------------------------
+
+// The name to save an attachment under inside a directory. The server keeps
+// whatever filename it was sent, so only its last path segment is used, and a
+// name that is empty or only dots becomes attachment-<id>. This is what keeps
+// a filename like "../../x" from writing outside the directory.
+function attachmentFileName(attachment) {
+  const raw = String(attachment.filename ?? "").replace(/\0/g, "").replace(/\\/g, "/");
+  const base = path.posix.basename(raw);
+  return base && !/^\.+$/.test(base) ? base : `attachment-${attachment.id}`;
+}
+
+// Where `--out` puts an attachment: into an existing directory under its own
+// name, or at the path given. A path ending in a slash must be a directory.
+function attachmentTarget(out, attachment) {
+  const resolved = path.resolve(out);
+  const isDir = (p) => {
+    try {
+      return fs.statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  if (isDir(resolved)) return path.join(resolved, attachmentFileName(attachment));
+  if (/[\\/]$/.test(out)) die(`Directory not found: ${resolved}`);
+  if (!isDir(path.dirname(resolved))) die(`Directory not found: ${path.dirname(resolved)}`);
+  return resolved;
+}
+
+// Write without replacing an existing file unless asked: "wx" fails if the
+// file is already there, so nothing is overwritten between check and write.
+// --force replaces a file but never writes through a symlink, since the link
+// could point anywhere, outside the --out directory included. The lstat gives
+// a clear message; O_NOFOLLOW closes the gap between it and the open where the
+// platform has it.
+function writeAttachment(file, content, force) {
+  const symlinkError = () => die(`${file} is a symlink; won't write through it. Remove it or pick another --out.`);
+  let flags = "wx";
+  if (force) {
+    try {
+      if (fs.lstatSync(file).isSymbolicLink()) symlinkError();
+    } catch (err) {
+      if (err.code !== "ENOENT") die(`Could not write ${file}: ${err.message}`);
+    }
+    const c = fs.constants;
+    flags = c.O_WRONLY | c.O_CREAT | c.O_TRUNC | (c.O_NOFOLLOW ?? 0);
+  }
+  try {
+    fs.writeFileSync(file, content, { encoding: "utf-8", flag: flags });
+  } catch (err) {
+    if (err.code === "EEXIST") die(`${file} already exists. Pass --force to overwrite it.`);
+    if (err.code === "ELOOP") symlinkError();
+    die(`Could not write ${file}: ${err.message}`);
   }
 }
 
@@ -461,7 +518,9 @@ function findColumn(cols, input) {
 function makeReq(baseUrl, password, agentName) {
   const base = baseUrl.replace(/\/+$/, "");
 
-  async function req(method, urlPath, body) {
+  // `hints` maps an HTTP status to a sentence added to that error, for a
+  // failure that has a likely, fixable cause.
+  async function req(method, urlPath, body, hints = {}) {
     const url = `${base}${urlPath}`;
     const headers = {};
     // Only set Content-Type on requests with a body
@@ -508,7 +567,8 @@ function makeReq(baseUrl, password, agentName) {
       } catch {
         // not JSON; show the body as it came
       }
-      die(`HTTP ${res.status}: ${snippet(msg) || res.statusText}`);
+      const hint = hints[res.status];
+      die(`HTTP ${res.status}: ${snippet(msg) || res.statusText}${hint ? `. ${hint}` : ""}`);
     }
     if (!text) return {};
     try {
@@ -795,6 +855,10 @@ Management Commands:
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
   settings [--key <k> --value <v>]
   preferences [--key <k> --value <v>]
+  attachment get <id> [--out <file|dir>] [--force]
+                                       Print an attachment, or save it (never
+                                       overwrites without --force). Ids are in
+                                       'task attachments <card-id>'.
   attachment remove <id>
   subtask list <card-id>               Sub-tasks on a card, with progress
   subtask add <card-id> <title>        Add a sub-task to the end of the list
@@ -1589,12 +1653,40 @@ async function main() {
 
     // ---- attachment ----
     else if (cmd === "attachment") {
-      if (sub === "remove") {
+      if (sub === "get") {
+        const id = positional[2];
+        if (!id || !/^[1-9][0-9]*$/.test(id)) {
+          die("Usage: agentboard attachment get <attachment-id> [--out <file|dir>] [--force]");
+        }
+        const attachment = await req("GET", `/api/attachments/${id}`, undefined, {
+          405: "This server can't send a single attachment yet; read it with 'agentboard task attachments <card-id> --json'",
+        });
+        if (typeof attachment.content !== "string") {
+          die(`Attachment ${id} came back without its content`);
+        }
+        if (flags.out === undefined) {
+          if (flags.json) output(attachment, flags);
+          else process.stdout.write(attachment.content);
+        } else {
+          const file = attachmentTarget(flags.out, attachment);
+          writeAttachment(file, attachment.content, flags.force);
+          const bytes = Buffer.byteLength(attachment.content);
+          if (flags.json) {
+            const meta = { ...attachment, path: file, bytes };
+            delete meta.content;
+            output(meta, flags);
+          } else if (flags.quiet) {
+            process.stdout.write(`${file}\n`);
+          } else {
+            process.stdout.write(`Saved ${attachment.filename} to ${file} (${bytes} bytes)\n`);
+          }
+        }
+      } else if (sub === "remove") {
         const id = positional[2];
         if (!id) die("Usage: agentboard attachment remove <id>");
         output(await req("DELETE", `/api/attachments/${id}`), flags);
       } else {
-        die(`Unknown attachment command: ${sub}. Use: remove`);
+        die(`Unknown attachment command: ${sub}. Use: get, remove`);
       }
     }
 
