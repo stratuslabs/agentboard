@@ -79,3 +79,16 @@ test("the configured list can't be changed after configure()", async () => {
   assert.deepEqual([...getConfig().reservedOrgSlugs], ["billing"]);
   assert.ok(Object.isFrozen(getConfig().reservedOrgSlugs));
 });
+
+// The org name in a board's breadcrumb links to the org page, /<org-slug>. An
+// org kept on a slug the core reserved before that slug was reserved (an
+// existing `today` org keeps its URLs) has no org page: /today is the Today
+// page, so its breadcrumb gets no link.
+test("orgPageHref links an org's page, except on a core-reserved slug", async () => {
+  const slugs = await fresh("lib/org-slug.ts");
+  assert.equal(slugs.orgPageHref("northwind"), "/northwind");
+  assert.equal(slugs.orgPageHref("today-org"), "/today-org");
+  for (const reserved of ["today", "assigned", "past-due", "settings", "login", "api", "c", "Today"]) {
+    assert.equal(slugs.orgPageHref(reserved), null, reserved);
+  }
+});
