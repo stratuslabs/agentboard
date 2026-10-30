@@ -54,6 +54,8 @@ agentboard status <id> doing
 # A board made before Blocked was a default column needs one first:
 #   agentboard column add "Blocked" --color "#EF4444"
 agentboard status <id> done
+# Several cards at once; each moves on its own board
+agentboard status 295 296 297 todo
 
 # View task details
 agentboard show <id>
@@ -120,7 +122,7 @@ agentboard member update <member-id> --name "New Name" [--type human]
 agentboard task add "Title" --product <slug> --board <slug> [options]
 agentboard task list --product <slug> --board <slug> [--assignee X --priority X]
 agentboard task show <id>
-agentboard task move <id> --column <slug>                       # same board
+agentboard task move <id> [<id> ...] --column <slug>             # same board
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
@@ -156,6 +158,8 @@ agentboard preferences --key key --value val
 Every card has a readable id made of its product's key and a per-product number, like `AB-142`, shown as `key` in `show` and `--json` output. Anywhere a command takes a card `<id>`, the readable id works too, in any case (`show ab-142`), as does the plain number. A product's key is derived from its name when it is created (AgentBoard is `AB`) and can be set with `--key` on `product add` or `product rename`. Old keys keep working after a rename, and a card moved to another product gets a new number there while its old id still finds it.
 
 `task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
+
+`status` and `task move --column` take several ids. Each card is moved on its own: one that fails (no such card, no such column on its board) is reported as `Error: <id>: ...` and the rest still move. Each moved card prints `Moved <id> to <column>`, or just its id with `--quiet`; `--json` prints one `{ id, ok, column, card | error }` per card. If any failed, the last line counts them and lists their ids, and the exit code is 1. Moving several cards to another board (`--to-board`) isn't supported; with one id the output is the moved card, as before.
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
