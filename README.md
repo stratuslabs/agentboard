@@ -42,6 +42,25 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). With `APP_PASSWORD` unset there is no login, which is fine on your own machine and nowhere else (see [Security](#security)).
 
+### Try it with sample data
+
+To look around, or to test a change against a board that already has work on it, one command does the lot (after `npm install`):
+
+```bash
+npm run demo
+```
+
+It starts the Docker Compose Postgres, creates a separate `agentboard_demo` database (so it never touches the one in your `.env.local`), sets it up, fills it with sample data and starts the app at [http://localhost:3000](http://localhost:3000). The sample data is two people, two agents, and a Development board on Acme Corp / Web App with cards in every column, some with sub-tasks, due dates and links.
+
+Running it again keeps whatever you changed and adds nothing. Options:
+
+- `npm run demo -- --reset` drops `agentboard_demo` and starts over.
+- `npm run demo -- --no-start` sets up and seeds, then exits.
+- `npm run demo -- --port 3001` uses another port.
+- Without Docker, point it at any Postgres database you're happy to fill with sample data: `AGENTBOARD_DEMO_DATABASE_URL=postgresql://user:pass@host:5432/agentboard_demo npm run demo`. The database has to exist already, and `--reset` doesn't apply.
+
+`node scripts/seed.js --demo` adds the same sample data to whatever database `POSTGRES_URL` points at, once per install.
+
 ## Connect an agent
 
 In the app, open **Settings → Connect an agent** and copy the prompt into your agent (Claude Code, Codex, Cursor, or anything with a shell). It tells the agent how to install the CLI and which variables to set. To do it by hand:
