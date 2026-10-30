@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Palette, Pencil, UserMinus } from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 import { Button, ColorSwatches, Input, MenuDivider, MenuItem, PRESET_COLORS, Select } from "../ui";
@@ -104,11 +104,19 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
   const [editing, setEditing] = useState<"name" | "color" | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  function startEditing(focus: "name" | "color") { setSaveError(null); setEditing(focus); }
+  // Each open of the editor is a session. A save answers only the session that
+  // sent it: after Cancel (and maybe a reopen) its result is dropped, so a slow
+  // failure can't show on the new edit and a slow success can't close it.
+  const session = useRef(0);
+  function endSession() { session.current += 1; setSaving(false); setSaveError(null); }
+  function startEditing(focus: "name" | "color") { endSession(); setEditing(focus); }
+  function cancelEditing() { endSession(); setEditing(null); }
   async function save(name: string, color: string) {
+    const mine = session.current;
     setSaving(true);
     setSaveError(null);
     const error = await updateBoardMember(member.id, name, color);
+    if (session.current !== mine) return;
     setSaving(false);
     if (error) setSaveError(error);
     else setEditing(null);
@@ -125,7 +133,7 @@ export function BoardMemberRow({ member, sub, trailing, extraMenu, onRemove }: {
           initialName={member.name}
           initialColor={member.color}
           focus={editing}
-          onCancel={() => setEditing(null)}
+          onCancel={cancelEditing}
           onSave={save}
           error={saveError}
           saving={saving}
