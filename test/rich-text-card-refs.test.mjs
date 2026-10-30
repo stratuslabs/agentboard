@@ -185,3 +185,16 @@ test("every printable ASCII neighbor: only the allowed ones let a key link", () 
     if (c !== "`") assert.equal(linked(`x AB-142${c}y`), closes.has(c), `after: ${c}`);
   }
 });
+
+test("a Markdown link whose target has parentheses is one construct (card 837 review)", () => {
+  // Rejected target: the whole thing stays text, the label is not a card link.
+  assert.deepEqual(parseInline("see [AB-142](javascript:alert(1)) now"), [
+    text("see [AB-142](javascript:alert(1)) now"),
+  ]);
+  // Safe target with balanced parentheses: one link, its label stays text.
+  assert.deepEqual(parseInline("[AB-142](https://en.wikipedia.org/wiki/Foo_(bar))"), [
+    { type: "link", href: "https://en.wikipedia.org/wiki/Foo_(bar)", children: [text("AB-142")] },
+  ]);
+  // A plain parenthesized key is still a card reference.
+  assert.deepEqual(parseInline("(AB-142)"), [text("("), card("AB-142"), text(")")]);
+});

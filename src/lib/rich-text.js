@@ -87,8 +87,10 @@ export function parseRichText(source, options = {}) {
 }
 
 // One pass over each line. Earlier alternatives win at the same position, so a
-// code span hides any markers or URLs inside it.
-const INLINE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^()\s]+)\)|\*\*(?=\S)([^\n]*?\S)\*\*|((?:https?:\/\/|mailto:)[^\s<>"'`]+)/gi;
+// code span hides any markers or URLs inside it. A link target may hold one
+// level of balanced parentheses (wiki/Foo_(bar), javascript:alert(1)), so the
+// whole construct is matched, and kept as text when the target is unsafe.
+const INLINE = /`([^`\n]+)`|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*(?=\S)([^\n]*?\S)\*\*|((?:https?:\/\/|mailto:)[^\s<>"'`]+)/gi;
 
 /**
  * @typedef {object} InlineOptions
