@@ -230,6 +230,9 @@ export default function CardDetail({
   const [copied, setCopied] = useState(false);
   // AB-142, or #<id> for a card in a product that has no key yet.
   const label = cardLabel(card, context.productKey);
+  // This card's own product key always links in its description (TLS-13 in a
+  // product keyed TLS), even where it reads like a standard.
+  const ownKeys = [card.product_key, context.productKey].filter((k): k is string => Boolean(k));
   const rootRef = useRef<HTMLDivElement>(null);
 
   // --- Saving ---
@@ -680,7 +683,7 @@ export default function CardDetail({
           }}
           className={cx(descriptionText, "cursor-text transition-colors hover:bg-surface-1 focus-visible:bg-surface-1 focus-visible:outline-none")}
         >
-          <RichText text={description} />
+          <RichText text={description} cardKeys={ownKeys} />
         </div>
       ) : (
       <AutoTextarea

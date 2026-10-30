@@ -67,6 +67,27 @@ test("common standards and time-zone names are not card keys", () => {
   }
 });
 
+test("a real product key links even when it reads like a standard", () => {
+  // A product named "Transport Layer Security" derives the key TLS. When the
+  // caller says which keys are real, those win over the standards stoplist.
+  const opts = { cardKeys: ["TLS", "UTC"] };
+  assert.deepEqual(parseInline("Blocked by TLS-13.", opts), [text("Blocked by "), card("TLS-13"), text(".")]);
+  assert.deepEqual(parseInline("UTC-5 and AB-2", opts), [card("UTC-5"), text(" and "), card("AB-2")]);
+  // Keys not in the list still follow the stoplist.
+  assert.deepEqual(parseInline("UTF-8", opts), [text("UTF-8")]);
+  // Inside bold, too.
+  assert.deepEqual(parseInline("**TLS-13**", opts), [{ type: "strong", children: [card("TLS-13")] }]);
+});
+
+test("parseRichText passes the real keys to every block", () => {
+  const blocks = parseRichText("# TLS-1\n\n- TLS-2\n\nSee TLS-3", { cardKeys: ["TLS"] });
+  assert.deepEqual(blocks, [
+    { type: "heading", level: 1, content: [card("TLS-1")] },
+    { type: "list", ordered: false, start: 1, items: [[[card("TLS-2")]]] },
+    { type: "paragraph", lines: [[text("See "), card("TLS-3")]] },
+  ]);
+});
+
 test("code spans, link labels and URLs keep keys as written", () => {
   assert.deepEqual(parseInline("`AB-142`"), [{ type: "code", text: "AB-142" }]);
   assert.deepEqual(parseInline("[AB-142](https://example.com/x)"), [

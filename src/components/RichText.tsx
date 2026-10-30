@@ -68,8 +68,12 @@ function BlockView({ block }: { block: Block }) {
  * headings, links, `code`, **bold** and card references (AB-142), which link
  * to the card. Built from React elements, never HTML.
  */
-export default function RichText({ text, className }: { text: string; className?: string }) {
-  const blocks = parseRichText(text);
+/**
+ * `cardKeys`: product keys known to be real, so a reference like TLS-13 links
+ * even though TLS also names a standard. Other keys link by shape alone.
+ */
+export default function RichText({ text, className, cardKeys }: { text: string; className?: string; cardKeys?: string[] }) {
+  const blocks = parseRichText(text, { cardKeys });
   return (
     <div className={cx("flex flex-col gap-[0.6em] break-words", className)}>
       {blocks.map((b, i) => <BlockView key={i} block={b} />)}

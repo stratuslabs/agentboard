@@ -31,9 +31,10 @@ const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 
 /**
  * @param {string | null | undefined} source
+ * @param {InlineOptions} [options]
  * @returns {Block[]}
  */
-export function parseRichText(source) {
+export function parseRichText(source, options = {}) {
   if (!source) return [];
   /** @type {Block[]} */
   const blocks = [];
@@ -53,7 +54,7 @@ export function parseRichText(source) {
     const heading = HEADING.exec(raw);
     if (heading && heading[2]) {
       close();
-      blocks.push({ type: "heading", level: heading[1].length, content: parseInline(heading[2]) });
+      blocks.push({ type: "heading", level: heading[1].length, content: parseInline(heading[2], options) });
       continue;
     }
 
@@ -66,12 +67,12 @@ export function parseRichText(source) {
         close();
         current = { type: "list", ordered: isOrdered, start: ordered ? Number(ordered[1]) : 1, items: [] };
       }
-      current.items.push([parseInline(body.trim())]);
+      current.items.push([parseInline(body.trim(), options)]);
       continue;
     }
 
     if (current && current.type === "list" && CONTINUATION.test(raw)) {
-      current.items[current.items.length - 1].push(parseInline(raw.trim()));
+      current.items[current.items.length - 1].push(parseInline(raw.trim(), options));
       continue;
     }
 
@@ -79,7 +80,7 @@ export function parseRichText(source) {
       close();
       current = { type: "paragraph", lines: [] };
     }
-    current.lines.push(parseInline(raw.trim()));
+    current.lines.push(parseInline(raw.trim(), options));
   }
   close();
   return blocks;
@@ -90,12 +91,21 @@ export function parseRichText(source) {
 const INLINE = /`([^`\n]+)`|\[([^\]\n]+)\]\(([^()\s]+)\)|\*\*(?=\S)([^\n]*?\S)\*\*|((?:https?:\/\/|mailto:)[^\s<>"'`]+)/gi;
 
 /**
+ * @typedef {object} InlineOptions
+ * @property {boolean} [links] false to leave links and card references as text
+ * @property {Iterable<string>} [cardKeys] product keys known to be real. A
+ *   reference with one of these prefixes always links, even one that reads
+ *   like a standard (a product named "Transport Layer Security" is TLS).
+ */
+
+/**
  * @param {string} line
- * @param {{ links?: boolean }} [options]
+ * @param {InlineOptions} [options]
  * @returns {Line}
  */
 export function parseInline(line, options = {}) {
   const links = options.links !== false;
+  const realKeys = new Set(options.cardKeys ?? []);
   /** @type {Line} */
   const out = [];
   const pushNode = (/** @type {Inline} */ n) => {
@@ -108,7 +118,7 @@ export function parseInline(line, options = {}) {
   // `raw` text (a rejected link, an unusable URL) is kept exactly as written.
   const pushText = (/** @type {number} */ from, /** @type {number} */ to, raw = false) => {
     if (from >= to) return;
-    if (links && !raw) linkCardRefs(line, from, to).forEach(pushNode);
+    if (links && !raw) linkCardRefs(line, from, to, realKeys).forEach(pushNode);
     else pushNode({ type: "text", text: line.slice(from, to) });
   };
 
@@ -165,7 +175,8 @@ const CARD_ID = `(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})${AFTER}`;
 const CARD_REF = new RegExp(`${CARD_KEY}|${CARD_ID}`, "g");
 
 // Prefixes that read like a card key but are standards, hashes or time zones:
-// UTF-8, ISO-8601, SHA-256, CVE-2026, UTC-5.
+// UTF-8, ISO-8601, SHA-256, CVE-2026, UTC-5. Skipped unless the caller names
+// the prefix as a real product key (options.cardKeys).
 const NOT_CARD_KEYS = new Set(["UTF", "ISO", "SHA", "CVE", "RFC", "HTTP", "TLS", "PEP", "ES", "GPT", "UTC", "GMT"]);
 
 /**
@@ -175,9 +186,10 @@ const NOT_CARD_KEYS = new Set(["UTF", "ISO", "SHA", "CVE", "RFC", "HTTP", "TLS",
  * @param {string} line
  * @param {number} from
  * @param {number} to
+ * @param {Set<string>} realKeys prefixes that always link
  * @returns {Inline[]}
  */
-function linkCardRefs(line, from, to) {
+function linkCardRefs(line, from, to, realKeys) {
   /** @type {Inline[]} */
   const out = [];
   const re = new RegExp(CARD_REF.source, CARD_REF.flags);
@@ -186,7 +198,8 @@ function linkCardRefs(line, from, to) {
   let m;
   while ((m = re.exec(line)) && m.index + m[0].length <= to) {
     const key = m[1];
-    if (key && NOT_CARD_KEYS.has(key.slice(0, key.indexOf("-")))) continue;
+    const prefix = key && key.slice(0, key.indexOf("-"));
+    if (prefix && NOT_CARD_KEYS.has(prefix) && !realKeys.has(prefix)) continue;
     if (m.index > pos) out.push({ type: "text", text: line.slice(pos, m.index) });
     out.push({ type: "card", ref: key ?? m[2], children: [{ type: "text", text: m[0] }] });
     pos = m.index + m[0].length;
