@@ -82,6 +82,7 @@ before(async () => {
     card: await load("cards/[id]"),
     move: await load("cards/[id]/move"),
     views: await load("cards/views"),
+    search: await load("cards/search"),
     members: await load("members"),
   };
 
@@ -214,6 +215,14 @@ test("the today, assigned and past-due views carry the link", { skip }, async ()
   // A count is not a card and gets no link.
   const count = await call(api.views.GET, `/api/cards/views?view=past-due-count&member_id=${team.member.id}&tz=UTC`);
   assert.deepEqual(Object.keys(count.data), ["count"]);
+});
+
+test("quick search results carry the link", { skip }, async () => {
+  const hit = await newCard({ title: "zebra crossing" });
+  const res = await call(api.search.GET, "/api/cards/search?q=zebra", { headers: PROXIED });
+  assert.equal(res.status, 200);
+  assert.ok(res.data.some((c) => c.id === hit.data.id), "search finds the card");
+  for (const card of res.data) assert.equal(card.url, `https://board.example.com/c/${card.id}`);
 });
 
 test("the board snapshot and its deltas carry the link", { skip }, async () => {
