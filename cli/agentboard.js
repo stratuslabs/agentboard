@@ -106,7 +106,7 @@ const VALUE_FLAGS = new Set([
   "product", "board", "board-id", "column", "to-product", "to-board",
   "priority", "assignee", "label", "description", "due", "title",
   "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
-  "avatar-url", "position", "set", "append", "key", "value",
+  "avatar-url", "position", "set", "append", "key", "value", "fields",
   "add-label", "remove-label",
 ]);
 
@@ -123,14 +123,14 @@ function setValueFlag(flags, key, value) {
 // Anything else is an error: an ignored flag reads as success when the
 // command did something other than what was asked.
 const COMMAND_FLAGS = {
-  list: ["product", "board", "column", "priority", "label", "assignee", "include-done"],
+  list: ["product", "board", "column", "priority", "label", "assignee", "include-done", "fields"],
   new: ["product", "board", "column", "priority", "assignee", "label", "description", "due"],
   status: [],
   show: [],
   rename: [],
   notes: ["set", "append"],
   attention: [],
-  "my-tasks": ["assignee"],
+  "my-tasks": ["assignee", "fields"],
   today: [],
   "past-due": ["assignee"],
   "org list": [],
@@ -159,7 +159,7 @@ const COMMAND_FLAGS = {
   "member remove": [],
   "member update": ["name", "type", "color", "avatar-url"],
   "task add": ["product", "board", "column", "description", "priority", "label", "assignee", "due"],
-  "task list": ["product", "board", "column", "assignee", "priority", "label"],
+  "task list": ["product", "board", "column", "assignee", "priority", "label", "fields"],
   "task show": [],
   "task move": ["column", "to-product", "to-board"],
   "task update": ["title", "description", "assignee", "priority", "label", "add-label", "remove-label", "due", "issue", "pr"],
@@ -646,6 +646,103 @@ function makeResolvers(req) {
 }
 
 // ===========================================================================
+// Card lists: list, task list, my-tasks
+// ===========================================================================
+
+// Fields a card row can show beyond the card's own keys, readable whatever the
+// server sent: `product` and `board` prefer the slug, which is what --product
+// and --board take, and fall back to the name an older server sends.
+const CARD_FIELDS = {
+  product: (c) => c.product_slug ?? c.product_name,
+  board: (c) => c.board_slug ?? c.board_name,
+  column: (c) => c.column_name ?? c.column_slug,
+  // A card from before members existed names its assignee only as text.
+  assignee: (c) => c.assignee_name || c.assignee,
+};
+
+// Default tables. Everything else is one --fields or --json away.
+const LIST_FIELDS = ["id", "title", "column", "assignee", "priority"];
+const MY_TASKS_FIELDS = ["id", "title", "product", "board", "column", "priority"];
+
+function cardField(card, field) {
+  const value = Object.hasOwn(CARD_FIELDS, field) ? CARD_FIELDS[field](card) : card[field];
+  return value ?? null;
+}
+
+/**
+ * Cards from one board, with the column, board and product they're on. A
+ * server from before list rows carried these sends only column_id, so fill
+ * them from what the command already resolved. A value the server sent wins.
+ */
+function withLocation(cards, product, board, columns) {
+  const byId = new Map(columns.map((c) => [c.id, c]));
+  return cards.map((card) => {
+    const col = byId.get(card.column_id);
+    const where = {
+      column_slug: col?.slug,
+      column_name: col?.name,
+      board_id: board.id,
+      board_slug: board.slug,
+      board_name: board.name,
+      product_id: product.id,
+      product_slug: product.slug,
+      product_name: product.name,
+    };
+    const out = { ...card };
+    for (const [k, v] of Object.entries(where)) {
+      if (out[k] == null && v !== undefined) out[k] = v;
+    }
+    return out;
+  });
+}
+
+/**
+ * Print a card list. --quiet: ids. --json: the cards, or only --fields.
+ * Otherwise a table of --fields, or of `defaults`; with no defaults, every
+ * field, as before. `board` is the board the cards came from, named above the
+ * table so a product pinned by the environment is never a silent surprise.
+ */
+function outputCards(cards, flags, { defaults = null, product = null, board = null } = {}) {
+  let fields = null;
+  if (flags.fields !== undefined) {
+    if (flags.quiet) die("--quiet prints ids only; drop it to use --fields");
+    fields = String(flags.fields).split(",").map((f) => f.trim()).filter(Boolean);
+    if (fields.length === 0) die("--fields needs at least one field, e.g. --fields id,column,title");
+    if (cards.length > 0) {
+      const known = new Set([...Object.keys(CARD_FIELDS), ...cards.flatMap((c) => Object.keys(c))]);
+      const unknown = fields.filter((f) => !known.has(f));
+      if (unknown.length > 0) {
+        die(
+          `Unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. ` +
+            `Available: ${[...known].sort().join(", ")}`
+        );
+      }
+    }
+  }
+  const pick = (c, keys) => Object.fromEntries(keys.map((f) => [f, cardField(c, f)]));
+
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(fields ? cards.map((c) => pick(c, fields)) : cards, null, 2) + "\n");
+    return;
+  }
+  if (flags.quiet) {
+    output(cards, flags);
+    return;
+  }
+  if (product && board) {
+    process.stdout.write(`Board: ${product.slug}/${board.slug} (${product.name} / ${board.name})\n`);
+  }
+  const keys = fields || defaults;
+  if (!keys) {
+    output(cards, flags);
+    return;
+  }
+  process.stdout.write(
+    formatTable(cards.map((c) => pick(c, keys)), keys.map((k) => ({ key: k, label: k }))) + "\n"
+  );
+}
+
+// ===========================================================================
 // Command dispatch
 // ===========================================================================
 
@@ -657,6 +754,7 @@ Usage: agentboard <command> [options]
 Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   list                                 List tasks on current board
     --column <col>  --priority <p>  --label <l>  --assignee <name>  --include-done
+    --fields <a,b>
   new <title>                          Create a task
     --priority <p>  --assignee <name>  --label <l>  --description <text>
     --column <col>  --due <date>
@@ -668,7 +766,8 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   notes <id>                           View description
     --set <text>  --append <text>
   attention <id> on|off                Set priority to urgent/medium
-  my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME
+  my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME,
+                                       with product, board and column (--fields <a,b>)
   today                                Tasks due today
   past-due                             Overdue tasks
 
@@ -706,6 +805,9 @@ Management Commands:
 Output:
   --json     JSON output
   --quiet    IDs only
+  --fields   list, task list, my-tasks: the fields to print, comma-separated,
+             e.g. id,product,board,column,title. Any card field works, plus
+             product, board, column and assignee. With --json, only these.
 
 Unknown or unsupported flags are errors. Flag values may start with "--";
 use --flag=value or quote as usual.
@@ -772,7 +874,7 @@ async function main() {
     // ---- list ----
     if (cmd === "list") {
       const scope = requireScope();
-      const { boardId } = await resolve.resolveProductAndBoard(scope.product, scope.board);
+      const { boardId, product, board } = await resolve.resolveProductAndBoard(scope.product, scope.board);
       const params = new URLSearchParams({ board_id: boardId });
       if (flags.column) {
         const columnId = await resolve.resolveColumnId(boardId, flags.column);
@@ -782,19 +884,18 @@ async function main() {
       if (flags.label) params.set("label", flags.label);
       if (flags.assignee) params.set("assignee", flags.assignee);
 
+      const cols = await req("GET", `/api/columns?board_id=${boardId}`);
       let cards = await req("GET", `/api/cards?${params.toString()}`);
 
       // Filter out done unless --include-done
       if (!flags["include-done"]) {
-        // Get columns to find done column
-        const cols = await req("GET", `/api/columns?board_id=${boardId}`);
         const doneCol = cols.find((c) => c.slug === "done");
         if (doneCol) {
           cards = cards.filter((c) => c.column_id !== doneCol.id);
         }
       }
 
-      output(cards, flags);
+      outputCards(withLocation(cards, product, board, cols), flags, { defaults: LIST_FIELDS, product, board });
     }
 
     // ---- new ----
@@ -924,7 +1025,7 @@ async function main() {
         if (!existingIds.has(card.id)) cards.push(card);
       }
 
-      output(cards, flags);
+      outputCards(cards, flags, { defaults: MY_TASKS_FIELDS });
     }
 
     // ---- today ----
@@ -1216,7 +1317,7 @@ async function main() {
         const productSlug = flags.product || envProduct;
         const boardSlug = flags.board || envBoard;
         if (!productSlug) die("--product is required (or set AGENTBOARD_PRODUCT)");
-        const { boardId } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
+        const { boardId, product, board } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
         const params = new URLSearchParams({ board_id: boardId });
         if (flags.column) {
           const columnId = await resolve.resolveColumnId(boardId, flags.column);
@@ -1225,7 +1326,9 @@ async function main() {
         if (flags.assignee) params.set("assignee", flags.assignee);
         if (flags.priority) params.set("priority", flags.priority);
         if (flags.label) params.set("label", flags.label);
-        output(await req("GET", `/api/cards?${params.toString()}`), flags);
+        const cols = await req("GET", `/api/columns?board_id=${boardId}`);
+        const cards = await req("GET", `/api/cards?${params.toString()}`);
+        outputCards(withLocation(cards, product, board, cols), flags, { product, board });
       } else if (sub === "show") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task show <card-id>");
