@@ -88,7 +88,8 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   const touched = useRef<Set<string>>(new Set());
   // Collapsed-group clicks made before the initial GET lands. They are replayed onto
   // the server's value when it arrives, and nothing is saved until then, so an early
-  // click neither snaps back nor wipes groups collapsed in another browser.
+  // click neither snaps back nor wipes groups collapsed in another browser. If the GET
+  // fails, they stay local for this page load and are never saved.
   const serverLoaded = useRef(false);
   const earlyToggles = useRef<Array<[string, string]>>([]);
 
@@ -170,16 +171,9 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
         setIsLoaded(true);
       })
       .catch(() => {
-        // Keep the local state, and save any early clicks on top of it as before.
-        serverLoaded.current = true;
-        const early = earlyToggles.current;
-        earlyToggles.current = [];
-        if (early.length) {
-          setPrefs((local) => {
-            queuePatch(SERVER_KEYS.collapsedGroups, local.collapsedGroups);
-            return local;
-          });
-        }
+        // Keep the local state. Collapse clicks stay local for this page load: the
+        // local cache was never merged with the server value, so saving it could
+        // wipe groups collapsed in another browser. serverLoaded stays false.
         setIsLoaded(true); // Even on error, mark loaded so app works with localStorage data
       });
   }, [queuePatch]);
