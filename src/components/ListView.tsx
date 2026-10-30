@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { ArrowLeft, Calendar, ChevronRight } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, ChevronRight } from "lucide-react";
 import CardDetail from "./CardDetail";
 import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { groupByProduct, isCollapsed } from "../lib/list-groups";
+import { GROUPINGS, type Grouping, groupCards, isCollapsed, normalizeGrouping } from "../lib/list-groups";
 import { type Card, DUE_TEXT, cardKey, cardTitle, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
 
 export interface ViewCard extends Card {
@@ -27,7 +27,7 @@ export interface ViewCard extends Card {
 interface ListViewProps {
   cards: ViewCard[];
   title: string;
-  /** Which list this is, for remembering collapsed groups. Defaults to the title. */
+  /** Which list this is, for remembering its grouping and collapsed groups. Defaults to the title. */
   listId?: string;
   icon: React.ReactNode;
   /** Shown under the empty-state title. */
@@ -51,7 +51,7 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
   // out of this list (a new due date on Today, Done on Past Due) and the panel
   // stays on it. A `?card=` link to a card outside the list is fetched into it.
   const [heldCard, setHeldCard] = useState<ViewCard | null>(null);
-  const { prefs, toggleCollapsedGroup } = usePreferences();
+  const { prefs, toggleCollapsedGroup, setListGrouping } = usePreferences();
   const idBase = useId();
 
   useEffect(() => {
@@ -68,9 +68,11 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
       .catch(() => {});
   }, []);
 
-  // Group cards by product. A collapsed group still counts for prev/next, so
-  // walking from an open card isn't cut short by a folded header.
-  const groups = groupByProduct(cards);
+  // Group cards by the list's chosen grouping (product unless changed). A
+  // collapsed group still counts for prev/next, so walking from an open card
+  // isn't cut short by a folded header.
+  const grouping = normalizeGrouping(prefs.listGrouping[listId]);
+  const groups = groupCards(cards, grouping);
   const ordered = groups.flatMap((g) => g.cards);
   const openCard = openCardId === null
     ? null
@@ -144,7 +146,12 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
           {cards.length} {cards.length === 1 ? "card" : "cards"}
         </span>
         {note && <span className="whitespace-nowrap font-mono text-[11.5px] text-text-4 max-md:hidden">· {note}</span>}
-        {actions && <div className="ml-auto flex items-center gap-1.5">{actions}</div>}
+        {(actions || cards.length > 0) && (
+          <div className="ml-auto flex items-center gap-1.5">
+            {cards.length > 0 && <GroupBySelect value={grouping} onChange={(g) => setListGrouping(listId, g)} />}
+            {actions}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -154,11 +161,11 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
         ) : (
           <div className="flex max-w-[880px] flex-col gap-6">
             {groups.map((group, i) => {
-              const collapsed = isCollapsed(prefs.collapsedGroups, listId, group.key);
+              const collapsed = !group.flat && isCollapsed(prefs.collapsedGroups, listId, group.key);
               const bodyId = `${idBase}-group-${i}`;
               return (
-              <section key={group.key} className="flex flex-col gap-2">
-                <h2 className="flex">
+              <section key={group.key} className="flex flex-col gap-2" aria-label={group.flat ? title : undefined}>
+                {!group.flat && <h2 className="flex">
                   <button
                     type="button"
                     aria-expanded={!collapsed}
@@ -167,11 +174,12 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
                     className="-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-0.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-text-3"
                   >
                     <ChevronRight aria-hidden className={cx("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", !collapsed && "rotate-90")} />
-                    <span className="text-[12.5px] font-semibold text-text-2">{group.emoji}&nbsp; {group.name}</span>
+                    {group.priority && <PriorityDot priority={group.priority} />}
+                    <span className="text-[12.5px] font-semibold text-text-2">{group.emoji ? <>{group.emoji}&nbsp; </> : null}{group.name}</span>
                     {group.org && <span className="text-[12px] text-text-3">· {group.org}</span>}
                     <span className="font-mono text-[11px] text-text-4">{group.cards.length}</span>
                   </button>
-                </h2>
+                </h2>}
                 <div id={bodyId} hidden={collapsed} className={cx("flex-col gap-1", collapsed ? "hidden" : "flex")}>
                   {!collapsed && group.cards.map((card) => {
                     const dueStatus = card.due_date ? getDueDateStatus(card.due_date) : null;
@@ -214,5 +222,27 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
 
       {detail}
     </div>
+  );
+}
+
+const GROUPING_LABELS: Record<Grouping, string> = { product: "Product", priority: "Priority", none: "None" };
+
+/** The list's "Group by" control: a native select, so keyboard and screen readers work as usual. */
+function GroupBySelect({ value, onChange }: { value: Grouping; onChange: (g: Grouping) => void }) {
+  return (
+    <label className="relative inline-flex items-center gap-1.5 text-[12px] text-text-3">
+      <span className="max-md:hidden">Group by</span>
+      <span className="relative inline-flex">
+        <select
+          aria-label="Group by"
+          value={value}
+          onChange={(e) => onChange(normalizeGrouping(e.target.value))}
+          className="h-[30px] appearance-none rounded-md border border-border bg-surface-1 py-0 pr-7 pl-2.5 text-[12.5px] text-text-1 transition-colors hover:border-border-strong focus:border-text-4 focus:outline-none focus:ring-2 focus:ring-ivory/10"
+        >
+          {GROUPINGS.map((g) => <option key={g} value={g}>{GROUPING_LABELS[g]}</option>)}
+        </select>
+        <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+      </span>
+    </label>
   );
 }

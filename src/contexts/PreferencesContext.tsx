@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups } from '../lib/list-groups';
+import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups, type Grouping, groupingPrefKey, mergeGroupings, normalizeGroupings } from '../lib/list-groups';
 
 interface Preferences {
   expandedOrgs: number[];
@@ -13,6 +13,8 @@ interface Preferences {
   hideDoneToday: boolean;
   /** Collapsed product groups on the list pages, per list (card 297). */
   collapsedGroups: CollapsedGroups;
+  /** How each list page groups its cards, per list; a missing list means product (card 298). */
+  listGrouping: Record<string, Grouping>;
 }
 
 interface PreferencesContextType {
@@ -26,6 +28,7 @@ interface PreferencesContextType {
   setProfileMemberId: (id: number) => void;
   setHideDoneToday: (hide: boolean) => void;
   toggleCollapsedGroup: (list: string, key: string) => void;
+  setListGrouping: (list: string, grouping: Grouping) => void;
   isLoaded: boolean;
 }
 
@@ -37,6 +40,7 @@ const DEFAULT_PREFS: Preferences = {
   profileMemberId: null,
   hideDoneToday: false,
   collapsedGroups: {},
+  listGrouping: {},
 };
 
 const LS_KEYS = {
@@ -47,6 +51,8 @@ const LS_KEYS = {
   profileMemberId: 'agentboard-profile-member-id',
   hideDoneToday: 'agentboard-hide-done-today',
   collapsedGroups: 'agentboard-collapsed-groups',
+  // Local cache only. The server keeps one key per list, see groupingPrefKey.
+  listGrouping: 'agentboard-list-grouping',
 } as const;
 
 const SERVER_KEYS = LS_KEYS; // Same keys used on server
@@ -79,6 +85,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     profileMemberId: readLS(LS_KEYS.profileMemberId, null),
     hideDoneToday: readLS<unknown>(LS_KEYS.hideDoneToday, false) === true,
     collapsedGroups: normalizeCollapsed(readLS<unknown>(LS_KEYS.collapsedGroups, {})),
+    listGrouping: normalizeGroupings(readLS<unknown>(LS_KEYS.listGrouping, {})),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,6 +175,9 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           // Also server-authoritative, with early clicks replayed on top (see above).
           merged.collapsedGroups = collapsed;
           writeLS(LS_KEYS.collapsedGroups, collapsed);
+          // Server-authoritative per list, except lists changed while this was in flight.
+          merged.listGrouping = mergeGroupings(local.listGrouping, received, touched.current);
+          writeLS(LS_KEYS.listGrouping, merged.listGrouping);
 
           return merged;
         });
@@ -255,6 +265,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     });
   }, [queuePatch]);
 
+  const setListGrouping = useCallback((list: string, grouping: Grouping) => {
+    setPrefs((prev) => {
+      const next = { ...prev.listGrouping, [list]: grouping };
+      writeLS(LS_KEYS.listGrouping, next);
+      return { ...prev, listGrouping: next };
+    });
+    queuePatch(groupingPrefKey(list), grouping);
+  }, [queuePatch]);
+
   return (
     <PreferencesContext.Provider value={{
       prefs,
@@ -267,6 +286,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setProfileMemberId,
       setHideDoneToday,
       toggleCollapsedGroup,
+      setListGrouping,
       isLoaded,
     }}>
       {children}
