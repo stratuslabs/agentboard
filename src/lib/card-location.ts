@@ -40,10 +40,10 @@ export async function getCardWithLocation(teamId: number, rawId: string | number
       col.slug AS column_slug, col.name AS column_name,
       b.id AS board_id, b.slug AS board_slug, b.name AS board_name,
       p.id AS product_id, p.slug AS product_slug, p.name AS product_name,
-      p.key AS product_key,
+      p.key AS product_key, p.emoji AS product_emoji,
       CASE WHEN p.key IS NOT NULL AND cards.number IS NOT NULL
         THEN p.key || '-' || cards.number END AS key,
-      o.slug AS org_slug,
+      o.id AS org_id, o.slug AS org_slug, o.name AS org_name,
       (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id) AS subtask_total,
       (SELECT COUNT(*)::int FROM subtasks st WHERE st.card_id = cards.id AND st.done) AS subtask_done
     FROM cards

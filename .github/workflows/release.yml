@@ -93,7 +93,9 @@ jobs:
             npm publish --dry-run --tag "$plan"
             exit 0
           fi
-          npm publish --provenance --tag "$plan"
+          # Verbose so a rejected trusted-publishing (OIDC) exchange prints npm's
+          # reason; at the default level npm falls back silently to ENEEDAUTH.
+          npm publish --provenance --loglevel verbose --tag "$plan"
           echo "plan=$plan" >> "$GITHUB_OUTPUT"
 
       # Hold the release group until npm serves the new tag, so the next
