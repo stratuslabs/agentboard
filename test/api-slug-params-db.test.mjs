@@ -23,6 +23,8 @@ const SCHEMA = `slug_params_test_${process.pid}`;
 let api;
 let tenant;
 let end;
+let configure;
+let getConfig;
 const A = {};
 const B = {};
 
@@ -113,7 +115,9 @@ before(async () => {
     members: await load("members"),
     card: await load("cards/[id]"),
     fallback: await load("[[...path]]"),
+    bySlug: await load("products/by-slug"),
   };
+  ({ configure, getConfig } = await import(new URL("../src/configure.ts", import.meta.url).href));
 
   const selfHosted = await tenant.resolveTenant(new Request("http://localhost/"));
   A.id = selfHosted.teamId;
@@ -273,5 +277,35 @@ test("an unknown /api path answers the resolver's 401 before its 404", { skip },
     assert.equal(r.data.error, "No API route for POST /api/tasks");
   } finally {
     tenant.setTenantResolver({ fromRequest: signedIn });
+  }
+});
+
+// The board's breadcrumb links the org name to /<org> only when that path is
+// the org's page. The browser can't tell for a slug the consuming app reserved
+// with configure({ reservedOrgSlugs }), so the server says, with org_page.
+test("products/by-slug says whether the org has an org page", { skip }, async () => {
+  const { db } = require("../src/lib/sql.js");
+  const legacy = await seed(A, "Legacy Account", "Ledger");
+  const core = await seed(A, "Legacy Today", "Ledger");
+  await db.query("UPDATE organizations SET slug = 'account' WHERE id = $1", [legacy.org.id]);
+  await db.query("UPDATE organizations SET slug = 'today' WHERE id = $1", [core.org.id]);
+  const page = async (org, product = "ledger") => (await ok(A, api.bySlug.GET, `/api/products/by-slug?org_slug=${org}&product_slug=${product}`)).data;
+
+  const previous = getConfig();
+  try {
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: ["account"] });
+    assert.equal((await page("account")).org_page, false, "a consumer-reserved slug is the app's page, not the org's");
+    assert.equal((await page("today")).org_page, false, "a core-reserved slug is the app's page");
+    assert.equal((await page("solo-org", "solo")).org_page, true);
+    assert.equal((await page("solo-org", "solo")).org_slug, "solo-org");
+
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: [] });
+    assert.equal((await page("account")).org_page, true, "without the reservation /account is the org's page");
+
+    // An app that hasn't mounted app/(board)/[orgSlug]/page has no org pages.
+    configure({ ...previous, orgPages: false });
+    assert.equal((await page("solo-org", "solo")).org_page, false, "no link to a route the app didn't mount");
+  } finally {
+    configure(previous);
   }
 });

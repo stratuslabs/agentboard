@@ -52,18 +52,26 @@ export type AgentBoardConfig = {
    * appended, and asking for one outright is refused.
    */
   reservedOrgSlugs?: readonly string[];
+  /**
+   * Whether the app mounts the org page, app/(board)/[orgSlug]/page. When it
+   * does, the org name in a board's breadcrumb links to /<org-slug>; when it
+   * doesn't, the name is plain text instead of a link to a 404. Self-hosted
+   * AgentBoard, which never calls configure(), has org pages.
+   */
+  orgPages?: boolean;
 };
 
 const STORE = Symbol.for("@stratuslabs/agentboard-core/config");
-const OPTIONS = ["tenant", "members", "reservedOrgSlugs"] as const;
+const OPTIONS = ["tenant", "members", "reservedOrgSlugs", "orgPages"] as const;
 const TENANT_KEYS = ["fromRequest", "fromPage"] as const;
 const MEMBER_HOOKS = ["beforeTypeChange"] as const;
 
-type Store = { config: Readonly<AgentBoardConfig> };
+/** `configured` is false until configure() runs: self-hosted, not an app consuming the core. */
+type Store = { config: Readonly<AgentBoardConfig>; configured?: boolean };
 
 function store(): Store {
   const global = globalThis as typeof globalThis & { [STORE]?: Store };
-  global[STORE] ??= { config: Object.freeze({}) };
+  global[STORE] ??= { config: Object.freeze({}), configured: false };
   return global[STORE];
 }
 
@@ -116,19 +124,34 @@ function validate(config: AgentBoardConfig): Readonly<AgentBoardConfig> {
     config.members, MEMBER_HOOKS, "members", "beforeTypeChange", "Unknown members hook",
   );
   const reservedOrgSlugs = slugList(config.reservedOrgSlugs);
+  if (config.orgPages !== undefined && typeof config.orgPages !== "boolean") {
+    throw new TypeError("orgPages must be true or false");
+  }
   const result: AgentBoardConfig = {};
   if (tenant) result.tenant = tenant;
   if (members) result.members = members;
   if (reservedOrgSlugs) result.reservedOrgSlugs = reservedOrgSlugs;
+  if (config.orgPages !== undefined) result.orgPages = config.orgPages;
   return Object.freeze(result);
 }
 
 /** Replace the configuration. Calling it again (a dev reload) replaces it, not merges. */
 export function configure(config: AgentBoardConfig): void {
-  store().config = validate(config);
+  const next = validate(config);
+  store().config = next;
+  store().configured = true;
 }
 
 /** The configuration in force, `{}` when nothing was configured. */
 export function getConfig(): Readonly<AgentBoardConfig> {
   return store().config;
+}
+
+/**
+ * Whether /<org-slug> is mounted: always for self-hosted, and for an app that
+ * consumes the core only when it said so with configure({ orgPages: true }).
+ */
+export function orgPagesMounted(): boolean {
+  const { config, configured } = store();
+  return config.orgPages ?? !configured;
 }

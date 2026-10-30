@@ -5,5 +5,6 @@ export async function register() {
   const { configure } = await import("@stratuslabs/agentboard-core/configure");
   const { tenant } = await import("@/tenant");
   // app/account is this app's own page, so no org may be slugged "account".
-  configure({ tenant, reservedOrgSlugs: ["account"] });
+  // It mounts the org page, app/(board)/[orgSlug]/page, so orgPages is on.
+  configure({ tenant, reservedOrgSlugs: ["account"], orgPages: true });
 }

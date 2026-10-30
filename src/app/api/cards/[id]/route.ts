@@ -5,16 +5,18 @@ import { boardIdForCard, notifyBoards } from "../../../../lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "../../../../lib/card-location";
 import { checkCardText } from "../../../../lib/card-text";
 import { memberIdByName, resolveAgentMember } from "../../../../lib/members";
+import { settleAssignee } from "../../../../lib/assignee";
 import { assertColumn, assertMember, withTenantParams } from "../../../../lib/tenant";
+import { withCardUrl } from "../../../../lib/public-url";
 
-export const GET = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
+export const GET = withTenantParams<{ id: string }>(async (request, { teamId }, { params }) => {
   await initDb();
   const { id } = await params;
   const card = await getCardWithLocation(teamId, id);
   if (!card) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(card);
+  return NextResponse.json(withCardUrl(request, card));
 });
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId, memberId: credentialMember }, { params }) => {
@@ -47,19 +49,20 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   // whose watchers also need to hear that it left.
   const boardBefore = await boardIdForCard(id);
 
-  // A named assignee is the caller's choice, so it's resolved first.
-  if (body.assignee && body.assignee_id === undefined) {
-    const named = await memberIdByName(teamId, body.assignee);
-    if (named !== null) {
-      body.assignee_id = named;
-    }
+  // A named assignee is the caller's choice, so it's resolved first, and
+  // both fields are written together so they can't name different people.
+  const named = await settleAssignee(body, (name) => memberIdByName(teamId, name));
+  if (named) {
+    body.assignee_id = named.assignee_id;
+    body.assignee = named.assignee;
   }
 
   // Auto-register agent from X-Agent-Name header. The header is only a claim:
   // a caller whose credential already names its agent is not reassigned by it.
   const agentName = request.headers.get("x-agent-name");
-  if (agentName && body.assignee_id === undefined && !body.assignee && (credentialMember ?? null) === null) {
+  if (agentName && !named && (credentialMember ?? null) === null) {
     body.assignee_id = await resolveAgentMember(teamId, agentName);
+    body.assignee = null;
   }
 
   const allowedFields = [
@@ -79,7 +82,7 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   }
 
   if (sets.length === 0) {
-    return NextResponse.json(existing[0]);
+    return NextResponse.json(withCardUrl(request, existing[0]));
   }
 
   sets.push("updated_at = NOW()");
@@ -92,7 +95,7 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
 
   // Re-read with member, location and readable key: a column change may have
   // given the card a new number in another product.
-  return NextResponse.json(await getCardWithLocation(teamId, id));
+  return NextResponse.json(withCardUrl(request, await getCardWithLocation(teamId, id)));
 });
 
 export const DELETE = withTenantParams<{ id: string }>(async (_request, { teamId }, { params }) => {
