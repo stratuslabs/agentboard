@@ -23,6 +23,8 @@ interface ProductData {
   key?: string | null;
   org_name: string;
   org_slug: string;
+  /** Whether /<org_slug> is the org's page; false for an org on a reserved slug. */
+  org_page?: boolean;
 }
 
 export default function ProductBoardPage() {
@@ -85,6 +87,10 @@ export default function ProductBoardPage() {
       key={product.id}
       productId={product.id}
       orgName={product.org_name}
+      orgId={product.org_id}
+      orgSlug={product.org_slug}
+      productSlug={product.slug}
+      orgPage={product.org_page !== false}
       productName={product.name}
       productEmoji={product.emoji}
       productKey={product.key ?? null}

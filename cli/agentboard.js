@@ -39,6 +39,67 @@ function die(msg, code = 1) {
 // failure and carry on; anything that doesn't catch it exits as die() would.
 class CliError extends Error {}
 
+// ---- Label edits ----------------------------------------------------------
+
+// Labels are stored as one comma-separated string. These split it the same
+// way the web app does (trim, drop empties) and compare case-insensitively,
+// like the board's label filter.
+function splitLabels(value) {
+  return String(value ?? "").split(",").map((l) => l.trim()).filter(Boolean);
+}
+
+// Read --add-label / --remove-label from parsed flags. Returns null when
+// neither is given; dies on usage errors before anything is sent.
+function parseLabelEdit(flags) {
+  const hasAdd = flags["add-label"] !== undefined;
+  const hasRemove = flags["remove-label"] !== undefined;
+  if (!hasAdd && !hasRemove) return null;
+  if (flags.label !== undefined) {
+    die("--label replaces all labels; use it on its own, or use --add-label / --remove-label to change single labels");
+  }
+  const add = [];
+  const remove = [];
+  for (const [flag, list] of [["add-label", add], ["remove-label", remove]]) {
+    if (flags[flag] === undefined) continue;
+    for (const value of flags[flag]) {
+      const labels = splitLabels(value);
+      if (labels.length === 0) die(`--${flag} needs at least one label`);
+      list.push(...labels);
+    }
+  }
+  const removing = new Set(remove.map((l) => l.toLowerCase()));
+  const both = add.find((l) => removing.has(l.toLowerCase()));
+  if (both !== undefined) die(`'${both}' is in both --add-label and --remove-label`);
+  return { add, remove };
+}
+
+// Apply an edit to a card's current labels string. Keeps the order and
+// spelling of labels the card already has, appends new ones, and reports
+// labels that were already there or already absent.
+function applyLabelEdit(current, { add, remove }) {
+  const before = splitLabels(current);
+  const notes = [];
+  const removing = new Set(remove.map((l) => l.toLowerCase()));
+  const kept = before.filter((l) => !removing.has(l.toLowerCase()));
+  const had = new Set(before.map((l) => l.toLowerCase()));
+  for (const l of remove) {
+    if (!had.has(l.toLowerCase())) notes.push(`Card {id} doesn't have label '${l}'`);
+  }
+  const seen = new Set(kept.map((l) => l.toLowerCase()));
+  for (const l of add) {
+    const k = l.toLowerCase();
+    if (seen.has(k)) {
+      if (had.has(k)) notes.push(`Card {id} already has label '${l}'`);
+      continue;
+    }
+    seen.add(k);
+    kept.push(l);
+  }
+  const changed =
+    kept.length !== before.length || kept.some((l, i) => l !== before[i]);
+  return { labels: kept.join(","), changed, notes };
+}
+
 // ---- Arg parser -----------------------------------------------------------
 
 const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version"]);
@@ -50,21 +111,31 @@ const VALUE_FLAGS = new Set([
   "product", "board", "board-id", "column", "to-product", "to-board",
   "priority", "assignee", "label", "description", "due", "title",
   "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
-  "avatar-url", "position", "set", "append", "key", "value",
+  "avatar-url", "position", "set", "append", "key", "value", "fields",
+  "add-label", "remove-label",
 ]);
+
+// Value flags that may be given more than once. Their values collect into an
+// array, so `--add-label a --add-label b` keeps both instead of the last.
+const REPEATABLE_FLAGS = new Set(["add-label", "remove-label"]);
+
+function setValueFlag(flags, key, value) {
+  if (REPEATABLE_FLAGS.has(key)) (flags[key] ??= []).push(value);
+  else flags[key] = value;
+}
 
 // Flags each command accepts, beyond --json/--quiet/--help/--version.
 // Anything else is an error: an ignored flag reads as success when the
 // command did something other than what was asked.
 const COMMAND_FLAGS = {
-  list: ["product", "board", "column", "priority", "label", "assignee", "include-done"],
+  list: ["product", "board", "column", "priority", "label", "assignee", "include-done", "fields"],
   new: ["product", "board", "column", "priority", "assignee", "label", "description", "due"],
   status: [],
   show: [],
   rename: [],
   notes: ["set", "append"],
   attention: [],
-  "my-tasks": ["assignee"],
+  "my-tasks": ["assignee", "fields"],
   today: [],
   "past-due": ["assignee"],
   "org list": [],
@@ -93,10 +164,10 @@ const COMMAND_FLAGS = {
   "member remove": [],
   "member update": ["name", "type", "color", "avatar-url"],
   "task add": ["product", "board", "column", "description", "priority", "label", "assignee", "due"],
-  "task list": ["product", "board", "column", "assignee", "priority", "label"],
+  "task list": ["product", "board", "column", "assignee", "priority", "label", "fields"],
   "task show": [],
   "task move": ["column", "to-product", "to-board"],
-  "task update": ["title", "description", "assignee", "priority", "label", "due", "issue", "pr"],
+  "task update": ["title", "description", "assignee", "priority", "label", "add-label", "remove-label", "due", "issue", "pr"],
   "task done": [],
   "task remove": [],
   "task link": ["issue", "pr", "url", "title"],
@@ -143,7 +214,7 @@ function parseArgs(argv) {
         i++;
       } else if (VALUE_FLAGS.has(key)) {
         if (inline !== undefined) {
-          flags[key] = inline;
+          setValueFlag(flags, key, inline);
           i++;
         } else if (i + 1 < args.length) {
           const next = args[i + 1];
@@ -155,7 +226,7 @@ function parseArgs(argv) {
           if (named && (BOOLEAN_FLAGS.has(named[1]) || VALUE_FLAGS.has(named[1]))) {
             die(`--${key} needs a value, but the next argument is the flag ${next}. To pass '${next}' as the text, write --${key}=${next}`);
           }
-          flags[key] = next;
+          setValueFlag(flags, key, next);
           i += 2;
         } else {
           die(`--${key} requires a value`);
@@ -244,6 +315,68 @@ function output(data, flags, idField = "id") {
   }
 }
 
+/**
+ * A card with its link (`url`) next to its id and key, where a reader looks
+ * first. Servers send the link they're reached at; one from before cards
+ * carried it gets the same `/c/<id>` link built from AGENTBOARD_URL.
+ */
+function withCardUrl(card, baseUrl) {
+  if (!card || typeof card !== "object" || card.id === undefined) return card;
+  const url =
+    card.url ?? `${baseUrl.replace(/\/+$/, "")}/c/${encodeURIComponent(String(card.id))}`;
+  const first = { id: card.id, ...(card.key === undefined ? {} : { key: card.key }), url };
+  return { ...first, ...Object.fromEntries(Object.entries(card).filter(([k]) => !(k in first))) };
+}
+
+// ---- Created cards --------------------------------------------------------
+
+/** The POST /api/cards body for `new` and `task add`, minus the column. */
+function newCardFields(title, flags) {
+  const fields = {
+    title,
+    description: flags.description || "",
+    priority: flags.priority || "medium",
+    labels: flags.label || "",
+  };
+  if (flags.assignee) fields.assignee = flags.assignee;
+  if (flags.due) fields.due_date = flags.due;
+  return fields;
+}
+
+/**
+ * A created card with its product, board and column. Values the server sent
+ * win; the CLI's own resolution only fills fields an older server left out.
+ */
+function withCreatedLocation(card, product, board, column) {
+  const pick = (v, fallback) => (v === undefined || v === null ? fallback : v);
+  return {
+    ...card,
+    column_slug: pick(card.column_slug, column.slug),
+    column_name: pick(card.column_name, column.name),
+    board_id: pick(card.board_id, board.id),
+    board_slug: pick(card.board_slug, board.slug),
+    board_name: pick(card.board_name, board.name),
+    product_id: pick(card.product_id, product.id),
+    product_slug: pick(card.product_slug, product.slug),
+    product_name: pick(card.product_name, product.name),
+  };
+}
+
+/** "Created AB-12 on agentboard/development in Todo" */
+function createdLine(card) {
+  const label = card.key ? card.key : `card ${card.id}`;
+  const product = card.product_slug || card.product_name;
+  const board = card.board_slug || card.board_name;
+  const column = card.column_name || card.column_slug;
+  return `Created ${label} on ${product}/${board} in ${column}`;
+}
+
+/** --json and --quiet as usual; the text output leads with where it landed. */
+function outputCreated(card, flags) {
+  if (!flags.json && !flags.quiet) process.stdout.write(createdLine(card) + "\n");
+  output(card, flags);
+}
+
 // ---- Status aliases -------------------------------------------------------
 
 const STATUS_ALIASES = {
@@ -301,13 +434,29 @@ function notFound(what, tried, where, items, describe, kind) {
   return `${head} Available: ${describe(items)}`;
 }
 
+// A column by slug or name, in this order: an exact slug, an exact name, then
+// a slug or name that matches ignoring case, then a legacy alias. A renamed
+// Backlog is named "Inbox" but keeps the slug `backlog`, so `inbox` has to
+// reach it. When the case-insensitive pass matches more than one column (say
+// "Review" and "review"), refuse rather than pick one, and suggest slugs: they
+// are unique per board and exact slugs win, whereas one column's exact name
+// can be another column's slug.
 function findColumn(cols, input) {
-  return (
-    cols.find((c) => c.slug === input) ||
-    cols.find((c) => c.name === input) ||
-    (STATUS_ALIASES[input] && cols.find((c) => c.slug === STATUS_ALIASES[input])) ||
-    null
+  const exact = cols.find((c) => c.slug === input) || cols.find((c) => c.name === input);
+  if (exact) return exact;
+  const want = String(input).toLowerCase();
+  const loose = cols.filter(
+    (c) => String(c.slug).toLowerCase() === want || String(c.name ?? "").toLowerCase() === want
   );
+  if (loose.length === 1) return loose[0];
+  if (loose.length > 1) {
+    die(
+      `Column '${input}' matches more than one column: ${describeNamed(loose)}. ` +
+        `Use one of these slugs: ${loose.map((c) => c.slug).join(", ")}.`
+    );
+  }
+  const alias = Object.hasOwn(STATUS_ALIASES, want) ? STATUS_ALIASES[want] : null;
+  return (alias && cols.find((c) => c.slug === alias)) || null;
 }
 
 // Move each card in `ids`, in order. `moveOne(id)` resolves to
@@ -455,21 +604,29 @@ function makeResolvers(req) {
   }
 
   /** `productLabel` names the product in the error; the slug when known. */
-  async function resolveBoardId(productId, slugOrName, productLabel) {
+  async function resolveBoard(productId, slugOrName, productLabel) {
     const boards = await req("GET", `/api/boards?product_id=${productId}`);
     const b = boards.find((x) => x.slug === slugOrName || x.name === slugOrName);
     if (!b) {
       const where = productLabel ? `product '${productLabel}'` : "this product";
       die(notFound("Board", slugOrName, where, boards, describeBoards, "boards"));
     }
-    return b.id;
+    return b;
   }
 
-  async function resolveColumnId(boardId, slugOrName) {
+  async function resolveBoardId(productId, slugOrName, productLabel) {
+    return (await resolveBoard(productId, slugOrName, productLabel)).id;
+  }
+
+  async function resolveColumn(boardId, slugOrName) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     const c = findColumn(cols, slugOrName);
     if (!c) die(notFound("Column", slugOrName, "this board", cols, describeNamed, "columns"));
-    return c.id;
+    return c;
+  }
+
+  async function resolveColumnId(boardId, slugOrName) {
+    return (await resolveColumn(boardId, slugOrName)).id;
   }
 
   /**
@@ -479,11 +636,12 @@ function makeResolvers(req) {
   async function resolveProductAndBoard(productSlug, boardSlug) {
     const product = await resolveProduct(productSlug);
     if (boardSlug) {
-      return { productId: product.id, boardId: await resolveBoardId(product.id, boardSlug, product.slug) };
+      const board = await resolveBoard(product.id, boardSlug, product.slug);
+      return { productId: product.id, boardId: board.id, product, board };
     }
     const boards = await req("GET", `/api/boards?product_id=${product.id}`);
     const picked = pickDefaultBoard(product, boards);
-    if (picked) return { productId: product.id, boardId: picked.id };
+    if (picked) return { productId: product.id, boardId: picked.id, product, board: picked };
     if (!boards || boards.length === 0) die(`Product '${product.slug}' has no boards`);
     die(
       `Product '${product.slug}' has no default board. Pick one with --board <slug> or ` +
@@ -492,11 +650,28 @@ function makeResolvers(req) {
     );
   }
 
-  async function findFirstColumnId(boardId) {
+  async function findFirstColumn(boardId) {
     const cols = await req("GET", `/api/columns?board_id=${boardId}`);
     if (!cols || cols.length === 0) die("Board has no columns");
     cols.sort((a, b) => a.position - b.position);
-    return cols[0].id;
+    return cols[0];
+  }
+
+  async function findFirstColumnId(boardId) {
+    return (await findFirstColumn(boardId)).id;
+  }
+
+  /**
+   * Create a card on a product's board, in the named column or the board's
+   * first. Returns the card with where it landed: the server's location fields
+   * when it sends them, otherwise what this command resolved (older servers
+   * return only the row).
+   */
+  async function createCard(productSlug, boardSlug, columnSlug, fields) {
+    const { product, board } = await resolveProductAndBoard(productSlug, boardSlug);
+    const column = columnSlug ? await resolveColumn(board.id, columnSlug) : await findFirstColumn(board.id);
+    const card = await req("POST", "/api/cards", { column_id: column.id, ...fields });
+    return withCreatedLocation(card, product, board, column);
   }
 
   return {
@@ -507,7 +682,105 @@ function makeResolvers(req) {
     resolveColumnId,
     resolveProductAndBoard,
     findFirstColumnId,
+    createCard,
   };
+}
+
+// ===========================================================================
+// Card lists: list, task list, my-tasks
+// ===========================================================================
+
+// Fields a card row can show beyond the card's own keys, readable whatever the
+// server sent: `product` and `board` prefer the slug, which is what --product
+// and --board take, and fall back to the name an older server sends.
+const CARD_FIELDS = {
+  product: (c) => c.product_slug ?? c.product_name,
+  board: (c) => c.board_slug ?? c.board_name,
+  column: (c) => c.column_name ?? c.column_slug,
+  // A card from before members existed names its assignee only as text.
+  assignee: (c) => c.assignee_name || c.assignee,
+};
+
+// Default tables. Everything else is one --fields or --json away.
+const LIST_FIELDS = ["id", "title", "column", "assignee", "priority"];
+const MY_TASKS_FIELDS = ["id", "title", "product", "board", "column", "priority"];
+
+function cardField(card, field) {
+  const value = Object.hasOwn(CARD_FIELDS, field) ? CARD_FIELDS[field](card) : card[field];
+  return value ?? null;
+}
+
+/**
+ * Cards from one board, with the column, board and product they're on. A
+ * server from before list rows carried these sends only column_id, so fill
+ * them from what the command already resolved. A value the server sent wins.
+ */
+function withLocation(cards, product, board, columns) {
+  const byId = new Map(columns.map((c) => [c.id, c]));
+  return cards.map((card) => {
+    const col = byId.get(card.column_id);
+    const where = {
+      column_slug: col?.slug,
+      column_name: col?.name,
+      board_id: board.id,
+      board_slug: board.slug,
+      board_name: board.name,
+      product_id: product.id,
+      product_slug: product.slug,
+      product_name: product.name,
+    };
+    const out = { ...card };
+    for (const [k, v] of Object.entries(where)) {
+      if (out[k] == null && v !== undefined) out[k] = v;
+    }
+    return out;
+  });
+}
+
+/**
+ * Print a card list. --quiet: ids. --json: the cards, or only --fields.
+ * Otherwise a table of --fields, or of `defaults`; with no defaults, every
+ * field, as before. `board` is the board the cards came from, named above the
+ * table so a product pinned by the environment is never a silent surprise.
+ */
+function outputCards(cards, flags, { defaults = null, product = null, board = null } = {}) {
+  let fields = null;
+  if (flags.fields !== undefined) {
+    if (flags.quiet) die("--quiet prints ids only; drop it to use --fields");
+    fields = String(flags.fields).split(",").map((f) => f.trim()).filter(Boolean);
+    if (fields.length === 0) die("--fields needs at least one field, e.g. --fields id,column,title");
+    if (cards.length > 0) {
+      const known = new Set([...Object.keys(CARD_FIELDS), ...cards.flatMap((c) => Object.keys(c))]);
+      const unknown = fields.filter((f) => !known.has(f));
+      if (unknown.length > 0) {
+        die(
+          `Unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. ` +
+            `Available: ${[...known].sort().join(", ")}`
+        );
+      }
+    }
+  }
+  const pick = (c, keys) => Object.fromEntries(keys.map((f) => [f, cardField(c, f)]));
+
+  if (flags.json) {
+    process.stdout.write(JSON.stringify(fields ? cards.map((c) => pick(c, fields)) : cards, null, 2) + "\n");
+    return;
+  }
+  if (flags.quiet) {
+    output(cards, flags);
+    return;
+  }
+  if (product && board) {
+    process.stdout.write(`Board: ${product.slug}/${board.slug} (${product.name} / ${board.name})\n`);
+  }
+  const keys = fields || defaults;
+  if (!keys) {
+    output(cards, flags);
+    return;
+  }
+  process.stdout.write(
+    formatTable(cards.map((c) => pick(c, keys)), keys.map((k) => ({ key: k, label: k }))) + "\n"
+  );
 }
 
 // ===========================================================================
@@ -522,18 +795,20 @@ Usage: agentboard <command> [options]
 Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   list                                 List tasks on current board
     --column <col>  --priority <p>  --label <l>  --assignee <name>  --include-done
+    --fields <a,b>
   new <title>                          Create a task
     --priority <p>  --assignee <name>  --label <l>  --description <text>
     --column <col>  --due <date>
-  status <id> [<id> ...] <column>      Move cards to a column slug or name
+  status <id> [<id> ...] <column>      Move cards to a column slug or name (any case)
                                        (doing/wip -> in-progress, review -> in-review
                                         when the board has no column by that slug)
-  show <id>                            Show card details
+  show <id>                            Show card details, with its link (url)
   rename <id> <title>                  Rename a card
   notes <id>                           View description
     --set <text>  --append <text>
   attention <id> on|off                Set priority to urgent/medium
-  my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME
+  my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME,
+                                       with product, board and column (--fields <a,b>)
   today                                Tasks due today
   past-due                             Overdue tasks
 
@@ -553,6 +828,9 @@ Management Commands:
     task link <id> --url <url> [--title <text>]   Link any URL: a Slack thread, doc, design
     task link <id> --issue <url> | --pr <url>     Set the card's GitHub issue or PR
     task unlink <id> --url <url>
+    task update <id> --add-label <l>              Add labels, keep the rest (a,b or repeat)
+    task update <id> --remove-label <l>           Remove only these labels
+    task update <id> --label <l>                  Replace all labels ('' clears them)
     task move <id> [<id> ...] --column <col>
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
@@ -568,6 +846,9 @@ Management Commands:
 Output:
   --json     JSON output
   --quiet    IDs only
+  --fields   list, task list, my-tasks: the fields to print, comma-separated,
+             e.g. id,product,board,column,title. Any card field works, plus
+             product, board, column and assignee. With --json, only these.
 
 Unknown or unsupported flags are errors. Flag values may start with "--";
 use --flag=value or quote as usual.
@@ -634,7 +915,7 @@ async function main() {
     // ---- list ----
     if (cmd === "list") {
       const scope = requireScope();
-      const { boardId } = await resolve.resolveProductAndBoard(scope.product, scope.board);
+      const { boardId, product, board } = await resolve.resolveProductAndBoard(scope.product, scope.board);
       const params = new URLSearchParams({ board_id: boardId });
       if (flags.column) {
         const columnId = await resolve.resolveColumnId(boardId, flags.column);
@@ -644,19 +925,18 @@ async function main() {
       if (flags.label) params.set("label", flags.label);
       if (flags.assignee) params.set("assignee", flags.assignee);
 
+      const cols = await req("GET", `/api/columns?board_id=${boardId}`);
       let cards = await req("GET", `/api/cards?${params.toString()}`);
 
       // Filter out done unless --include-done
       if (!flags["include-done"]) {
-        // Get columns to find done column
-        const cols = await req("GET", `/api/columns?board_id=${boardId}`);
         const doneCol = cols.find((c) => c.slug === "done");
         if (doneCol) {
           cards = cards.filter((c) => c.column_id !== doneCol.id);
         }
       }
 
-      output(cards, flags);
+      outputCards(withLocation(cards, product, board, cols), flags, { defaults: LIST_FIELDS, product, board });
     }
 
     // ---- new ----
@@ -664,27 +944,8 @@ async function main() {
       const scope = requireScope();
       const title = positional[1];
       if (!title) die("Usage: agentboard new <title>");
-      const { boardId } = await resolve.resolveProductAndBoard(scope.product, scope.board);
-
-      let columnId;
-      if (flags.column) {
-        columnId = await resolve.resolveColumnId(boardId, flags.column);
-      } else {
-        columnId = await resolve.findFirstColumnId(boardId);
-      }
-
-      const body = {
-        column_id: columnId,
-        title,
-        description: flags.description || "",
-        priority: flags.priority || "medium",
-        labels: flags.label || "",
-      };
-      if (flags.assignee) body.assignee = flags.assignee;
-      if (flags.due) body.due_date = flags.due;
-
-      const data = await req("POST", "/api/cards", body);
-      output(data, flags);
+      const card = await resolve.createCard(scope.product, scope.board, flags.column, newCardFields(title, flags));
+      outputCreated(card, flags);
     }
 
     // ---- status ----
@@ -716,7 +977,7 @@ async function main() {
       const cardId = positional[1];
       if (!cardId) die("Usage: agentboard show <id>");
       const data = await req("GET", `/api/cards/${cardId}`);
-      output(data, flags);
+      output(withCardUrl(data, remoteUrl), flags);
     }
 
     // ---- rename ----
@@ -808,7 +1069,7 @@ async function main() {
         if (!existingIds.has(card.id)) cards.push(card);
       }
 
-      output(cards, flags);
+      outputCards(cards, flags, { defaults: MY_TASKS_FIELDS });
     }
 
     // ---- today ----
@@ -1094,30 +1355,13 @@ async function main() {
         if (!productSlug) die("--product is required (or set AGENTBOARD_PRODUCT)");
         const title = positional[2];
         if (!title) die("Usage: agentboard task add <title> --product <slug> --board <slug>");
-        const { boardId } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
-
-        let columnId;
-        if (flags.column) {
-          columnId = await resolve.resolveColumnId(boardId, flags.column);
-        } else {
-          columnId = await resolve.findFirstColumnId(boardId);
-        }
-
-        const body = {
-          column_id: columnId,
-          title,
-          description: flags.description || "",
-          priority: flags.priority || "medium",
-          labels: flags.label || "",
-        };
-        if (flags.assignee) body.assignee = flags.assignee;
-        if (flags.due) body.due_date = flags.due;
-        output(await req("POST", "/api/cards", body), flags);
+        const card = await resolve.createCard(productSlug, boardSlug, flags.column, newCardFields(title, flags));
+        outputCreated(card, flags);
       } else if (sub === "list") {
         const productSlug = flags.product || envProduct;
         const boardSlug = flags.board || envBoard;
         if (!productSlug) die("--product is required (or set AGENTBOARD_PRODUCT)");
-        const { boardId } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
+        const { boardId, product, board } = await resolve.resolveProductAndBoard(productSlug, boardSlug);
         const params = new URLSearchParams({ board_id: boardId });
         if (flags.column) {
           const columnId = await resolve.resolveColumnId(boardId, flags.column);
@@ -1126,11 +1370,13 @@ async function main() {
         if (flags.assignee) params.set("assignee", flags.assignee);
         if (flags.priority) params.set("priority", flags.priority);
         if (flags.label) params.set("label", flags.label);
-        output(await req("GET", `/api/cards?${params.toString()}`), flags);
+        const cols = await req("GET", `/api/columns?board_id=${boardId}`);
+        const cards = await req("GET", `/api/cards?${params.toString()}`);
+        outputCards(withLocation(cards, product, board, cols), flags, { product, board });
       } else if (sub === "show") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task show <card-id>");
-        output(await req("GET", `/api/cards/${id}`), flags);
+        output(withCardUrl(await req("GET", `/api/cards/${id}`), remoteUrl), flags);
       } else if (sub === "move") {
         const ids = positional.slice(2);
         const usage =
@@ -1191,6 +1437,7 @@ async function main() {
       } else if (sub === "update") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task update <card-id> [--field value]");
+        const labelEdit = parseLabelEdit(flags);
         const updates = {};
         if (flags.title) updates.title = flags.title;
         if (flags.description) updates.description = flags.description;
@@ -1200,6 +1447,19 @@ async function main() {
         if (flags.due) updates.due_date = flags.due;
         if (flags.issue) updates.github_issue_url = flags.issue;
         if (flags.pr) updates.github_pr_url = flags.pr;
+        if (labelEdit) {
+          // Read the card's labels and write back the edited list. This is a
+          // read-then-write, so a label edit made by someone else in between
+          // can be lost; the window is one round trip.
+          const card = await req("GET", `/api/cards/${id}`);
+          const result = applyLabelEdit(card.labels, labelEdit);
+          for (const note of result.notes) process.stderr.write(`${note.replace("{id}", id)}\n`);
+          if (result.changed) updates.labels = result.labels;
+          if (Object.keys(updates).length === 0) {
+            output(card, flags);
+            return;
+          }
+        }
         if (Object.keys(updates).length === 0) die("Provide at least one field to update");
         output(await req("PATCH", `/api/cards/${id}`, updates), flags);
       } else if (sub === "done") {
@@ -1414,6 +1674,10 @@ module.exports = {
   parseArgs,
   formatTable,
   output,
+  createdLine,
+  withCreatedLocation,
   printUsage,
   COMMAND_FLAGS,
+  parseLabelEdit,
+  applyLabelEdit,
 };

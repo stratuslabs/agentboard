@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookieName, isAuthenticatedFromRequest } from "./lib/auth";
 import { clientKey, FailureThrottle } from "./lib/rate-limit";
+import { publicHost } from "./lib/public-url";
+import { loginPath } from "./lib/login-next";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -11,23 +13,6 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const MAX_ATTEMPTS = 10;
 const WINDOW_MS = 10 * 60 * 1000;
 const throttle = new FailureThrottle(MAX_ATTEMPTS, WINDOW_MS);
-
-/**
- * The public host as the browser sees it. Behind a reverse proxy that does not
- * preserve `Host` (nginx's `proxy_pass` rewrites it to the upstream by
- * default), `Host` is something like `localhost:3000` while the browser's
- * `Origin` is the real domain — comparing against `Host` alone would 403 every
- * write on a correctly configured self-hosted install.
- *
- * `X-Forwarded-Host` is proxy-set. A browser cannot add it to a cross-origin
- * request without a CORS preflight we never approve, so trusting it here does
- * not weaken the check it feeds.
- */
-function publicHost(request: NextRequest): string {
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  if (forwardedHost) return forwardedHost.split(",")[0].trim();
-  return request.headers.get("host") ?? request.nextUrl.host;
-}
 
 /**
  * Reject state-changing requests whose `Origin` does not match the host we are
@@ -122,7 +107,7 @@ function deny(
 ) {
   const response = isApi
     ? NextResponse.json({ error: message }, { status })
-    : NextResponse.redirect(new URL("/login", request.url));
+    : NextResponse.redirect(new URL(loginRedirect(request), request.url));
 
   // Drop a cookie we just rejected. Without this a browser holding a stale
   // session (after a password rotation, or the v1 cookie format) would replay
@@ -131,6 +116,15 @@ function deny(
     response.cookies.delete(getSessionCookieName());
   }
   return response;
+}
+
+/**
+ * /login, carrying the page a signed-out browser asked for in ?next= so the
+ * login page can send it back there. Only page loads (GET/HEAD) carry it.
+ */
+function loginRedirect(request: NextRequest): string {
+  if (request.method !== "GET" && request.method !== "HEAD") return "/login";
+  return loginPath(request.nextUrl.pathname, request.nextUrl.search);
 }
 
 export const config = {

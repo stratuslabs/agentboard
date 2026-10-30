@@ -13,6 +13,8 @@
 //   - a team creates an org, a product and a card through the re-exported API
 //     and reads the card back
 //   - another team cannot read that card (404)
+//   - an org kept on a slug the consumer reserved has no org page, so the
+//     board's breadcrumb doesn't link to the consumer's own page
 //   - the re-exported card permalink page resolves the card for its team and
 //     404s for the other one, through configure()'s fromPage
 //   - the re-exported board page renders, with the core's Tailwind classes
@@ -28,6 +30,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -198,6 +201,24 @@ try {
 
   const bySlug = await call(teamA, `/api/products/by-slug?org_slug=${org.data.slug}&product_slug=${product.data.slug}`);
   check("the board page's product lookup finds team A's product", bySlug.status === 200 && bySlug.data?.id === product.data.id, JSON.stringify(bySlug));
+  check("the product lookup says the org has an org page", bySlug.data?.org_page === true, JSON.stringify(bySlug.data?.org_page));
+
+  // An org kept on a path the consumer reserved after the org took it: its
+  // board still opens at /account/<product>, but /account is the consumer's
+  // page, so the breadcrumb must not link there. Only the server knows the
+  // consumer's list, from configure() in its instrumentation bundle.
+  const legacyProduct = await call(teamA, "/api/products", { method: "POST", body: { org_id: pageNamed.data.id, name: "Ledger" } });
+  const { Client } = createRequire(join(app, "package.json"))("pg");
+  const pg = new Client({ connectionString: databaseUrl });
+  await pg.connect();
+  await pg.query("UPDATE organizations SET slug = 'account' WHERE id = $1", [pageNamed.data.id]);
+  await pg.end();
+  const legacy = await call(teamA, `/api/products/by-slug?org_slug=account&product_slug=${legacyProduct.data?.slug}`);
+  check(
+    "an org on a consumer-reserved slug has no org page",
+    legacy.status === 200 && legacy.data?.id === legacyProduct.data?.id && legacy.data?.org_page === false,
+    JSON.stringify(legacy),
+  );
 
   const html = String(page.data);
   check(

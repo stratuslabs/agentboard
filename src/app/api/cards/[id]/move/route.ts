@@ -4,6 +4,7 @@ import { sql } from "../../../../../lib/sql";
 import { boardIdForCard, boardIdForColumn, notifyBoards } from "../../../../../lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "../../../../../lib/card-location";
 import { assertColumn, found, withTenantParams } from "../../../../../lib/tenant";
+import { withCardUrl } from "../../../../../lib/public-url";
 
 export const PATCH = withTenantParams<{ id: string }>(async (request: NextRequest, { teamId }, { params }) => {
   await initDb();
@@ -41,5 +42,5 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   await notifyBoards(teamId, [boardBefore, await boardIdForColumn(column_id)]);
 
   // Includes product/board so a caller can confirm where the card landed.
-  return NextResponse.json(await getCardWithLocation(teamId, id));
+  return NextResponse.json(withCardUrl(request, await getCardWithLocation(teamId, id)));
 });

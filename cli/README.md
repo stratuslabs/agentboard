@@ -44,10 +44,13 @@ These use `AGENTBOARD_PRODUCT` and `AGENTBOARD_BOARD` env vars (or `--product`/`
 agentboard list
 agentboard list --column todo --priority high
 agentboard list --assignee MyAgent --include-done
+agentboard list --fields id,column,title  # pick the table's columns
 
 # Create a task
 agentboard new "Build login page"
 agentboard new "Fix bug" --priority urgent --assignee MyAgent --due 2025-03-15
+# Both print where the card landed first, e.g. "Created AB-12 on my-app/development in Backlog".
+# With --json the card includes product_slug, board_slug and column_slug (and their names).
 
 # Update status (backlog | todo | doing | in-progress | in-review | done | blocked)
 agentboard status <id> doing
@@ -74,6 +77,7 @@ agentboard attention <id> off
 
 # View commands
 agentboard my-tasks                       # tasks assigned to AGENTBOARD_AGENT_NAME
+agentboard my-tasks --fields id,product,column,title
 agentboard today                          # tasks due today
 agentboard past-due                       # overdue tasks
 ```
@@ -126,6 +130,9 @@ agentboard task move <id> [<id> ...] --column <slug>             # same board
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
+agentboard task update <id> --add-label bug,cli      # add labels, keep the rest
+agentboard task update <id> --remove-label feedback  # remove one label, keep the rest
+agentboard task update <id> --label "a,b"            # replace all labels ("" clears)
 agentboard task done <id>
 agentboard task remove <id>
 agentboard task link <id> --url <url> [--title <text>]    # any URL: Slack thread, doc, design
@@ -157,13 +164,15 @@ agentboard preferences --key key --value val
 
 Every card has a readable id made of its product's key and a per-product number, like `AB-142`, shown as `key` in `show` and `--json` output. Anywhere a command takes a card `<id>`, the readable id works too, in any case (`show ab-142`), as does the plain number. A product's key is derived from its name when it is created (AgentBoard is `AB`) and can be set with `--key` on `product add` or `product rename`. Old keys keep working after a rename, and a card moved to another product gets a new number there while its old id still finds it.
 
+`show` and `task show` also print the card's link as `url` (in `--json` too), like `https://agentboard.example.com/c/142`, so you can cite the card itself. It keeps working after the card moves. A server too old to send `url` gets the same link built from `AGENTBOARD_URL`.
+
 `task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
 
 `status` and `task move --column` take several ids. Each card is moved on its own: one that fails (no such card, no such column on its board) is reported as `Error: <id>: ...` and the rest still move. Each moved card prints `Moved <id> to <column>`, or just its id with `--quiet`; `--json` prints one `{ id, ok, column, card | error }` per card. If any failed, the last line counts them and lists their ids, and the exit code is 1. Moving several cards to another board (`--to-board`) isn't supported; with one id the output is the moved card, as before.
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
-`status` and `--column` take any column slug or name on the board. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
+`status` and `--column` take any column slug or name on the board, in any case: a Backlog column renamed "Inbox" keeps the slug `backlog` and answers to `inbox`, `Inbox` and `backlog` alike. An exact match wins, and a word that matches two columns only when case is ignored (say "Review" and "review") is refused rather than guessed, and the error lists each column's slug to use instead. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
 
 ## Flag Handling
 
@@ -179,6 +188,9 @@ When an organization, product, board or column isn't found, the error names what
 
 - `--json` — JSON output
 - `--quiet` — IDs only
+- `--fields id,product,column,title` — on `list`, `task list` and `my-tasks`, the fields to print, in that order. Any card field works (`labels`, `due_date`, `key`, ...), plus `product` and `board` (slug, or name from an older server), `column` (name) and `assignee` (member name, or the legacy text assignee). With `--json`, each card keeps only these fields. An unknown field is an error that lists the available ones.
+
+`list` prints a short table, `id title column assignee priority`, under a `Board: <product>/<board>` line naming the board it read, so a product set by `AGENTBOARD_PRODUCT` is never a surprise. `my-tasks` prints `id title product board column priority`. `--json` still returns every field, and each card from `list` and `task list` carries `column_name`, `column_slug`, `board_slug`, `board_name`, `product_slug` and `product_name`, filled in by the CLI when the server is too old to send them.
 
 ## Agent Integration
 

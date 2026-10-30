@@ -1,7 +1,8 @@
 import { initDb } from "../../../../lib/db";
 import { isUniqueViolation, planSlugName } from "../../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "../../../../lib/sql";
+import { sql, withClient } from "../../../../lib/sql";
+import { withSiblingNames } from "../../../../lib/sibling-names";
 import { notifyBoard } from "../../../../lib/realtime/notify";
 import { assertBoard, withTenantParams } from "../../../../lib/tenant";
 
@@ -23,25 +24,37 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
-  // The slug stays: URLs and agent configs point at it. The new name still
-  // can't be one another board in the product has, or makes.
-  const { rows: siblings } = await sql`
-    SELECT id, name, slug FROM boards WHERE product_id = (SELECT product_id FROM boards WHERE id = ${id})
-  `;
-  const plan = planSlugName({ kind: "board", scope: "in this product" }, body.name, siblings, id);
-  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
+  const { rows: owner } = await sql`SELECT product_id FROM boards WHERE id = ${id}`;
+  if (owner.length === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
-  let rows;
+  // The slug stays: URLs and agent configs point at it. The new name still
+  // can't be one another board in the product has, or makes. Checked and
+  // written under the product's name lock (card 815).
+  let result;
   try {
-    ({ rows } = await sql`
-      UPDATE boards SET name = ${plan.name}, slug = ${plan.slug}, updated_at = NOW() WHERE id = ${id} RETURNING *
-    `);
+    result = await withClient((client) =>
+      withSiblingNames(client, "board", owner[0].product_id, async (query) => {
+        const { rows: siblings } = await query(
+          "SELECT id, name, slug FROM boards WHERE product_id = $1", [owner[0].product_id]
+        );
+        const plan = planSlugName({ kind: "board", scope: "in this product" }, body.name, siblings, id);
+        if (!plan.ok) return plan;
+        const { rows } = await query(
+          "UPDATE boards SET name = $1, slug = $2, updated_at = NOW() WHERE id = $3 RETURNING *", [plan.name, plan.slug, id]
+        );
+        return { ok: true as const, rows };
+      })
+    );
   } catch (err) {
     if (isUniqueViolation(err)) {
       return NextResponse.json({ error: "Another board in this product already uses that slug. Pick a different name." }, { status: 409 });
     }
     throw err;
   }
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  const { rows } = result;
   if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
