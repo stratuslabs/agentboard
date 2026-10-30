@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql, db } from "../../../lib/sql";
+import { sql, withClient } from "../../../lib/sql";
 import { initDb, createDefaultBoards } from "../../../lib/db";
 import { planSlugName } from "../../../lib/slug";
+import { withSiblingNames } from "../../../lib/sibling-names";
 import { suggestEmoji } from "../../../lib/emoji-suggest";
 import { createProductWithKey } from "../../../lib/card-keys";
 import { assertOrg, found, withTenant } from "../../../lib/tenant";
@@ -34,28 +35,37 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
     return NextResponse.json({ error: "org_id and name are required" }, { status: 400 });
   }
   const org_id = await assertOrg(teamId, rawOrgId);
-  const { rows: siblings } = await sql`SELECT id, name, slug FROM products WHERE org_id = ${org_id}`;
-  const plan = planSlugName({ kind: "product", scope: "in this org" }, name, siblings, null);
-  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
-  const { slug } = plan;
-  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = ${org_id}`;
 
   try {
-    // The prefix for its cards' readable ids (AB-142): the one asked for, or
-    // one derived from the name, derived again if another request takes it.
-    const created = await createProductWithKey(
-      (text: string, values?: unknown[]) => db.query(text, values),
-      teamId,
-      name,
-      requestedKey,
-      async (key: string) => {
-        const { rows } = await sql`
-          INSERT INTO products (org_id, name, slug, emoji, position, key)
-          VALUES (${org_id}, ${plan.name}, ${slug}, ${emoji || suggestEmoji(plan.name)}, ${maxRows[0].max + 1}, ${key})
-          RETURNING *
-        `;
-        return rows[0];
-      },
+    // Checked and written under the org's name lock, so a rename to the same
+    // name at the same moment can't pass the check too (card 815).
+    const created = await withClient((client) =>
+      withSiblingNames(client, "product", org_id, async (query) => {
+        const { rows: siblings } = await query("SELECT id, name, slug FROM products WHERE org_id = $1", [org_id]);
+        const plan = planSlugName({ kind: "product", scope: "in this org" }, name, siblings, null);
+        if (!plan.ok) return { error: plan.error, status: plan.status };
+        const { rows: maxRows } = await query(
+          "SELECT COALESCE(MAX(position), -1) as max FROM products WHERE org_id = $1", [org_id]
+        );
+        // The prefix for its cards' readable ids (AB-142): the one asked for, or
+        // one derived from the name, derived again if another request takes it.
+        // Each try is a savepoint, so a taken key doesn't end the transaction.
+        return createProductWithKey(query, teamId, name, requestedKey, async (key: string) => {
+          await query("SAVEPOINT product_key");
+          try {
+            const { rows } = await query(
+              `INSERT INTO products (org_id, name, slug, emoji, position, key)
+               VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+              [org_id, plan.name, plan.slug, emoji || suggestEmoji(plan.name), maxRows[0].max + 1, key]
+            );
+            await query("RELEASE SAVEPOINT product_key");
+            return rows[0];
+          } catch (err) {
+            await query("ROLLBACK TO SAVEPOINT product_key");
+            throw err;
+          }
+        });
+      })
     );
     if ("error" in created) {
       return NextResponse.json({ error: created.error }, { status: created.status });

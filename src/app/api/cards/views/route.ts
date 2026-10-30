@@ -32,7 +32,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.key AS product_key,
         b.id AS board_id,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id
@@ -87,7 +90,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.key AS product_key,
         b.id AS board_id,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id
@@ -122,7 +128,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         p.key AS product_key,
         b.id AS board_id,
         b.name AS board_name,
+        b.slug AS board_slug,
         col.name AS column_name,
+        col.slug AS column_slug,
+        p.slug AS product_slug,
         col.color AS column_color
       FROM cards
       JOIN columns col ON cards.column_id = col.id

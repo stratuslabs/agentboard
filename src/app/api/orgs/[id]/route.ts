@@ -2,7 +2,8 @@ import { initDb } from "../../../../lib/db";
 import { orgSlugFromName } from "../../../../lib/org-slug";
 import { isUniqueViolation, planSlugName } from "../../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "../../../../lib/sql";
+import { sql, withClient } from "../../../../lib/sql";
+import { withSiblingNames } from "../../../../lib/sibling-names";
 import { boardIdsUnderOrgs, notifyBoards } from "../../../../lib/realtime/notify";
 import { assertOrg, withTenantParams } from "../../../../lib/tenant";
 
@@ -15,16 +16,22 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   }
   // The slug stays: every product URL under the org starts with it. The new
   // name still can't be one another org has, or makes.
-  const { rows: siblings } = await sql`SELECT id, name, slug FROM organizations WHERE team_id = ${teamId}`;
-  const plan = planSlugName(
-    { kind: "organization", scope: "in this workspace" }, name, siblings, orgId, orgSlugFromName
-  );
-  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
-  let rows;
+  // Checked and written under the team's name lock (card 815).
+  let result;
   try {
-    ({ rows } = await sql`
-      UPDATE organizations SET name = ${plan.name} WHERE id = ${orgId} AND team_id = ${teamId} RETURNING *
-    `);
+    result = await withClient((client) =>
+      withSiblingNames(client, "org", teamId, async (query) => {
+        const { rows: siblings } = await query("SELECT id, name, slug FROM organizations WHERE team_id = $1", [teamId]);
+        const plan = planSlugName(
+          { kind: "organization", scope: "in this workspace" }, name, siblings, orgId, orgSlugFromName
+        );
+        if (!plan.ok) return plan;
+        const { rows } = await query(
+          "UPDATE organizations SET name = $1 WHERE id = $2 AND team_id = $3 RETURNING *", [plan.name, orgId, teamId]
+        );
+        return { ok: true as const, rows };
+      })
+    );
   } catch (err) {
     // Another request took the name between the check and this write.
     if (isUniqueViolation(err)) {
@@ -32,6 +39,8 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
     }
     throw err;
   }
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  const { rows } = result;
   if (rows.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
