@@ -102,3 +102,20 @@ test("configure() takes a members.beforeTypeChange hook, and only that", async (
   assert.throws(() => configure({ members: { afterTypeChange: hook } }), /Unknown members hook: afterTypeChange/);
   assert.throws(() => configure({ members: null }), /members must be an object/);
 });
+
+test("org pages: on for self-hosted, opt-in once an app configures the core", async () => {
+  // Self-hosted AgentBoard never calls configure() and mounts every page,
+  // /<org> included. A consuming app mounts only what it re-exports, so the
+  // board links the org name to /<org> only when it says it mounted that page.
+  delete globalThis[Symbol.for("@stratuslabs/agentboard-core/config")];
+  const { configure, orgPagesMounted } = await fresh("configure.ts");
+  assert.equal(orgPagesMounted(), true);
+
+  configure({});
+  assert.equal(orgPagesMounted(), false);
+  configure({ orgPages: true });
+  assert.equal((await fresh("configure.ts")).orgPagesMounted(), true, "seen from another module copy");
+  configure({ orgPages: false });
+  assert.equal(orgPagesMounted(), false);
+  assert.throws(() => configure({ orgPages: "yes" }), /orgPages must be true or false/);
+});

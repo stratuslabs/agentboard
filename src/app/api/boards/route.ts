@@ -1,10 +1,9 @@
-import { initDb, slugify } from "../../../lib/db";
+import { initDb, teamDefaultColumns } from "../../../lib/db";
 import { isUniqueViolation, planSlugName } from "../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
 import { sql, withClient } from "../../../lib/sql";
 import { withSiblingNames } from "../../../lib/sibling-names";
 import { notifyBoard } from "../../../lib/realtime/notify";
-import { DEFAULT_COLUMNS } from "../../../lib/default-columns";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
 
@@ -67,10 +66,10 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   if (!added.ok) return NextResponse.json({ error: added.error }, { status: added.status });
   const { board } = added;
 
-  // Create default columns
-  for (let j = 0; j < DEFAULT_COLUMNS.length; j++) {
-    const col = DEFAULT_COLUMNS[j];
-    const colSlug = slugify(col.name);
+  // The team's Default columns, the same list a new product's boards get.
+  const cols = await teamDefaultColumns(teamId);
+  for (let j = 0; j < cols.length; j++) {
+    const { item: col, slug: colSlug } = cols[j];
     await sql`
       INSERT INTO columns (board_id, name, slug, position, color)
       VALUES (${board.id}, ${col.name}, ${colSlug}, ${j}, ${col.color})

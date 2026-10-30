@@ -4,7 +4,7 @@ Thanks for your interest! AgentBoard is a small, focused project — contributio
 
 ## Dev Environment
 
-**Prerequisites:** Node.js 20+, Docker (for local Postgres)
+**Prerequisites:** Node.js 20.9+, Docker (for local Postgres)
 
 ```bash
 # 1. Clone the repo

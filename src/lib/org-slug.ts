@@ -1,5 +1,5 @@
 import { slugify } from "./slug";
-import { getConfig } from "../configure";
+import { getConfig, orgPagesMounted } from "../configure";
 
 /**
  * Top-level paths the app itself owns. An organization lives at
@@ -44,4 +44,27 @@ export function isReservedOrgSlug(slug: string): boolean {
 export function orgSlugFromName(name: string): string {
   const slug = slugify(name);
   return isReservedOrgSlug(slug) ? `${slug}-org` : slug;
+}
+
+/**
+ * The org page for an org slug, /<orgSlug>, or null when the org has none.
+ *
+ * An org kept on a slug the core reserved later (an existing `today` org keeps
+ * its URLs) has no org page: /today is the Today page. This runs in the
+ * browser, where configure() isn't loaded, so it checks only the core's own
+ * list. Slugs the consuming app reserved are the server's call: the board
+ * gets `org_page` from /api/products/by-slug and passes it on as the
+ * KanbanBoard `orgPage` prop.
+ */
+/**
+ * Whether /<slug> is that org's page, on the server: the app mounts org pages
+ * and the slug isn't one of the app's own paths (the core's, or one the
+ * consuming app reserved). /api/products/by-slug returns it as `org_page`.
+ */
+export function hasOrgPage(slug: string): boolean {
+  return orgPagesMounted() && !isReservedOrgSlug(slug);
+}
+
+export function orgPageHref(slug: string): string | null {
+  return RESERVED_ORG_SLUGS.has(slug.toLowerCase()) ? null : `/${slug}`;
 }
