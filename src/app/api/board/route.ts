@@ -5,6 +5,7 @@ import { readSnapshot } from "../../../lib/sql";
 import { envInt } from "../../../lib/env";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
+import { withCardUrl } from "../../../lib/public-url";
 
 /**
  * Everything a board screen needs, in one request.
@@ -221,7 +222,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       boards: snap.boards,
       active_board_id: snap.boardId,
       columns: snap.columns,
-      cards: snap.cards,
+      cards: withCardUrl(request, snap.cards),
       ...(snap.cardIds ? { card_ids: snap.cardIds } : {}),
     },
     { headers: { ETag: snap.etag, "Cache-Control": "no-store" } }

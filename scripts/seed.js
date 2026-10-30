@@ -1,6 +1,11 @@
+const { describeDbError } = require("./db-script");
 const { sql, db, end } = require("../src/lib/sql");
 const { ensureProductKeys } = require("../src/lib/card-keys");
 const { ensureDefaultTeam } = require("../src/lib/tenancy");
+const { seedDemo } = require("./demo-data");
+
+// `--demo` also adds people, agents and a board of cards (see demo-data.js).
+const DEMO = process.argv.includes("--demo");
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -104,12 +109,21 @@ async function seed() {
   await ensureProductKeys((text, values) => db.query(text, values));
 
   console.log("Seed data inserted successfully.");
+
+  if (DEMO) {
+    const demo = await seedDemo(teamId);
+    console.log(
+      demo.seeded
+        ? `Demo data added: ${demo.cards} cards on Acme Corp / Web App / Development.`
+        : "Demo data was already there; nothing added.",
+    );
+  }
 }
 
 seed()
   .then(() => end())
   .catch(async (err) => {
-    console.error("Seed failed:", err.message);
+    console.error("Seed failed:", describeDbError(err));
     await end().catch(() => {});
     process.exit(1);
   });

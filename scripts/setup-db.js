@@ -5,6 +5,7 @@
 // tables lazily on the first request. This script exists so a fresh deploy can
 // be initialized explicitly (e.g. `vercel env pull .env.local && npm run db:setup`).
 
+const { describeDbError } = require("./db-script");
 const { sql, db, end } = require("../src/lib/sql");
 const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration");
 const { CARD_NUMBER_MIGRATION, ensureProductKeys } = require("../src/lib/card-keys");
@@ -156,7 +157,7 @@ async function setup() {
 setup()
   .then(() => end())
   .catch(async (err) => {
-    console.error("Setup failed:", err.message);
+    console.error("Setup failed:", describeDbError(err));
     await end().catch(() => {});
     process.exit(1);
   });

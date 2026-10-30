@@ -48,6 +48,8 @@ agentboard list --assignee MyAgent --include-done
 # Create a task
 agentboard new "Build login page"
 agentboard new "Fix bug" --priority urgent --assignee MyAgent --due 2025-03-15
+# Both print where the card landed first, e.g. "Created AB-12 on my-app/development in Backlog".
+# With --json the card includes product_slug, board_slug and column_slug (and their names).
 
 # Update status (backlog | todo | doing | in-progress | in-review | done | blocked)
 agentboard status <id> doing
@@ -124,6 +126,9 @@ agentboard task move <id> --column <slug>                       # same board
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
+agentboard task update <id> --add-label bug,cli      # add labels, keep the rest
+agentboard task update <id> --remove-label feedback  # remove one label, keep the rest
+agentboard task update <id> --label "a,b"            # replace all labels ("" clears)
 agentboard task done <id>
 agentboard task remove <id>
 agentboard task link <id> --url <url> [--title <text>]    # any URL: Slack thread, doc, design
@@ -155,11 +160,13 @@ agentboard preferences --key key --value val
 
 Every card has a readable id made of its product's key and a per-product number, like `AB-142`, shown as `key` in `show` and `--json` output. Anywhere a command takes a card `<id>`, the readable id works too, in any case (`show ab-142`), as does the plain number. A product's key is derived from its name when it is created (AgentBoard is `AB`) and can be set with `--key` on `product add` or `product rename`. Old keys keep working after a rename, and a card moved to another product gets a new number there while its old id still finds it.
 
+`show` and `task show` also print the card's link as `url` (in `--json` too), like `https://agentboard.example.com/c/142`, so you can cite the card itself. It keeps working after the card moves. A server too old to send `url` gets the same link built from `AGENTBOARD_URL`.
+
 `task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
-`status` and `--column` take any column slug or name on the board. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
+`status` and `--column` take any column slug or name on the board, in any case: a Backlog column renamed "Inbox" keeps the slug `backlog` and answers to `inbox`, `Inbox` and `backlog` alike. An exact match wins, and a word that matches two columns only when case is ignored (say "Review" and "review") is refused rather than guessed, and the error lists each column's slug to use instead. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
 
 ## Flag Handling
 

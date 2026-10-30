@@ -346,3 +346,22 @@ test("preferences are per user within a team, and need a user", { skip }, async 
   const anon = await call(B, prefs.PATCH, "/api/preferences", { method: "PATCH", body: { key: "x", value: "y" }, ...as("none") });
   assert.equal(anon.status, 403);
 });
+
+// A card opened full page from Assigned or Past due links its breadcrumbs to
+// its own board and opens its org's product list (card 805), so the view rows
+// and a single card both say where the card lives, by id and slug.
+test("views and GET /api/cards/:id say which org, product and board a card is on", { skip }, async () => {
+  for (const view of ["assigned", "past-due"]) {
+    const r = await call(A, api.cardViews.GET, `/api/cards/views?view=${view}&member_id=${A.member.id}`);
+    const row = r.data.find((c) => c.id === A.card.id);
+    assert.ok(row, `${view} lists A's card`);
+    assert.equal(row.org_id, A.org.id, view);
+    assert.equal(row.org_slug, A.org.slug, view);
+    assert.equal(row.product_slug, A.product.slug, view);
+    assert.equal(row.board_id, A.board.id, view);
+  }
+  const one = await call(A, api.card.GET, `/api/cards/${A.card.id}`, { id: A.card.id });
+  assert.equal(one.data.org_id, A.org.id);
+  assert.equal(one.data.org_name, A.org.name);
+  assert.equal(one.data.product_emoji, A.product.emoji);
+});

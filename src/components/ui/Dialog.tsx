@@ -20,7 +20,13 @@ export function Dialog({ onClose, children, className, heavy, dismissable = true
   useEffect(() => {
     if (!dismissable) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Claimed, so a window-level Escape handler underneath (a card that
+      // closes on Escape) leaves it alone. Checking our own open state there
+      // isn't enough: React can re-render between this listener and that
+      // one, and the re-rendered handler no longer sees the dialog.
+      e.preventDefault();
+      onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
