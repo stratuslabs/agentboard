@@ -124,6 +124,7 @@
     "./app/providers": "./src/app/providers.tsx",
     "./app/settings/page": "./src/app/settings/page.tsx",
     "./components/BoardLayout": "./src/components/BoardLayout.tsx",
+    "./components/CardContextMenu": "./src/components/CardContextMenu.tsx",
     "./components/CardDetail": "./src/components/CardDetail.tsx",
     "./components/CardLinks": "./src/components/CardLinks.tsx",
     "./components/ConfirmModal": "./src/components/ConfirmModal.tsx",
