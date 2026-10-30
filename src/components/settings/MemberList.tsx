@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Bot, Ellipsis } from "lucide-react";
 import { Avatar, ColorSwatches, IconButton, MenuPanel, cx } from "../ui";
 
@@ -80,15 +80,21 @@ export function RowMenu({ label, children }: { label: string; children: (close: 
 }
 
 /** Inline rename + recolour editor shared by member rows. */
-export function MemberEditor({ initialName, initialColor, focus, onSave, onCancel }: {
+export function MemberEditor({ initialName, initialColor, focus, onSave, onCancel, error, saving }: {
   initialName: string;
   initialColor: string;
   focus: "name" | "color";
   onSave: (name: string, color: string) => void;
   onCancel: () => void;
+  /** Why the last save failed. Shown under the fields; the edit stays open. */
+  error?: string | null;
+  /** A save is in flight: Save is disabled so it isn't sent twice. */
+  saving?: boolean;
 }) {
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor);
+  const canSave = !!name.trim() && !saving;
+  const errorId = useId();
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -97,8 +103,10 @@ export function MemberEditor({ initialName, initialColor, focus, onSave, onCance
           value={name}
           autoFocus={focus === "name"}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onSave(name.trim(), color); if (e.key === "Escape") onCancel(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && canSave) onSave(name.trim(), color); if (e.key === "Escape") onCancel(); }}
           aria-label="Name"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           className="h-8 min-w-0 flex-1 rounded-md border border-border-strong bg-surface-2 px-2.5 text-[13px] text-text-1 focus:border-text-4 focus:outline-none"
         />
       </div>
@@ -106,10 +114,11 @@ export function MemberEditor({ initialName, initialColor, focus, onSave, onCance
         <ColorSwatches value={color} onChange={setColor} size={20} />
         <div className="flex gap-1.5">
           <button onClick={onCancel} className="h-7 rounded-md px-2.5 text-[12.5px] text-text-2 hover:bg-surface-3 hover:text-text-1">Cancel</button>
-          <button onClick={() => name.trim() && onSave(name.trim(), color)} disabled={!name.trim()}
-            className="h-7 rounded-md bg-ivory px-3 text-[12.5px] font-medium text-on-ivory hover:bg-ivory-hover disabled:opacity-40">Save</button>
+          <button onClick={() => canSave && onSave(name.trim(), color)} disabled={!canSave}
+            className="h-7 rounded-md bg-ivory px-3 text-[12.5px] font-medium text-on-ivory hover:bg-ivory-hover disabled:opacity-40">{saving ? "Saving…" : "Save"}</button>
         </div>
       </div>
+      {error && <p id={errorId} role="alert" className="pl-[38px] text-xs text-danger">{error}</p>}
     </div>
   );
 }

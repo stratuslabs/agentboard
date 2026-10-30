@@ -1,7 +1,8 @@
 import { initDb, teamDefaultColumns } from "../../../lib/db";
 import { isUniqueViolation, planSlugName } from "../../../lib/slug";
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "../../../lib/sql";
+import { sql, withClient } from "../../../lib/sql";
+import { withSiblingNames } from "../../../lib/sibling-names";
 import { notifyBoard } from "../../../lib/realtime/notify";
 import { assertProduct, found, withTenant } from "../../../lib/tenant";
 import { resolveScope } from "../../../lib/scope-params";
@@ -37,28 +38,33 @@ export const POST = withTenant(async (request: NextRequest, { teamId }) => {
   }
   const product_id = await assertProduct(teamId, body.product_id);
 
-  const { rows: siblings } = await sql`SELECT id, name, slug FROM boards WHERE product_id = ${product_id}`;
-  const plan = planSlugName(BOARD, name, siblings, null);
-  if (!plan.ok) return NextResponse.json({ error: plan.error }, { status: plan.status });
-  const { slug } = plan;
-
-  // Set position to max+1
-  const { rows: maxRows } = await sql`SELECT COALESCE(MAX(position), -1) AS max_pos FROM boards WHERE product_id = ${product_id}`;
-  const position = maxRows[0].max_pos + 1;
-
-  let rows;
+  // Checked and written under the product's name lock, so a rename to the
+  // same name at the same moment can't pass the check too (card 815).
+  let added;
   try {
-    ({ rows } = await sql`
-      INSERT INTO boards (product_id, name, slug, position)
-      VALUES (${product_id}, ${plan.name}, ${slug}, ${position})
-      RETURNING *
-    `);
+    added = await withClient((client) =>
+      withSiblingNames(client, "board", product_id, async (query) => {
+        const { rows: siblings } = await query("SELECT id, name, slug FROM boards WHERE product_id = $1", [product_id]);
+        const plan = planSlugName(BOARD, name, siblings, null);
+        if (!plan.ok) return plan;
+        // Set position to max+1
+        const { rows: maxRows } = await query(
+          "SELECT COALESCE(MAX(position), -1) AS max_pos FROM boards WHERE product_id = $1", [product_id]
+        );
+        const { rows } = await query(
+          "INSERT INTO boards (product_id, name, slug, position) VALUES ($1, $2, $3, $4) RETURNING *",
+          [product_id, plan.name, plan.slug, maxRows[0].max_pos + 1]
+        );
+        return { ok: true as const, board: rows[0] };
+      })
+    );
   } catch (err) {
-    // Another request took the slug between the check and this write.
+    // A slug taken some other way than through this check.
     if (isUniqueViolation(err)) return NextResponse.json({ error: TAKEN }, { status: 409 });
     throw err;
   }
-  const board = rows[0];
+  if (!added.ok) return NextResponse.json({ error: added.error }, { status: added.status });
+  const { board } = added;
 
   // The team's Default columns, the same list a new product's boards get.
   const cols = await teamDefaultColumns(teamId);

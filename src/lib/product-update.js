@@ -2,6 +2,7 @@
 
 import cardKeys from "./card-keys.js";
 import { planSlugName } from "./slug.js";
+import { lockSiblingNames } from "./sibling-names.js";
 
 const { changeProductKey } = cardKeys;
 
@@ -31,6 +32,12 @@ export async function updateProduct(client, productId, patch) {
   const query = (text, values) => client.query(text, values);
   await query("BEGIN");
   try {
+    if (patch.name) {
+      // Before anything else, so every request takes its locks in the same
+      // order: the org's name lock, then rows (card 815).
+      const { rows: owner } = await query("SELECT org_id FROM products WHERE id = $1", [productId]);
+      if (owner.length > 0) await lockSiblingNames(query, "product", owner[0].org_id);
+    }
     if (patch.key !== undefined) {
       const changed = await changeProductKey(query, productId, patch.key);
       if ("error" in changed) {

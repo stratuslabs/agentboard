@@ -29,6 +29,7 @@ import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, ChevronRight, Ellipsis, L
 import SortableCard from "./SortableCard";
 import KanbanCard from "./KanbanCard";
 import CardDetail from "./CardDetail";
+import { readBoardParam, stripBoardParam } from "../lib/breadcrumbs";
 import CardContextMenu, { type CardMenuTarget } from "./CardContextMenu";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import { orgPageHref } from "../lib/org-slug";
@@ -87,8 +88,12 @@ interface Board {
 interface KanbanBoardProps {
   productId: number;
   orgName: string;
-  /** The org's slug. When given, the org name in the breadcrumb links to its page, /<orgSlug>. */
+  /** The org's id and slug, and the product's slug: with them, a card page's breadcrumbs link and its org crumb opens the org's products. */
+  orgId?: number;
   orgSlug?: string;
+  productSlug?: string;
+  /** Whether the org has a page at /<orgSlug> in this app. When it does, the org name in the board's breadcrumb links there. */
+  orgPage?: boolean;
   productName: string;
   productEmoji: string;
   /** The product's card key, the AB in AB-142, so cards can show theirs. */
@@ -99,7 +104,10 @@ interface KanbanBoardProps {
 export default function KanbanBoard({
   productId,
   orgName,
+  orgId,
   orgSlug,
+  productSlug,
+  orgPage = false,
   productName,
   productEmoji,
   productKey = null,
@@ -109,7 +117,12 @@ export default function KanbanBoard({
   const isStarred = isStarredFn(productId);
   const onToggleStar = () => toggleStarredProduct(productId);
   const [boards, setBoards] = useState<Board[]>([]);
-  const [activeBoardId, setActiveBoardId] = useState<number | null>(null);
+  // A `?board=<id>` link, such as a card page's board crumb opened in a new
+  // tab, picks the first board to load. An id that isn't one of this
+  // product's boards falls back to the first board, server-side.
+  const [activeBoardId, setActiveBoardId] = useState<number | null>(() =>
+    typeof window === "undefined" ? null : readBoardParam(window.location.search),
+  );
   const [columns, setColumns] = useState<Column[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   // The board `cards` belongs to. Lags `activeBoardId` while a switch loads,
@@ -583,6 +596,13 @@ export default function KanbanBoard({
     writeCardParam(null);
   }
 
+  // `?board=` has done its job once read; the tabs decide from here, and a
+  // stale one would contradict them on the next refresh.
+  useEffect(() => {
+    if (readBoardParam(window.location.search) === null) return;
+    window.history.replaceState(window.history.state, "", stripBoardParam(window.location.href));
+  }, []);
+
   // A `?card=` link: open it once the board holding it is on screen. The card
   // may live on another of this product's boards, in which case that board is
   // switched to first and the card opens when its cards arrive.
@@ -799,7 +819,19 @@ export default function KanbanBoard({
     return {
       card,
       columns,
-      context: { orgName, productEmoji, productName, productKey, boardName: activeBoard?.name },
+      context: {
+        orgName, orgId, orgSlug, productEmoji, productName, productSlug, productKey,
+        boardName: activeBoard?.name,
+        boardId: activeBoard?.id,
+        // Already on screen behind the card: close it, and for the product
+        // crumb, go to the first board.
+        onOpenBoard: closeCard,
+        onOpenProduct: () => {
+          closeCard();
+          const first = boards[0]?.id;
+          if (first !== undefined && first !== activeBoardId) setActiveBoardId(first);
+        },
+      },
       siblings,
       siblingsLabel: columns.find((c) => c.id === card.column_id)?.name,
       onNavigate: (c: Card) => openCard(c.id),
@@ -834,7 +866,7 @@ export default function KanbanBoard({
             <ArrowLeft className="h-4 w-4" />
           </IconButton>
         )}
-        {orgSlug && orgPageHref(orgSlug) ? (
+        {orgPage && orgSlug && orgPageHref(orgSlug) ? (
           <Link href={orgPageHref(orgSlug)!} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
         ) : (
           <span className="truncate text-text-3">{orgName}</span>
