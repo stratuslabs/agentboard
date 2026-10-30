@@ -14,6 +14,7 @@ import {
   DEFAULT_COLUMNS,
   LEGACY_DEFAULT_COLUMNS,
   upgradeDefaultColumnsSetting,
+  columnsFromSetting,
 } from "../src/lib/default-columns.js";
 import { slugify } from "../src/lib/slug.js";
 
@@ -90,4 +91,23 @@ test("no other source file keeps its own copy of the default column list", () =>
     .filter((p) => /name:\s*"In Review",\s*color:/.test(readFileSync(p, "utf8")))
     .map((p) => relative(ROOT, p));
   assert.deepEqual(copies, []);
+});
+
+test("columnsFromSetting: a saved list is used as saved", () => {
+  const saved = [{ name: "Ideas", color: "#111111" }, { name: "Shipped", color: "#222222" }];
+  assert.deepEqual(columnsFromSetting(JSON.stringify(saved)), saved);
+  assert.deepEqual(columnsFromSetting("[]"), [], "an emptied list is someone's choice");
+});
+
+test("columnsFromSetting: no value or an unreadable one gives the built-in list", () => {
+  for (const stored of [undefined, null, "", "not json", "{}", '"Todo"', "42", '[{"color":"#111111"}]', '[null, " "]']) {
+    assert.deepEqual(columnsFromSetting(stored), DEFAULT_COLUMNS, String(stored));
+  }
+});
+
+test("columnsFromSetting: entries without a name are dropped, a missing color is gray", () => {
+  assert.deepEqual(columnsFromSetting(JSON.stringify([{ name: "Doing" }, { color: "#111111" }, "Todo", { name: "Done", color: "#10B981" }])), [
+    { name: "Doing", color: DEFAULT_COLUMNS[0].color },
+    { name: "Done", color: "#10B981" },
+  ]);
 });

@@ -30,7 +30,7 @@ If any check fails, nothing is published. Fix it, delete the tag (`git push --de
 
 If the run fails after the checks (a network error while publishing or creating the release), re-run the failed jobs from the Actions tab. A version already on npm isn't published again, and an existing GitHub release is left alone. If npm can't be read at all, the job fails before publishing rather than guessing a dist-tag.
 
-Publishes run one at a time, even for tags pushed together, and each waits until npm serves its new dist-tag before the next starts. GitHub keeps only one run waiting, so if you push three or more tags at once, a waiting run can show as cancelled; re-run it once the others finish.
+Publishes run one at a time, even for tags pushed together, and each waits (up to 20 minutes) until npm serves its new dist-tag before the next starts. npm can take several minutes to list a new version. If the wait times out, the GitHub release is still created and the run is marked failed so you check `npm dist-tag ls agentboard` before releasing anything else. GitHub keeps only one run waiting, so if you push three or more tags at once, a waiting run can show as cancelled; re-run it once the others finish.
 
 ### Dry run
 

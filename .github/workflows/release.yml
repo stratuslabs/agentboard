@@ -68,6 +68,7 @@ jobs:
       # accepts the same version twice. If npm can't be read, the job fails
       # rather than guessing a dist-tag.
       - name: Publish to npm
+        id: publish
         working-directory: cli
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -93,21 +94,39 @@ jobs:
             exit 0
           fi
           npm publish --provenance --tag "$plan"
-          # Hold the release group until npm serves the new tag, so the next
-          # queued release reads it instead of a stale one.
-          for attempt in $(seq 1 30); do
-            if [ "$(npm view agentboard "dist-tags.$plan" 2>/dev/null)" = "$VERSION" ]; then
-              echo "npm now serves agentboard@$plan = $VERSION"
+          echo "plan=$plan" >> "$GITHUB_OUTPUT"
+
+      # Hold the release group until npm serves the new tag, so the next
+      # queued release reads it instead of a stale one. npm can take several
+      # minutes to list a new version after `npm publish` returns (0.10.0
+      # took about 5), so poll the dist-tags endpoint, which npm's CDN
+      # doesn't cache, for up to 20 minutes. The GitHub release below is
+      # still created if this times out, since the package is already out.
+      - name: Wait for npm to serve the new dist-tag
+        if: steps.publish.outputs.plan != ''
+        timeout-minutes: 25
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          PLAN: ${{ steps.publish.outputs.plan }}
+        run: |
+          for attempt in $(seq 1 80); do
+            served=$(npm dist-tag ls agentboard 2>/dev/null | awk -F': ' -v tag="$PLAN" '$1 == tag { print $2 }' || true)
+            if [ "$served" = "$VERSION" ]; then
+              echo "npm now serves agentboard@$PLAN = $VERSION"
               exit 0
             fi
-            sleep 10
+            if [ $((attempt % 4)) -eq 0 ]; then
+              echo "Still waiting: npm shows $PLAN = ${served:-nothing} ($((attempt / 4)) min)"
+            fi
+            sleep 15
           done
-          echo "::error::Published agentboard@$VERSION, but npm still doesn't show it as \"$plan\" after 5 minutes. Check npm before releasing anything else."
+          echo "::error::Published agentboard@$VERSION, but npm still doesn't show it as \"$PLAN\" after 20 minutes. Check npm before releasing anything else."
           exit 1
 
-      # Also safe to re-run: an existing release is left as it is.
+      # Also safe to re-run: an existing release is left as it is. Runs when
+      # publishing succeeded, even if the wait above timed out.
       - name: Create the GitHub release
-        if: github.event_name == 'push'
+        if: ${{ !cancelled() && github.event_name == 'push' && steps.publish.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
