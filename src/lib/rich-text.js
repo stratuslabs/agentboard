@@ -149,8 +149,9 @@ export function parseInline(line, options = {}) {
 
 // A card key as the app prints it, AB-142: uppercase only, so prose like
 // "covid-19" stays prose. Not glued to a word, path, mention or version
-// (repo/AB-1, #AB-1, AB-1/path, owner+AB-1@host, AB-1.5, AB-1-2).
-const CARD_KEY = /(?<![A-Za-z0-9_/#@.\-])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})(?![A-Za-z0-9_/@]|[-.][0-9])/;
+// (repo/AB-1, #AB-1, AB-1/path, owner+AB-1@host, AB-1.5, AB-1-2) or the
+// first label of a host or file name (AB-1.example.com, AB-1.md).
+const CARD_KEY = /(?<![A-Za-z0-9_/#@.\-])([A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9})(?![A-Za-z0-9_/@]|-[0-9]|\.[A-Za-z0-9])/;
 // A card without a key, written the way the app labels it, "#57", but only
 // after the word "card": on its own, #57 is usually a PR or an issue.
 const CARD_ID = /(?<=(?<![A-Za-z0-9_])[Cc]ards? )#([1-9][0-9]{0,9})(?![A-Za-z0-9_])/;

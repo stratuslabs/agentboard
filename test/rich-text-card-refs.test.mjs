@@ -104,3 +104,20 @@ test("a key that starts a path or an address stays text", () => {
     assert.deepEqual(parseInline(s), [text(s)], s);
   }
 });
+
+test("a key that starts a hostname or file name stays text", () => {
+  for (const s of ["AB-142.example.com", "AB-142.internal/path", "see AB-142.md"]) {
+    assert.deepEqual(parseInline(s), [text(s)], s);
+  }
+});
+
+test("a key ending a sentence still links", () => {
+  assert.deepEqual(parseInline("Done in AB-142. Next is AB-143."), [
+    text("Done in "),
+    card("AB-142"),
+    text(". Next is "),
+    card("AB-143"),
+    text("."),
+  ]);
+  assert.deepEqual(parseInline("(AB-142.)"), [text("("), card("AB-142"), text(".)")]);
+});
