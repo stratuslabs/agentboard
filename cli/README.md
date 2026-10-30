@@ -159,7 +159,7 @@ Every card has a readable id made of its product's key and a per-product number,
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
-`status` and `--column` take any column slug or name on the board. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
+`status` and `--column` take any column slug or name on the board, in any case: a Backlog column renamed "Inbox" keeps the slug `backlog` and answers to `inbox`, `Inbox` and `backlog` alike. An exact match wins, and a word that matches two columns only when case is ignored (say "Review" and "review") is refused rather than guessed, and the error lists each column's slug to use instead. The shortcuts `doing`, `wip` and `review` map to `in-progress` and `in-review` only when the board has no column whose slug is exactly that word, so a column named "Doing" is reachable as `doing`.
 
 ## Flag Handling
 

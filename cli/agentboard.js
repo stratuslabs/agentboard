@@ -296,13 +296,29 @@ function notFound(what, tried, where, items, describe, kind) {
   return `${head} Available: ${describe(items)}`;
 }
 
+// A column by slug or name, in this order: an exact slug, an exact name, then
+// a slug or name that matches ignoring case, then a legacy alias. A renamed
+// Backlog is named "Inbox" but keeps the slug `backlog`, so `inbox` has to
+// reach it. When the case-insensitive pass matches more than one column (say
+// "Review" and "review"), refuse rather than pick one, and suggest slugs: they
+// are unique per board and exact slugs win, whereas one column's exact name
+// can be another column's slug.
 function findColumn(cols, input) {
-  return (
-    cols.find((c) => c.slug === input) ||
-    cols.find((c) => c.name === input) ||
-    (STATUS_ALIASES[input] && cols.find((c) => c.slug === STATUS_ALIASES[input])) ||
-    null
+  const exact = cols.find((c) => c.slug === input) || cols.find((c) => c.name === input);
+  if (exact) return exact;
+  const want = String(input).toLowerCase();
+  const loose = cols.filter(
+    (c) => String(c.slug).toLowerCase() === want || String(c.name ?? "").toLowerCase() === want
   );
+  if (loose.length === 1) return loose[0];
+  if (loose.length > 1) {
+    die(
+      `Column '${input}' matches more than one column: ${describeNamed(loose)}. ` +
+        `Use one of these slugs: ${loose.map((c) => c.slug).join(", ")}.`
+    );
+  }
+  const alias = Object.hasOwn(STATUS_ALIASES, want) ? STATUS_ALIASES[want] : null;
+  return (alias && cols.find((c) => c.slug === alias)) || null;
 }
 
 // ===========================================================================
@@ -484,7 +500,7 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   new <title>                          Create a task
     --priority <p>  --assignee <name>  --label <l>  --description <text>
     --column <col>  --due <date>
-  status <id> <column>                 Move card to a column slug or name
+  status <id> <column>                 Move card to a column slug or name (any case)
                                        (doing/wip -> in-progress, review -> in-review
                                         when the board has no column by that slug)
   show <id>                            Show card details
