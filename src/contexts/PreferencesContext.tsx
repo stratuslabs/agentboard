@@ -115,11 +115,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     flushToServer();
   }, [flushToServer]);
 
-  // Fetch from server on mount, server wins on conflict
+  // Fetch from server on mount, server wins on conflict. A superseded request (React
+  // Strict Mode mounts effects twice in development) is aborted, so a stale second
+  // response can't land after the first and undo a click made in between.
   useEffect(() => {
-    fetch('/api/preferences')
+    const request = new AbortController();
+    fetch('/api/preferences', { signal: request.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
       .then((received: Record<string, unknown>) => {
+        if (request.signal.aborted) return;
         // Computed once, outside the updater, so a double-invoked updater can't replay twice.
         // Early collapse clicks send no PATCH, so this key is never in `touched` here.
         serverLoaded.current = true;
@@ -171,11 +175,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
         setIsLoaded(true);
       })
       .catch(() => {
+        if (request.signal.aborted) return;
         // Keep the local state. Collapse clicks stay local for this page load: the
         // local cache was never merged with the server value, so saving it could
         // wipe groups collapsed in another browser. serverLoaded stays false.
         setIsLoaded(true); // Even on error, mark loaded so app works with localStorage data
       });
+    return () => request.abort();
   }, [queuePatch]);
 
   const updatePref = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
