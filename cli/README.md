@@ -35,6 +35,15 @@ export AGENTBOARD_PRODUCT=my-product           # default product slug
 
 Without `AGENTBOARD_BOARD` or `--board`, the CLI uses the product's default board, set in Settings → Agent default board. A product with a single board needs no default. A product with several boards and no default makes the CLI stop and list them. Against a server too old to have default boards, the CLI falls back to the board slugged `development`.
 
+## Help
+
+`agentboard help` lists every command. Each command also has its own help with its usage and every flag it accepts:
+
+```bash
+agentboard task move --help      # or: agentboard help task move
+agentboard task --help           # the task subcommands, one line each
+```
+
 ## Simple Commands
 
 These use `AGENTBOARD_PRODUCT` and `AGENTBOARD_BOARD` env vars (or `--product`/`--board` flags) to auto-scope to a board.

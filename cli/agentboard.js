@@ -190,6 +190,215 @@ const COMMAND_FLAGS = {
 
 const GLOBAL_FLAGS = ["json", "quiet", "help", "version"];
 
+// ---- Per-command help -----------------------------------------------------
+//
+// `agentboard <command> --help` (or `agentboard help <command>`) prints the
+// command's usage and every flag it accepts. Keys match COMMAND_FLAGS, and a
+// test checks that each accepted flag is described here.
+
+const FLAG_HELP = {
+  product: ["<slug>", "Product slug (default: AGENTBOARD_PRODUCT)"],
+  board: ["<slug>", "Board slug (default: AGENTBOARD_BOARD, else the product's default board)"],
+  "board-id": ["<id>", "Board id, instead of --product and --board"],
+  column: ["<col>", "Column slug or name, any case"],
+  "to-product": ["<slug>", "Product to move the card to (needs --to-board)"],
+  "to-board": ["<slug>", "Board to move the card to"],
+  priority: ["<p>", "urgent, high, medium or low"],
+  label: ["<l>", "Labels, comma-separated"],
+  assignee: ["<name>", "Member name or id"],
+  "include-done": ["", "Include cards in Done"],
+  fields: ["<a,b>", "Fields to print, comma-separated: any card field, plus product, board, column and assignee. With --json, only these"],
+  description: ["<text>", "Card description (Markdown)"],
+  due: ["<date>", "Due date, e.g. 2026-11-01"],
+  title: ["<text>", "New title"],
+  issue: ["<url>", "GitHub issue URL"],
+  pr: ["<url>", "GitHub pull request URL"],
+  url: ["<url>", "Link URL"],
+  file: ["<path>", "File to attach"],
+  ids: ["<1,2,3>", "Ids in their new order, comma-separated"],
+  name: ["<text>", "New name"],
+  emoji: ["<emoji>", "Emoji shown with the product"],
+  org: ["<slug>", "Organization slug"],
+  type: ["<t>", "agent or human"],
+  color: ["<hex>", "Color, e.g. #3B82F6"],
+  "avatar-url": ["<url>", "Avatar image URL"],
+  position: ["<n>", "Position on the board"],
+  set: ["<text>", "Replace the description"],
+  append: ["<text>", "Add text to the end of the description"],
+  key: ["<k>", "Key to change (with --value)"],
+  value: ["<v>", "Value to set: JSON, or plain text"],
+  out: ["<file|dir>", "Save to this file or directory instead of printing"],
+  force: ["", "Overwrite an existing file with --out"],
+  "add-label": ["<l>", "Add labels and keep the rest (a,b, or repeat the flag)"],
+  "remove-label": ["<l>", "Remove only these labels (a,b, or repeat the flag)"],
+  json: ["", "JSON output"],
+  quiet: ["", "IDs only"],
+};
+
+// usage: one or more usage lines, without "agentboard ". summary: one line.
+// flags: per-command wording that replaces FLAG_HELP's.
+const COMMAND_HELP = {
+  list: {
+    usage: ["list"],
+    summary: "List cards on the current board. Done is hidden unless --include-done.",
+    flags: { label: "Only cards with this label", assignee: "Only cards assigned to this member", column: "Only cards in this column", priority: "Only cards with this priority" },
+  },
+  new: { usage: ["new <title>"], summary: "Create a card on the current board." },
+  status: {
+    usage: ["status <id> [<id> ...] <column>"],
+    summary: "Move cards to a column slug or name, any case. doing/wip mean in-progress and review means in-review when the board has no column by that slug.",
+  },
+  show: { usage: ["show <id>"], summary: "Show a card's details, with its link (url)." },
+  rename: { usage: ["rename <id> <title>"], summary: "Rename a card." },
+  notes: { usage: ["notes <id>"], summary: "Print a card's description, or change it with --set or --append." },
+  attention: { usage: ["attention <id> on|off"], summary: "Set a card's priority to urgent (on) or medium (off)." },
+  "my-tasks": {
+    usage: ["my-tasks"],
+    summary: "Cards assigned to you, with product, board and column.",
+    flags: { assignee: "Member name or id (default: AGENTBOARD_AGENT_NAME)" },
+  },
+  today: { usage: ["today"], summary: "Cards due today." },
+  "past-due": {
+    usage: ["past-due"],
+    summary: "Overdue cards for one member.",
+    flags: { assignee: "Member name or id (default: AGENTBOARD_AGENT_NAME)" },
+  },
+  "org list": { usage: ["org list"], summary: "List organizations." },
+  "org add": { usage: ["org add <name>"], summary: "Create an organization." },
+  "org remove": { usage: ["org remove <slug>"], summary: "Delete an organization." },
+  "org rename": { usage: ["org rename <slug> --name <new-name>"], summary: "Rename an organization." },
+  "org reorder": { usage: ["org reorder --ids <1,2,3>"], summary: "Set the order of organizations." },
+  "product list": { usage: ["product list"], summary: "List products.", flags: { org: "Only this organization's products" } },
+  "product add": {
+    usage: ["product add <name> --org <slug> [--key <KEY>]"],
+    summary: "Create a product.",
+    flags: { key: "Card key prefix, e.g. AB, so card ids read AB-142" },
+  },
+  "product remove": { usage: ["product remove <slug>"], summary: "Delete a product." },
+  "product rename": {
+    usage: ["product rename <slug> [--name <n>] [--emoji <e>] [--key <KEY>]"],
+    summary: "Change a product's name, emoji or card key. Cards keep answering to the old key.",
+    flags: { key: "New card key prefix, e.g. AB" },
+  },
+  "product move": { usage: ["product move <slug> --org <org-slug>"], summary: "Move a product to another organization.", flags: { org: "Organization to move it to" } },
+  "product reorder": { usage: ["product reorder --ids <1,2,3>"], summary: "Set the order of products." },
+  "board list": { usage: ["board list --product <slug>"], summary: "List a product's boards." },
+  "board add": { usage: ["board add <name> --product <slug>"], summary: "Create a board with the default columns." },
+  "board remove": { usage: ["board remove <board-id>"], summary: "Delete a board." },
+  "board rename": { usage: ["board rename <board-id> --name <new-name>"], summary: "Rename a board." },
+  "board reorder": { usage: ["board reorder --ids <1,2,3>"], summary: "Set the order of boards." },
+  "board view": { usage: ["board view [--product <slug>] [--board <slug>]"], summary: "Print a board's columns and their cards." },
+  "column list": { usage: ["column list [--product <slug>] [--board <slug> | --board-id <id>]"], summary: "List a board's columns." },
+  "column add": { usage: ["column add <name> [--product <slug>] [--board <slug> | --board-id <id>]"], summary: "Add a column to a board." },
+  "column remove": { usage: ["column remove <column-id>"], summary: "Delete a column." },
+  "column rename": { usage: ["column rename <column-id> [--name <n>] [--color <hex>] [--position <n>]"], summary: "Change a column's name, color or position." },
+  "member list": { usage: ["member list"], summary: "List members, people and agents." },
+  "member add": { usage: ["member add <name> [--type agent|human] [--color <hex>]"], summary: "Add a member." },
+  "member remove": { usage: ["member remove <member-id>"], summary: "Remove a member." },
+  "member update": { usage: ["member update <member-id> [--name <n>] [--type <t>] [--color <hex>]"], summary: "Change a member's name, type, color or avatar." },
+  "task add": { usage: ["task add <title> --product <slug> [--board <slug>]"], summary: "Create a card on any board." },
+  "task list": {
+    usage: ["task list --product <slug> [--board <slug>]"],
+    summary: "List cards on any board, Done included.",
+    flags: { label: "Only cards with this label", assignee: "Only cards assigned to this member", column: "Only cards in this column", priority: "Only cards with this priority" },
+  },
+  "task show": { usage: ["task show <id>"], summary: "Show a card's details." },
+  "task move": {
+    usage: [
+      "task move <id> [<id> ...] --column <col>",
+      "task move <id> --to-board <slug> [--column <col>]",
+      "task move <id> --to-product <slug> --to-board <slug> [--column <col>]",
+    ],
+    summary: "Move cards to another column, or one card to another board or product.",
+    flags: { column: "Column slug or name, any case (default: the card's current column slug)" },
+  },
+  "task update": {
+    usage: ["task update <id> [options]"],
+    summary: "Change a card's fields. Only the flags you pass change.",
+    flags: { label: "Replace all labels, comma-separated ('' clears them)", assignee: "Assign to this member" },
+  },
+  "task done": { usage: ["task done <id>"], summary: "Move a card to Done." },
+  "task remove": { usage: ["task remove <id>"], summary: "Delete a card." },
+  "task link": {
+    usage: ["task link <id> --url <url> [--title <text>]", "task link <id> --issue <url> | --pr <url>"],
+    summary: "Link any URL (a Slack thread, doc or design), or set the card's GitHub issue or PR.",
+    flags: { url: "Any URL to link to the card", title: "Link text (with --url)" },
+  },
+  "task links": { usage: ["task links <id>"], summary: "List a card's links." },
+  "task unlink": { usage: ["task unlink <id> --url <url>"], summary: "Remove a link from a card.", flags: { url: "The linked URL to remove" } },
+  "task attach": { usage: ["task attach <id> --file <path>"], summary: "Attach a file to a card." },
+  "task attachments": { usage: ["task attachments <id>"], summary: "List a card's attachments, with their ids." },
+  "task reorder": { usage: ["task reorder --ids <1,2,3>"], summary: "Set the order of cards." },
+  settings: {
+    usage: ["settings", "settings --key <k> --value <v>"],
+    summary: "List the instance's settings, or change one.",
+    flags: { key: "Setting to change (with --value)" },
+  },
+  preferences: {
+    usage: ["preferences", "preferences --key <k> --value <v>"],
+    summary: "List your preferences, or change one.",
+    flags: { key: "Preference to change (with --value)" },
+  },
+  "attachment get": {
+    usage: ["attachment get <attachment-id> [--out <file|dir>] [--force]"],
+    summary: "Print an attachment, or save it. Ids are in 'task attachments <card-id>'.",
+  },
+  "attachment remove": { usage: ["attachment remove <attachment-id>"], summary: "Delete an attachment." },
+  "subtask list": { usage: ["subtask list <card-id>"], summary: "Sub-tasks on a card, with progress." },
+  "subtask add": { usage: ["subtask add <card-id> <title>"], summary: "Add a sub-task to the end of the list." },
+  "subtask done": { usage: ["subtask done <subtask-id>"], summary: "Check a sub-task." },
+  "subtask undo": { usage: ["subtask undo <subtask-id>"], summary: "Uncheck a sub-task." },
+  "subtask rename": { usage: ["subtask rename <subtask-id> <title>"], summary: "Rename a sub-task." },
+  "subtask remove": { usage: ["subtask remove <subtask-id>"], summary: "Delete a sub-task." },
+};
+
+function formatFlagRows(rows) {
+  const width = Math.max(...rows.map(([left]) => left.length));
+  return rows.map(([left, desc]) => `  ${left.padEnd(width)}  ${desc}`).join("\n");
+}
+
+function commandHelp(key) {
+  const help = COMMAND_HELP[key];
+  const lines = help.usage.map((u, i) => `${i === 0 ? "Usage:" : "      "} agentboard ${u}`);
+  const names = [...COMMAND_FLAGS[key], "json", "quiet"];
+  const rows = names.map((f) => {
+    const [arg, desc] = FLAG_HELP[f];
+    return [`--${f}${arg ? ` ${arg}` : ""}`, (help.flags && help.flags[f]) || desc];
+  });
+  return `${lines.join("\n")}
+
+${help.summary}
+
+Options:
+${formatFlagRows(rows)}
+
+Run 'agentboard help' for all commands.
+`;
+}
+
+function groupHelp(cmd) {
+  const keys = Object.keys(COMMAND_HELP).filter((k) => k.startsWith(`${cmd} `));
+  const rows = keys.map((k) => [`agentboard ${COMMAND_HELP[k].usage[0]}`, COMMAND_HELP[k].summary]);
+  return `Usage: agentboard ${cmd} <subcommand> [options]
+
+Commands:
+${formatFlagRows(rows)}
+
+Run 'agentboard ${cmd} <subcommand> --help' for its options.
+`;
+}
+
+// The help text for a command line, or null for the general help. `args` is
+// the positional arguments with any leading "help" removed.
+function helpFor(args) {
+  const [cmd, sub] = args;
+  if (!cmd) return null;
+  if (sub !== undefined && COMMAND_HELP[`${cmd} ${sub}`]) return commandHelp(`${cmd} ${sub}`);
+  if (COMMAND_HELP[cmd]) return commandHelp(cmd);
+  if (Object.keys(COMMAND_HELP).some((k) => k.startsWith(`${cmd} `))) return groupHelp(cmd);
+  return null;
+}
+
 function parseArgs(argv) {
   const args = argv.slice(2);
   const positional = [];
@@ -853,6 +1062,7 @@ function printUsage() {
   const usage = `AgentBoard CLI
 
 Usage: agentboard <command> [options]
+       agentboard <command> --help     A command's usage and all its flags
 
 Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   list                                 List tasks on current board
@@ -939,7 +1149,9 @@ async function main() {
   }
 
   if (positional.length === 0 || flags.help || positional[0] === "help") {
-    printUsage();
+    const text = helpFor(positional[0] === "help" ? positional.slice(1) : positional);
+    if (text) process.stdout.write(text);
+    else printUsage();
     process.exit(0);
   }
 
@@ -1772,6 +1984,8 @@ module.exports = {
   withCreatedLocation,
   printUsage,
   COMMAND_FLAGS,
+  COMMAND_HELP,
+  helpFor,
   parseLabelEdit,
   applyLabelEdit,
 };
