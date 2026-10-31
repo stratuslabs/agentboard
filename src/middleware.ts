@@ -69,6 +69,8 @@ export async function middleware(request: NextRequest) {
   if (
     pathname === "/login" ||
     pathname === "/api/auth/login" ||
+    // GitHub can't sign in; the route checks X-Hub-Signature-256 instead (card 1000).
+    pathname === "/api/integrations/github/webhook" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     PUBLIC_ASSETS.has(pathname)

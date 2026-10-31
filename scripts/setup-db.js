@@ -11,6 +11,7 @@ const { DEFAULT_BOARD_MIGRATION } = require("../src/lib/default-board-migration"
 const { CARD_NUMBER_MIGRATION, ensureProductKeys } = require("../src/lib/card-keys");
 const { TENANCY_MIGRATION, ensureDefaultTeam, ensureTeamDefaults } = require("../src/lib/tenancy");
 const { AGENT_NAME_MIGRATION } = require("../src/lib/agent-names");
+const { GITHUB_APP_MIGRATION } = require("../src/lib/github-tables");
 
 async function setup() {
   await sql`
@@ -146,6 +147,8 @@ async function setup() {
       UNIQUE (card_id, url)
     )
   `;
+  // GitHub App: installation bindings and handled deliveries.
+  await db.query(GITHUB_APP_MIGRATION);
   // The self-hosted team and its default settings (the app also does this on
   // its first request). An untouched old default column list gains Blocked.
   const query = (text, values) => db.query(text, values);

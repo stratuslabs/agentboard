@@ -5,16 +5,17 @@
  * "members" for its own, leave one out.
  *
  * Ids are also the page anchors (/settings#members): members, connect,
- * agent-board, default-boards, default-columns.
+ * agent-board, default-boards, default-columns, github.
  *
  * agentSetupPrompt replaces the prompt the connect section hands to agents;
  * pass the same function to BoardLayout so the sidebar shows it too.
  */
-import { Bot, Columns3, Palette, Plug, Users } from "lucide-react";
+import { Bot, Columns3, GitPullRequest, Palette, Plug, Users } from "lucide-react";
 import type { SettingsSectionDef } from "./SettingsShell";
 import type { AgentSetupPrompt } from "../../lib/agent-prompt";
 import BoardMembers from "./BoardMembers";
 import ConnectAgent from "./ConnectAgent";
+import GithubIntegration from "./GithubIntegration";
 import { DefaultBoards, DefaultColumns } from "./DefaultLists";
 import ProductDefaultBoards from "./ProductDefaultBoards";
 
@@ -60,6 +61,14 @@ export function defaultSettingsSections({ agentSetupPrompt }: { agentSetupPrompt
       icon: <Palette />,
       description: "Configure the default columns created in each new board. Each column has a name and color.",
       content: <DefaultColumns />,
+    },
+    {
+      id: "github",
+      group: "Integrations",
+      label: "GitHub",
+      icon: <GitPullRequest />,
+      description: "Connect the AgentBoard GitHub App so a merged pull request moves its cards to Done.",
+      content: <GithubIntegration />,
     },
   ];
 }
