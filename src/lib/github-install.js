@@ -102,13 +102,18 @@ function parseInstallationId(value) {
   return Number.isSafeInteger(n) ? n : null;
 }
 
-async function call(fetchImpl, url, init, what) {
+const MISCONFIGURED =
+  "GitHub didn't accept this server's App credentials (GITHUB_APP_CLIENT_ID / GITHUB_APP_CLIENT_SECRET). " +
+  "Ask whoever runs this AgentBoard to check them.";
+
+async function call(fetchImpl, url, init, what, { notFound } = {}) {
   let res;
   try {
     res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(10_000) });
   } catch {
     throw new InstallError(502, `Couldn't reach GitHub to ${what}. Try again.`);
   }
+  if (res.status === 404 && notFound) throw new InstallError(502, notFound);
   if (!res.ok) throw new InstallError(502, `GitHub answered ${res.status} when asked to ${what}. Try again.`);
   try {
     return await res.json();
@@ -140,8 +145,11 @@ export async function completeInstall({ code, installationId, config, fetch: fet
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret, code }),
     },
-    "confirm your GitHub sign-in"
+    "confirm your GitHub sign-in",
+    // GitHub's answer to a client ID it doesn't know.
+    { notFound: MISCONFIGURED }
   );
+  if (grant?.error === "incorrect_client_credentials") throw new InstallError(502, MISCONFIGURED);
   const token = grant && typeof grant.access_token === "string" ? grant.access_token : null;
   if (!token) {
     throw new InstallError(400, "GitHub's sign-in code had expired or was already used. Start again from Settings.");

@@ -100,7 +100,7 @@ test("a tampered or malformed state never verifies", () => {
 const CONFIG = githubAppConfig(ENV);
 
 /** A fake GitHub: one OAuth code, and the installations its user can see, in pages. */
-function fakeGithub({ code = "good", token = "gho_x", installations = [], tokenError = null, apiStatus = 200 } = {}) {
+function fakeGithub({ code = "good", token = "gho_x", installations = [], tokenError = null, tokenStatus = 200, apiStatus = 200 } = {}) {
   const calls = [];
   const fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -110,6 +110,8 @@ function fakeGithub({ code = "good", token = "gho_x", installations = [], tokenE
       const body = JSON.parse(init.body);
       assert.equal(body.client_id, CONFIG.clientId);
       assert.equal(body.client_secret, CONFIG.clientSecret);
+      // An unknown client ID: GitHub answers 404 {"error":"Not Found"} (seen Oct 31).
+      if (tokenStatus !== 200) return Response.json({ error: "Not Found" }, { status: tokenStatus });
       if (tokenError) return Response.json({ error: tokenError, error_description: "nope" });
       if (body.code !== code) return Response.json({ error: "bad_verification_code" });
       return Response.json({ access_token: token, token_type: "bearer" });
@@ -186,5 +188,23 @@ test("completeInstall rejects bad input and GitHub failures with a status", asyn
   await assert.rejects(
     completeInstall({ code: "good", installationId: 42, config: CONFIG, fetch: down }),
     (e) => e instanceof InstallError && e.status === 502
+  );
+});
+
+test("a misconfigured App points at the server's settings, not at the user", async () => {
+  const configError = (e) =>
+    e instanceof InstallError && e.status === 502 && /GITHUB_APP_CLIENT_ID/.test(e.message) && !/try again/i.test(e.message);
+  await assert.rejects(
+    completeInstall({ code: "good", installationId: 42, config: CONFIG, fetch: fakeGithub({ tokenStatus: 404 }).fetch }),
+    configError
+  );
+  await assert.rejects(
+    completeInstall({
+      code: "good",
+      installationId: 42,
+      config: CONFIG,
+      fetch: fakeGithub({ tokenError: "incorrect_client_credentials" }).fetch,
+    }),
+    configError
   );
 });
