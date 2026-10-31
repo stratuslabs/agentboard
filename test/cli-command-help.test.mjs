@@ -194,3 +194,15 @@ test("without a help request, malformed flags are still rejected", async () => {
     assert.match(r.stderr, /\S/, `${args.join(" ")} printed no error`);
   }
 });
+
+test("malformed flags with no command are still errors, not the general help", async () => {
+  // Only an explicit help request (--help or `help`) is read leniently. A bare
+  // invocation, or --version, keeps the strict parser's error and nonzero exit,
+  // so a typo in a script isn't hidden behind help (Codex review on #98).
+  for (const args of [["--bogus"], ["--product"], ["--json=1"], ["-x"], ["--version", "--bogus"], ["--bogus", "--version"]]) {
+    const r = await run(...args);
+    assert.notEqual(r.code, 0, `${args.join(" ")} exited 0`);
+    assert.equal(r.stdout, "", `${args.join(" ")} printed:\n${r.stdout}`);
+    assert.match(r.stderr, /^Error: /, `${args.join(" ")} printed no error`);
+  }
+});

@@ -1166,23 +1166,21 @@ Environment:
 }
 
 async function main() {
-  // Help and --version are decided before strict parsing, so a command line
-  // with a guessed or half-typed flag still gets its help. The command help
-  // asked about, if any: `help task move` and `task move --help` are the same
-  // request.
+  // An explicit help request (`--help`, or `help ...`) is read from a lenient
+  // pass, so a command line with a guessed or half-typed flag still gets its
+  // help. `help task move` and `task move --help` are the same request.
+  // Anything else, including --version and a bare invocation, goes through the
+  // strict parser, so a malformed flag stays an error instead of turning into
+  // help.
   const loose = parseArgs(process.argv, { lenient: true });
-  const helpTopic = loose.positional[0] === "help" ? loose.positional.slice(1) : loose.positional;
-  const wantsHelp =
-    loose.positional.length === 0 || loose.flags.help || loose.positional[0] === "help";
-
-  // A command's help wins over --version: whoever asked about a command
-  // wants its usage. Bare --version prints the version, as before.
-  if (loose.flags.version && !(wantsHelp && helpTopic.length > 0)) {
-    process.stdout.write(`agentboard ${VERSION}\n`);
-    process.exit(0);
-  }
-
-  if (wantsHelp) {
+  if (loose.flags.help || loose.positional[0] === "help") {
+    const helpTopic = loose.positional[0] === "help" ? loose.positional.slice(1) : loose.positional;
+    // A command's help wins over --version: whoever asked about a command
+    // wants its usage. With no command, --version prints the version.
+    if (loose.flags.version && helpTopic.length === 0) {
+      process.stdout.write(`agentboard ${VERSION}\n`);
+      process.exit(0);
+    }
     const text = helpFor(helpTopic);
     if (text) process.stdout.write(text);
     else printUsage();
@@ -1190,6 +1188,17 @@ async function main() {
   }
 
   const { positional, flags } = parseArgs(process.argv);
+
+  if (flags.version) {
+    process.stdout.write(`agentboard ${VERSION}\n`);
+    process.exit(0);
+  }
+
+  if (positional.length === 0) {
+    printUsage();
+    process.exit(0);
+  }
+
   checkFlags(positional, flags);
 
   const remoteUrl = process.env.AGENTBOARD_URL;
