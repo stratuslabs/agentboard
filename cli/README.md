@@ -35,6 +35,15 @@ export AGENTBOARD_PRODUCT=my-product           # default product slug
 
 Without `AGENTBOARD_BOARD` or `--board`, the CLI uses the product's default board, set in Settings → Agent default board. A product with a single board needs no default. A product with several boards and no default makes the CLI stop and list them. Against a server too old to have default boards, the CLI falls back to the board slugged `development`.
 
+## Help
+
+`agentboard help` lists every command. Each command also has its own help with its usage and every flag it accepts:
+
+```bash
+agentboard task move --help      # or: agentboard help task move
+agentboard task --help           # the task subcommands, one line each
+```
+
 ## Simple Commands
 
 These use `AGENTBOARD_PRODUCT` and `AGENTBOARD_BOARD` env vars (or `--product`/`--board` flags) to auto-scope to a board.
@@ -190,7 +199,7 @@ When an organization, product, board or column isn't found, the error names what
 ## Output Flags
 
 - `--json` — JSON output
-- `--quiet` — IDs only
+- `--quiet` — IDs only, for commands that print ids. `notes` and `attachment get` differ; `agentboard <command> --help` says how
 - `--fields id,product,column,title` — on `list`, `task list` and `my-tasks`, the fields to print, in that order. Any card field works (`labels`, `due_date`, `key`, ...), plus `product` and `board` (slug, or name from an older server), `column` (name) and `assignee` (member name, or the legacy text assignee). With `--json`, each card keeps only these fields. An unknown field is an error that lists the available ones.
 
 `list` prints a short table, `id title column assignee priority`, under a `Board: <product>/<board>` line naming the board it read, so a product set by `AGENTBOARD_PRODUCT` is never a surprise. `my-tasks` prints `id title product board column priority`. `--json` still returns every field, and each card from `list` and `task list` carries `column_name`, `column_slug`, `board_slug`, `board_name`, `product_slug` and `product_name`, filled in by the CLI when the server is too old to send them.
