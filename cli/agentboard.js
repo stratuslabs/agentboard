@@ -1157,15 +1157,20 @@ Environment:
 async function main() {
   const { positional, flags } = parseArgs(process.argv);
 
-  // A command's --help wins over --version: whoever asked about a command
+  // The command help was asked about, if any: `help task move` and
+  // `task move --help` are the same request.
+  const helpTopic = positional[0] === "help" ? positional.slice(1) : positional;
+  const wantsHelp = positional.length === 0 || flags.help || positional[0] === "help";
+
+  // A command's help wins over --version: whoever asked about a command
   // wants its usage. Bare --version prints the version, as before.
-  if (flags.version && !(flags.help && positional.length > 0)) {
+  if (flags.version && !(wantsHelp && helpTopic.length > 0)) {
     process.stdout.write(`agentboard ${VERSION}\n`);
     process.exit(0);
   }
 
-  if (positional.length === 0 || flags.help || positional[0] === "help") {
-    const text = helpFor(positional[0] === "help" ? positional.slice(1) : positional);
+  if (wantsHelp) {
+    const text = helpFor(helpTopic);
     if (text) process.stdout.write(text);
     else printUsage();
     process.exit(0);

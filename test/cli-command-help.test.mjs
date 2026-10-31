@@ -118,14 +118,20 @@ test("help covers exactly the commands that have flag lists", () => {
 });
 
 test("a command's --help wins over --version", async () => {
-  for (const args of [["task", "move", "--help", "--version"], ["--version", "list", "--help"]]) {
+  for (const args of [
+    ["task", "move", "--help", "--version"],
+    ["--version", "list", "--help"],
+    ["help", "task", "move", "--version"],
+  ]) {
     const r = await run(...args);
     assert.equal(r.code, 0, args.join(" "));
     assert.match(r.stdout, /^Usage: agentboard (task move|list)/, `${args.join(" ")}:\n${r.stdout}`);
   }
   // With no command, --version still prints the version, as before.
-  const v = await run("--version");
-  assert.match(v.stdout, /^agentboard \d+\.\d+\.\d+/);
+  for (const args of [["--version"], ["help", "--version"], ["--help", "--version"]]) {
+    const v = await run(...args);
+    assert.match(v.stdout, /^agentboard \d+\.\d+\.\d+/, args.join(" "));
+  }
 });
 
 // The --quiet row in a command's help, or null when there is none.
