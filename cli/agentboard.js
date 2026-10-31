@@ -362,10 +362,13 @@ function formatFlagRows(rows) {
   return rows.map(([left, desc]) => `  ${left.padEnd(width)}  ${desc}`).join("\n");
 }
 
-// Commands whose answer has no ids ({ success: true }, or a settings map), so
-// --quiet has nothing to print and their help doesn't offer it.
+// Commands whose answer has no ids ({ success: true }, { ok: true }, or a
+// settings map), so --quiet has nothing to print and their help doesn't offer
+// it. Every * remove and * reorder route answers that way, and so does
+// DELETE /api/cards/:id/links (task unlink).
+const NO_ID_COMMANDS = new Set(["settings", "preferences", "task unlink"]);
 function quietPrintsNoIds(key) {
-  return / (remove|reorder)$/.test(key) || key === "settings" || key === "preferences";
+  return / (remove|reorder)$/.test(key) || NO_ID_COMMANDS.has(key);
 }
 
 function commandHelp(key) {

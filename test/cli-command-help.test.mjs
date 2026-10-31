@@ -141,11 +141,15 @@ test("--quiet is described as it behaves for each command", async () => {
   const get = quietRow((await run("attachment", "get", "--help")).stdout);
   assert.ok(get && !/^IDs only$/.test(get) && /content/.test(get) && /--out/.test(get), `attachment get: ${get}`);
 
-  // These answer with no ids at all, so the help doesn't offer --quiet.
+  // These answer with no ids at all ({ success: true }, { ok: true } or a
+  // settings map), so the help doesn't offer --quiet. task unlink is the
+  // DELETE /api/cards/:id/links route, which answers { success: true }.
   const noIds = Object.keys(COMMAND_FLAGS).filter(
-    (k) => / (remove|reorder)$/.test(k) || k === "settings" || k === "preferences"
+    (k) =>
+      / (remove|reorder)$/.test(k) || ["settings", "preferences", "task unlink"].includes(k)
   );
-  assert.ok(noIds.length >= 12, noIds.join(", "));
+  assert.ok(noIds.includes("task unlink"), noIds.join(", "));
+  assert.ok(noIds.length >= 13, noIds.join(", "));
   const results = await Promise.all(noIds.map((k) => run(...k.split(" "), "--help")));
   noIds.forEach((k, i) => assert.equal(quietRow(results[i].stdout), null, `${k} still offers --quiet`));
 
