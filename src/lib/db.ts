@@ -7,6 +7,7 @@ import { planColumnReslug } from "./column-slug";
 import { CARD_NUMBER_MIGRATION, ensureProductKeys } from "./card-keys";
 import { TENANCY_MIGRATION } from "./tenancy";
 import { AGENT_NAME_MIGRATION } from "./agent-names";
+import { GITHUB_APP_MIGRATION } from "./github-tables";
 
 let initialized = false;
 
@@ -218,6 +219,9 @@ export async function ensureTables() {
       UNIQUE (card_id, url)
     )
   `;
+  // GitHub App (card 1000): installation bindings and handled deliveries
+  // (see github-tables.js). Needs teams.
+  await db.query(GITHUB_APP_MIGRATION);
   // A team's default settings are written when the team is first resolved
   // (see src/lib/tenant.ts), not here: they belong to a team now.
 }
