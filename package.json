@@ -149,6 +149,7 @@
     "./components/settings/BoardMembers": "./src/components/settings/BoardMembers.tsx",
     "./components/settings/ConnectAgent": "./src/components/settings/ConnectAgent.tsx",
     "./components/settings/DefaultLists": "./src/components/settings/DefaultLists.tsx",
+    "./components/settings/GithubIntegration": "./src/components/settings/GithubIntegration.tsx",
     "./components/settings/MemberList": "./src/components/settings/MemberList.tsx",
     "./components/settings/ProductDefaultBoards": "./src/components/settings/ProductDefaultBoards.tsx",
     "./components/settings/SettingsShell": "./src/components/settings/SettingsShell.tsx",

@@ -20,7 +20,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId, userId }) =
   if (!config) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const params = request.nextUrl.searchParams;
-  const settings = new URL("/settings", publicOrigin(request));
+  const settings = new URL("/settings#github", publicOrigin(request));
   const finish = (key: "github" | "github_error", value: string) => {
     settings.searchParams.set(key, value);
     const response = NextResponse.redirect(settings, 303);

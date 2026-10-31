@@ -135,8 +135,41 @@ POSTGRES_URL=postgresql://... APP_PASSWORD=... npm start    # port 3000; set POR
 | `SSE_MAX_SECONDS` | No | How long a live-update stream stays open before the client reconnects (default `240`). Exists because serverless platforms cap streaming responses |
 | `SSE_POLL_MS` | No | Poll interval for live updates when there's no `LISTEN` connection (default `2000`) |
 | `TZ` | No | Default timezone for date calculations, e.g. `America/New_York` |
+| `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_WEBHOOK_SECRET` | No | Your GitHub App, so a merged pull request moves its cards to Done. All four or none; see [GitHub App](#github-app) |
 
 [.env.example](.env.example) explains each one in more detail.
+
+## GitHub App
+
+Connect a GitHub App and a merged pull request moves every card it's linked to into the board's Done column, with a line in the card's History. A PR closed without merging only adds the History line. A card is linked when:
+
+- its PR field is the PR's URL,
+- one of its links is the PR's URL, or
+- the PR description contains the card's URL on your board, such as `https://your-board.example.com/c/WEB-12` or a URL with `?card=12`.
+
+`Closes #12` doesn't count: on GitHub `#12` is an issue or PR number, not a card. The Done column is the one whose slug is `done`; a board without one gets only the History line.
+
+**1. Register the App** at GitHub → Settings → Developer settings → GitHub Apps → New GitHub App (under your org's settings to own it as an org):
+
+| Setting | Value |
+|---|---|
+| Homepage URL | Your board's URL |
+| Callback URL | `https://<your board>/api/integrations/github/callback` |
+| Request user authorization (OAuth) during installation | On |
+| Setup URL | Leave empty |
+| Webhook URL | `https://<your board>/api/integrations/github/webhook` |
+| Webhook secret | A long random value, e.g. `openssl rand -hex 32` |
+| Repository permissions | Pull requests: Read-only. Metadata: Read-only. Nothing else |
+| Subscribe to events | Pull request |
+| Where can this GitHub App be installed? | Only on this account, unless other accounts need it |
+
+Then generate a client secret on the App's page. No private key is needed.
+
+**2. Set the variables** and restart: `GITHUB_APP_SLUG` (the App's URL name, from `github.com/apps/<slug>`), `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `GITHUB_APP_WEBHOOK_SECRET`. With any of them missing, the integration is off: Settings says what to set, and the webhook answers 404.
+
+**3. Connect** in Settings → GitHub → Connect GitHub. GitHub asks which repositories the App may see, then sends you back to Settings. You can only connect an installation your GitHub account can access. Disconnecting in Settings stops it straight away; uninstalling the App on GitHub removes its access.
+
+The webhook works with `APP_PASSWORD` set: it's exempt from the password and checks GitHub's `X-Hub-Signature-256` instead. Each delivery is handled once, so a redelivery from GitHub does nothing the second time. Anyone who can sign in can connect or disconnect an account; there are no admin roles.
 
 ## Security
 
