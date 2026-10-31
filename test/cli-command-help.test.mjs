@@ -164,3 +164,33 @@ test("--quiet is described as it behaves for each command", async () => {
     assert.equal(quietRow((await run(...k.split(" "), "--help")).stdout), "IDs only", k);
   }
 });
+
+test("help is honored even when the rest of the command line wouldn't parse", async () => {
+  // Someone who guessed a flag, or stopped typing mid-option, still gets the
+  // command's accepted flags instead of a parse error (Codex review on #98).
+  for (const args of [
+    ["task", "move", "--bogus", "--help"],
+    ["task", "move", "--help", "--column"],
+    ["task", "move", "--column", "--help"],
+    ["task", "move", "-x", "--help"],
+    ["task", "move", "--json=1", "--help"],
+    ["help", "task", "move", "--bogus"],
+  ]) {
+    const r = await run(...args);
+    assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
+    assert.equal(r.stderr, "", args.join(" "));
+    assert.match(r.stdout, /^Usage: agentboard task move /, args.join(" "));
+  }
+});
+
+test("without a help request, malformed flags are still rejected", async () => {
+  for (const args of [
+    ["task", "move", "1", "--bogus"],
+    ["task", "move", "1", "--column"],
+    ["task", "add", "--description=--help"],
+  ]) {
+    const r = await run(...args);
+    assert.notEqual(r.stdout.startsWith("Usage:"), true, `${args.join(" ")} printed help`);
+    assert.match(r.stderr, /\S/, `${args.join(" ")} printed no error`);
+  }
+});

@@ -413,7 +413,13 @@ function helpFor(args) {
   return null;
 }
 
-function parseArgs(argv) {
+// Splits argv into positional arguments and flags. Strict by default: a
+// malformed flag exits with an error. With { lenient: true } a malformed token
+// is skipped instead, which main() uses to read a help or version request
+// from a command line that wouldn't otherwise parse: someone who guessed a
+// flag should still be able to see the flags that exist.
+function parseArgs(argv, { lenient = false } = {}) {
+  const fail = lenient ? () => {} : die;
   const args = argv.slice(2);
   const positional = [];
   const flags = {};
@@ -433,8 +439,8 @@ function parseArgs(argv) {
       const inline = eq === -1 ? undefined : arg.slice(eq + 1);
 
       if (BOOLEAN_FLAGS.has(key)) {
-        if (inline !== undefined) die(`--${key} does not take a value`);
-        flags[key] = true;
+        if (inline !== undefined) fail(`--${key} does not take a value`);
+        else flags[key] = true;
         i++;
       } else if (VALUE_FLAGS.has(key)) {
         if (inline !== undefined) {
@@ -448,19 +454,24 @@ function parseArgs(argv) {
           // with "--" ("--dry-run is broken") is still taken as given.
           const named = /^--([a-z][a-z-]*)$/.exec(next);
           if (named && (BOOLEAN_FLAGS.has(named[1]) || VALUE_FLAGS.has(named[1]))) {
-            die(`--${key} needs a value, but the next argument is the flag ${next}. To pass '${next}' as the text, write --${key}=${next}`);
+            fail(`--${key} needs a value, but the next argument is the flag ${next}. To pass '${next}' as the text, write --${key}=${next}`);
+            i++; // lenient: leave the next flag to be read on its own
+            continue;
           }
           setValueFlag(flags, key, next);
           i += 2;
         } else {
-          die(`--${key} requires a value`);
+          fail(`--${key} requires a value`);
+          i++;
         }
       } else {
-        die(`Unknown flag: --${key}. Run 'agentboard help' for usage.`);
+        fail(`Unknown flag: --${key}. Run 'agentboard help' for usage.`);
+        i++;
       }
     } else if (/^-[a-zA-Z]/.test(arg)) {
       // No short flags exist; don't let `-q` pass as a positional argument.
-      die(`Unknown flag: ${arg}. Short flags aren't supported; use the --long form.`);
+      fail(`Unknown flag: ${arg}. Short flags aren't supported; use the --long form.`);
+      i++;
     } else {
       positional.push(arg);
       i++;
@@ -1155,16 +1166,18 @@ Environment:
 }
 
 async function main() {
-  const { positional, flags } = parseArgs(process.argv);
-
-  // The command help was asked about, if any: `help task move` and
-  // `task move --help` are the same request.
-  const helpTopic = positional[0] === "help" ? positional.slice(1) : positional;
-  const wantsHelp = positional.length === 0 || flags.help || positional[0] === "help";
+  // Help and --version are decided before strict parsing, so a command line
+  // with a guessed or half-typed flag still gets its help. The command help
+  // asked about, if any: `help task move` and `task move --help` are the same
+  // request.
+  const loose = parseArgs(process.argv, { lenient: true });
+  const helpTopic = loose.positional[0] === "help" ? loose.positional.slice(1) : loose.positional;
+  const wantsHelp =
+    loose.positional.length === 0 || loose.flags.help || loose.positional[0] === "help";
 
   // A command's help wins over --version: whoever asked about a command
   // wants its usage. Bare --version prints the version, as before.
-  if (flags.version && !(wantsHelp && helpTopic.length > 0)) {
+  if (loose.flags.version && !(wantsHelp && helpTopic.length > 0)) {
     process.stdout.write(`agentboard ${VERSION}\n`);
     process.exit(0);
   }
@@ -1176,6 +1189,7 @@ async function main() {
     process.exit(0);
   }
 
+  const { positional, flags } = parseArgs(process.argv);
   checkFlags(positional, flags);
 
   const remoteUrl = process.env.AGENTBOARD_URL;
