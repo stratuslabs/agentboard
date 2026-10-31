@@ -250,7 +250,11 @@ const COMMAND_HELP = {
   },
   show: { usage: ["show <id>"], summary: "Show a card's details, with its link (url)." },
   rename: { usage: ["rename <id> <title>"], summary: "Rename a card." },
-  notes: { usage: ["notes <id>"], summary: "Print a card's description, or change it with --set or --append." },
+  notes: {
+    usage: ["notes <id>"],
+    summary: "Print a card's description, or change it with --set or --append.",
+    flags: { quiet: "With --set or --append, the card id only. Reading prints the description either way" },
+  },
   attention: { usage: ["attention <id> on|off"], summary: "Set a card's priority to urgent (on) or medium (off)." },
   "my-tasks": {
     usage: ["my-tasks"],
@@ -342,6 +346,7 @@ const COMMAND_HELP = {
   "attachment get": {
     usage: ["attachment get <attachment-id> [--out <file|dir>] [--force]"],
     summary: "Print an attachment, or save it. Ids are in 'task attachments <card-id>'.",
+    flags: { quiet: "The content only, or with --out the saved file's path" },
   },
   "attachment remove": { usage: ["attachment remove <attachment-id>"], summary: "Delete an attachment." },
   "subtask list": { usage: ["subtask list <card-id>"], summary: "Sub-tasks on a card, with progress." },
@@ -357,10 +362,16 @@ function formatFlagRows(rows) {
   return rows.map(([left, desc]) => `  ${left.padEnd(width)}  ${desc}`).join("\n");
 }
 
+// Commands whose answer has no ids ({ success: true }, or a settings map), so
+// --quiet has nothing to print and their help doesn't offer it.
+function quietPrintsNoIds(key) {
+  return / (remove|reorder)$/.test(key) || key === "settings" || key === "preferences";
+}
+
 function commandHelp(key) {
   const help = COMMAND_HELP[key];
   const lines = help.usage.map((u, i) => `${i === 0 ? "Usage:" : "      "} agentboard ${u}`);
-  const names = [...COMMAND_FLAGS[key], "json", "quiet"];
+  const names = [...COMMAND_FLAGS[key], "json", ...(quietPrintsNoIds(key) ? [] : ["quiet"])];
   const rows = names.map((f) => {
     const [arg, desc] = FLAG_HELP[f];
     return [`--${f}${arg ? ` ${arg}` : ""}`, (help.flags && help.flags[f]) || desc];
@@ -1121,7 +1132,7 @@ Management Commands:
 
 Output:
   --json     JSON output
-  --quiet    IDs only
+  --quiet    IDs only, for commands that print ids (see <command> --help)
   --fields   list, task list, my-tasks: the fields to print, comma-separated,
              e.g. id,product,board,column,title. Any card field works, plus
              product, board, column and assignee. With --json, only these.
@@ -1143,7 +1154,9 @@ Environment:
 async function main() {
   const { positional, flags } = parseArgs(process.argv);
 
-  if (flags.version) {
+  // A command's --help wins over --version: whoever asked about a command
+  // wants its usage. Bare --version prints the version, as before.
+  if (flags.version && !(flags.help && positional.length > 0)) {
     process.stdout.write(`agentboard ${VERSION}\n`);
     process.exit(0);
   }

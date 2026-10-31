@@ -116,3 +116,41 @@ test("help covers exactly the commands that have flag lists", () => {
   const { COMMAND_HELP } = createRequire(import.meta.url)(CLI);
   assert.deepEqual(Object.keys(COMMAND_HELP).sort(), Object.keys(COMMAND_FLAGS).sort());
 });
+
+test("a command's --help wins over --version", async () => {
+  for (const args of [["task", "move", "--help", "--version"], ["--version", "list", "--help"]]) {
+    const r = await run(...args);
+    assert.equal(r.code, 0, args.join(" "));
+    assert.match(r.stdout, /^Usage: agentboard (task move|list)/, `${args.join(" ")}:\n${r.stdout}`);
+  }
+  // With no command, --version still prints the version, as before.
+  const v = await run("--version");
+  assert.match(v.stdout, /^agentboard \d+\.\d+\.\d+/);
+});
+
+// The --quiet row in a command's help, or null when there is none.
+function quietRow(stdout) {
+  const line = stdout.split("\n").find((l) => /^\s+--quiet\b/.test(l));
+  return line ? line.replace(/^\s+--quiet\s+/, "") : null;
+}
+
+test("--quiet is described as it behaves for each command", async () => {
+  // These print something other than ids with --quiet.
+  const notes = quietRow((await run("notes", "--help")).stdout);
+  assert.ok(notes && !/^IDs only$/.test(notes) && /description/.test(notes), `notes: ${notes}`);
+  const get = quietRow((await run("attachment", "get", "--help")).stdout);
+  assert.ok(get && !/^IDs only$/.test(get) && /content/.test(get) && /--out/.test(get), `attachment get: ${get}`);
+
+  // These answer with no ids at all, so the help doesn't offer --quiet.
+  const noIds = Object.keys(COMMAND_FLAGS).filter(
+    (k) => / (remove|reorder)$/.test(k) || k === "settings" || k === "preferences"
+  );
+  assert.ok(noIds.length >= 12, noIds.join(", "));
+  const results = await Promise.all(noIds.map((k) => run(...k.split(" "), "--help")));
+  noIds.forEach((k, i) => assert.equal(quietRow(results[i].stdout), null, `${k} still offers --quiet`));
+
+  // Commands that do print ids keep "IDs only".
+  for (const k of ["list", "task move", "status", "subtask list", "board view"]) {
+    assert.equal(quietRow((await run(...k.split(" "), "--help")).stdout), "IDs only", k);
+  }
+});
