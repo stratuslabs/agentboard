@@ -9,6 +9,8 @@ import {
   cardRefsInBody,
   closeHistoryLine,
   appendHistory,
+  readBodyLimited,
+  WEBHOOK_MAX_BYTES,
 } from "../src/lib/github-app.js";
 
 const SECRET = "It's a Secret to Everybody";
@@ -185,4 +187,55 @@ test("a History line goes at the end of the History section", () => {
   // Heading spelled without bold, or as a Markdown heading.
   assert.equal(appendHistory("History:\n- a", line), "History:\n- a\n" + line);
   assert.equal(appendHistory("## History\n- a\n\n## Next\nb", line), "## History\n- a\n" + line + "\n\n## Next\nb");
+});
+
+const post = (body, headers = {}) =>
+  new Request("http://localhost/api/integrations/github/webhook", { method: "POST", body, headers, duplex: "half" });
+
+test("a webhook body within the limit is read byte for byte", async () => {
+  const bytes = randomBytes(4096);
+  const out = await readBodyLimited(post(bytes), 8192);
+  assert.ok(Buffer.isBuffer(out));
+  assert.ok(out.equals(bytes));
+  assert.equal((await readBodyLimited(post(Buffer.alloc(8192)), 8192)).length, 8192, "exactly the limit is fine");
+  assert.equal((await readBodyLimited(post(null), 8192)).length, 0, "no body reads as empty");
+});
+
+test("a declared Content-Length over the limit is refused without reading the body", async () => {
+  let pulled = 0;
+  const stream = new ReadableStream({
+    pull(controller) {
+      pulled++;
+      controller.enqueue(new Uint8Array(1024));
+    },
+  });
+  const out = await readBodyLimited(post(stream, { "content-length": String(10 * 1024 * 1024) }), 8192);
+  assert.equal(out, null);
+  assert.ok(pulled <= 1, `read ${pulled} chunks of a body it should have refused`);
+});
+
+test("a body that streams past the limit is cut off, whatever it declared", async () => {
+  // Never ends on its own: only the limit stops the read.
+  let pulled = 0;
+  let cancelled = false;
+  const endless = new ReadableStream({
+    pull(controller) {
+      pulled++;
+      controller.enqueue(new Uint8Array(1000));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const out = await readBodyLimited(post(endless), 8192);
+  assert.equal(out, null);
+  assert.ok(pulled <= 10, `kept reading: ${pulled} chunks`);
+  assert.ok(cancelled, "the stream is cancelled");
+});
+
+test("the webhook limit fits GitHub's largest pull_request payloads", () => {
+  // A PR body is at most 65,536 characters; JSON-escaped at 6 bytes each that
+  // is under 400 KB, plus the rest of the payload.
+  assert.ok(WEBHOOK_MAX_BYTES >= 1024 * 1024);
+  assert.ok(WEBHOOK_MAX_BYTES <= 25 * 1024 * 1024, "no more than GitHub itself sends");
 });

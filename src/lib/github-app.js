@@ -22,6 +22,47 @@ export function verifySignature(secret, rawBody, header) {
   return timingSafeEqual(expected, Buffer.from(match[1], "hex"));
 }
 
+/**
+ * The most the webhook reads of a request body. GitHub's largest pull_request
+ * payloads are well under 1 MB (a PR body is at most 65,536 characters), and
+ * GitHub itself never sends more than 25 MB.
+ */
+export const WEBHOOK_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Read a request body, or null once it is longer than `maxBytes`. The
+ * webhook is reachable without signing in and its signature can only be
+ * checked over the whole body, so the size is bounded before buffering: a
+ * declared Content-Length over the limit is refused unread, and a body that
+ * streams past the limit is cancelled there.
+ *
+ * @param {Request} request
+ * @param {number} maxBytes
+ * @returns {Promise<Buffer | null>}
+ */
+export async function readBodyLimited(request, maxBytes) {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && /^\s*\d+\s*$/.test(declared) && Number(declared) > maxBytes) {
+    await request.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (!request.body) return Buffer.alloc(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total);
+}
+
 const GITHUB_HOSTS = new Set(["github.com", "www.github.com"]);
 
 /**

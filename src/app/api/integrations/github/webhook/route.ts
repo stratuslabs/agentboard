@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initDb } from "../../../../../lib/db";
-import { verifySignature } from "../../../../../lib/github-app";
+import { readBodyLimited, verifySignature, WEBHOOK_MAX_BYTES } from "../../../../../lib/github-app";
 import { githubAppConfig } from "../../../../../lib/github-install";
 import { handleGithubEvent } from "../../../../../lib/github-webhook";
 import { publicOrigin } from "../../../../../lib/public-url";
@@ -11,13 +11,16 @@ export const runtime = "nodejs";
  * GitHub App webhook (card 1000). Public: GitHub can't sign in, so the
  * middleware lets this path through and the X-Hub-Signature-256 check below is
  * the authentication. The signature is checked on the exact bytes received,
- * before anything is parsed. 404 when the App isn't configured.
+ * before anything is parsed, and the body is size-limited before it is read.
+ * 404 when the App isn't configured.
  */
 export async function POST(request: NextRequest) {
   const config = githubAppConfig();
   if (!config) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const raw = Buffer.from(await request.arrayBuffer());
+  // Bounded before the signature check, since anyone can reach this path.
+  const raw = await readBodyLimited(request, WEBHOOK_MAX_BYTES);
+  if (raw === null) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
   if (!verifySignature(config.webhookSecret, raw, request.headers.get("x-hub-signature-256"))) {
     return NextResponse.json({ error: "Bad signature" }, { status: 401 });
   }

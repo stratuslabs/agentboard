@@ -195,6 +195,23 @@ test("an installation bound to no team touches nothing", { skip }, async () => {
   assert.equal((await read(c.id)).slug, "todo");
 });
 
+test("a delivery that arrives before the installation is bound runs when it's redelivered after binding", { skip }, async () => {
+  // GitHub creates the installation before the Connect callback binds it, so a
+  // PR can close in between. That delivery must not be recorded as handled, or
+  // redelivering it after the bind would be skipped as a duplicate.
+  const LATE = 7070;
+  const c = await card(ours.dev.cols.todo, { pr: "https://github.com/acme/web/pull/21" });
+  const early = await deliver(prEvent({ number: 21, installation: LATE }), { id: "late-bind-21" });
+  assert.equal(early.body.outcome, "unbound");
+  const { rows } = await db.query("SELECT 1 FROM github_deliveries WHERE delivery_id = 'late-bind-21'");
+  assert.equal(rows.length, 0, "an unbound delivery is not recorded");
+  await gh.bindInstallation({ installationId: LATE, teamId: ours.team, accountLogin: "acme" });
+  const again = await deliver(prEvent({ number: 21, installation: LATE }), { id: "late-bind-21" });
+  assert.equal(again.body.outcome, "processed");
+  assert.deepEqual(again.body.moved, [c.id]);
+  assert.equal((await read(c.id)).slug, "done");
+});
+
 test("closed without merging: the card stays and gets a line", { skip }, async () => {
   const c = await card(ours.dev.cols["in-review"], { pr: "https://github.com/acme/web/pull/16", description: "Why." });
   const r = await deliver(prEvent({ number: 16, merged: false }));

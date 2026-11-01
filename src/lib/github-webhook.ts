@@ -150,11 +150,14 @@ async function handleClosedPr(deliveryId: string, installation: number, pr: Clos
   const boards: number[] = [];
   let teamId: number | null = null;
   const out = await inTransaction(async (client) => {
-    if (!(await claimDelivery(client, deliveryId, "pull_request", installation))) return result(200, "duplicate");
+    // Binding first: GitHub creates the installation before the Connect
+    // callback binds it, so a PR can close in between. That delivery is not
+    // recorded, so redelivering it once the binding exists still runs.
     const { rows: bound } = await client.query("SELECT team_id FROM github_installations WHERE installation_id = $1", [
       installation,
     ]);
     if (bound.length === 0) return result(200, "unbound");
+    if (!(await claimDelivery(client, deliveryId, "pull_request", installation))) return result(200, "duplicate");
     teamId = bound[0].team_id as number;
 
     const moved: number[] = [];
