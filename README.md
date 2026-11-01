@@ -169,7 +169,7 @@ Then generate a client secret on the App's page. No private key is needed.
 
 **3. Connect** in Settings → GitHub → Connect GitHub. GitHub asks which repositories the App may see, then sends you back to Settings. You can only connect an installation your GitHub account can access. Disconnecting in Settings stops it straight away; uninstalling the App on GitHub removes its access.
 
-The webhook works with `APP_PASSWORD` set: it's exempt from the password and checks GitHub's `X-Hub-Signature-256` instead. Each delivery is handled once, so a redelivery from GitHub does nothing the second time. Anyone who can sign in can connect or disconnect an account; there are no admin roles.
+The webhook works with `APP_PASSWORD` set: it's exempt from the password and checks GitHub's `X-Hub-Signature-256` instead. Each delivery is handled once, so a redelivery from GitHub does nothing the second time. A PR that closed before the account was connected isn't counted as handled, so you can redeliver it from the App's Advanced tab once it is. Bodies over 5 MB are refused with 413. Anyone who can sign in can connect or disconnect an account; there are no admin roles.
 
 ## Security
 
