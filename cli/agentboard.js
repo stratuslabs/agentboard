@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const VERSION = require("./package.json").version;
@@ -186,6 +187,7 @@ const COMMAND_FLAGS = {
   "subtask undo": [],
   "subtask rename": [],
   "subtask remove": [],
+  enroll: ["url", "name", "force"],
 };
 
 const GLOBAL_FLAGS = ["json", "quiet", "help", "version"];
@@ -355,6 +357,16 @@ const COMMAND_HELP = {
   "subtask undo": { usage: ["subtask undo <subtask-id>"], summary: "Uncheck a sub-task." },
   "subtask rename": { usage: ["subtask rename <subtask-id> <title>"], summary: "Rename a sub-task." },
   "subtask remove": { usage: ["subtask remove <subtask-id>"], summary: "Delete a sub-task." },
+  enroll: {
+    usage: ["enroll <enrollment-token> --url <server>"],
+    summary:
+      "Trade the one-time token from a setup prompt for this agent's own key, and save the key, agent name, product and board for later commands. The key is never printed.",
+    flags: {
+      url: "Server URL (default: AGENTBOARD_URL)",
+      name: "Agent name to ask for, if the setup prompt didn't set one",
+      force: "Replace an existing saved config",
+    },
+  },
 };
 
 function formatFlagRows(rows) {
@@ -366,7 +378,7 @@ function formatFlagRows(rows) {
 // settings map), so --quiet has nothing to print and their help doesn't offer
 // it. Every * remove and * reorder route answers that way, and so does
 // DELETE /api/cards/:id/links (task unlink).
-const NO_ID_COMMANDS = new Set(["settings", "preferences", "task unlink"]);
+const NO_ID_COMMANDS = new Set(["settings", "preferences", "task unlink", "enroll"]);
 function quietPrintsNoIds(key) {
   return / (remove|reorder)$/.test(key) || NO_ID_COMMANDS.has(key);
 }
@@ -873,6 +885,176 @@ function makeReq(baseUrl, password, agentName) {
 }
 
 // ===========================================================================
+// Saved config: `agentboard enroll`
+// ===========================================================================
+//
+// A setup prompt carries a short-lived, single-use enrollment token rather
+// than the agent's long-lived key, so a prompt pasted into a chat or a model
+// transcript doesn't leak a working credential. `enroll` trades the token for
+// the key and keeps it in a file only this user can read. Environment
+// variables still win, and the saved key is only ever sent to the server it
+// came from.
+
+const ENROLL_USAGE = "Usage: agentboard enroll <enrollment-token> --url <server> [--name <agent>] [--force]";
+
+// AGENTBOARD_CONFIG, else $XDG_CONFIG_HOME/agentboard/config.json, else
+// ~/.config/agentboard/config.json.
+function configPath() {
+  if (process.env.AGENTBOARD_CONFIG) return process.env.AGENTBOARD_CONFIG;
+  const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  return path.join(base, "agentboard", "config.json");
+}
+
+// A server URL compared as written by people: case-insensitive scheme and
+// host, no trailing slash.
+function normalizeServerUrl(url) {
+  const raw = String(url).trim();
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`.replace(/\/+$/, "");
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
+}
+
+// The saved config, or null when there is none. A file that exists but can't
+// be used throws a CliError naming it.
+function readConfig(file) {
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw new CliError(`Could not read ${file}: ${err.message}`);
+  }
+  let config;
+  try {
+    config = JSON.parse(text);
+  } catch (err) {
+    throw new CliError(`${file} is not valid JSON (${err.message}). Fix it, or replace it with 'agentboard enroll <token> --force'.`);
+  }
+  if (!config || typeof config !== "object" || typeof config.url !== "string" || !config.url) {
+    throw new CliError(`${file} has no server url. Fix it, or replace it with 'agentboard enroll <token> --force'.`);
+  }
+  return config;
+}
+
+// Server, key, agent and scope for a command: flags, then the environment,
+// then the saved config, which only applies to the server it was saved for.
+// A product named by a flag or the environment doesn't pick up the saved
+// board, which belongs to the saved product.
+function connectionSettings(flags) {
+  const env = process.env;
+  let config = null;
+  try {
+    config = readConfig(configPath());
+  } catch (err) {
+    // With the server in the environment the saved config isn't needed;
+    // without it, the broken file is the reason nothing works.
+    if (!env.AGENTBOARD_URL) die(err.message);
+    process.stderr.write(`Warning: ignoring saved config. ${err.message}\n`);
+  }
+  const url = env.AGENTBOARD_URL || (config && config.url) || "";
+  const saved =
+    config && url && normalizeServerUrl(url) === normalizeServerUrl(config.url) ? config : {};
+  const product = flags.product || env.AGENTBOARD_PRODUCT || "";
+  return {
+    url,
+    token: env.AGENTBOARD_TOKEN || saved.token || "",
+    agentName: env.AGENTBOARD_AGENT_NAME || saved.agent_name || "",
+    product: product || saved.product || "",
+    board: flags.board || env.AGENTBOARD_BOARD || (product ? "" : saved.board || ""),
+  };
+}
+
+// Before the token is spent: refuse to clobber a saved config without
+// --force, and make sure the directory can take the file.
+function prepareConfigWrite(file, force) {
+  if (fs.existsSync(file) && !force) {
+    die(`${file} already exists. Pass --force to replace it (the enrollment token is unused).`);
+  }
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.accessSync(path.dirname(file), fs.constants.W_OK);
+  } catch (err) {
+    die(`Can't save the config to ${file}: ${err.message}. Set AGENTBOARD_CONFIG to a writable path (the enrollment token is unused).`);
+  }
+}
+
+// Written to a private temp file and moved into place, so the key is never
+// readable by others, even briefly, and a crash leaves no half-written file.
+function writeConfig(file, config, force) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+  try {
+    fs.chmodSync(tmp, 0o600);
+    if (force) {
+      fs.renameSync(tmp, file);
+    } else {
+      fs.linkSync(tmp, file); // fails if the file appeared meanwhile
+      fs.unlinkSync(tmp);
+    }
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+async function enroll(positional, flags) {
+  const token = positional[1];
+  if (!token || positional.length > 2) die(ENROLL_USAGE);
+  const rawUrl = flags.url || process.env.AGENTBOARD_URL;
+  if (!rawUrl) die(`Pass the server with --url <server>, or set AGENTBOARD_URL. ${ENROLL_USAGE}`);
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    die(`Not a URL: ${rawUrl}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") die(`Not an http(s) URL: ${rawUrl}`);
+  const url = rawUrl.trim().replace(/\/+$/, "");
+
+  const file = configPath();
+  prepareConfigWrite(file, flags.force);
+
+  const req = makeReq(url, token, "");
+  const refused =
+    "Enrollment tokens work once and expire within minutes; ask your human for a new setup prompt. A self-hosted AgentBoard has no enrollment: set AGENTBOARD_TOKEN instead";
+  const noEnroll = "This server doesn't support enrollment tokens. On a self-hosted AgentBoard, set AGENTBOARD_TOKEN to its shared password instead";
+  const res = await req("POST", "/api/agents/enroll", flags.name ? { name: flags.name } : {}, {
+    401: refused,
+    403: refused,
+    404: noEnroll,
+    405: noEnroll,
+  });
+  if (!res || typeof res.key !== "string" || !res.key) {
+    die("The server accepted the enrollment token but sent back no key, so nothing was saved. Ask your human for a new setup prompt.");
+  }
+
+  const details = { url };
+  const agentName = res.agent_name || flags.name || "";
+  if (agentName) details.agent_name = agentName;
+  if (res.product) details.product = res.product;
+  if (res.board) details.board = res.board;
+  const saved = { url, token: res.key };
+  for (const k of ["agent_name", "product", "board"]) if (details[k]) saved[k] = details[k];
+  try {
+    writeConfig(file, saved, flags.force);
+  } catch (err) {
+    die(`Got this agent's key but couldn't save it to ${file}: ${err.message}. The enrollment token is now used up; ask your human for a new setup prompt.`);
+  }
+
+  if (flags.json) {
+    output({ ...details, config: file }, flags);
+  } else if (!flags.quiet) {
+    const scope = details.product ? `, working on ${details.product}${details.board ? `/${details.board}` : ""}` : "";
+    process.stdout.write(
+      `Enrolled${agentName ? ` as ${agentName}` : ""} on ${url}${scope}.\nSaved to ${file}; agentboard commands use it from now on.\n`
+    );
+  }
+}
+
+// ===========================================================================
 // Resolution helpers
 // ===========================================================================
 
@@ -1109,6 +1291,10 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   today                                Tasks due today
   past-due                             Overdue tasks
 
+Setup:
+  enroll <token> --url <server>        Trade a setup prompt's one-time token for
+                                       this agent's key and save it (--name, --force)
+
 Card ids:
   <id> is a card's number or its readable key: 142, AB-142 or ab-142.
   A card that moved to another product still answers to its old key.
@@ -1161,6 +1347,9 @@ Environment:
                          Ignored where the key already names an agent.
   AGENTBOARD_PRODUCT     Default product slug for simple commands
   AGENTBOARD_BOARD       Board slug override (default: the product's default board)
+  AGENTBOARD_CONFIG      Saved config from 'enroll' (default:
+                         ~/.config/agentboard/config.json). Used for the server
+                         it was saved for, when the variables above are unset.
 `;
   process.stdout.write(usage);
 }
@@ -1201,19 +1390,25 @@ async function main() {
 
   checkFlags(positional, flags);
 
-  const remoteUrl = process.env.AGENTBOARD_URL;
-  // Named for what it holds rather than for one of the two things it can be:
-  // self-hosted sends its shared APP_PASSWORD, hosted sends an API key, and
-  // neither is a password to an account — an account created with Google or
-  // GitHub has none at all.
-  const remoteToken = process.env.AGENTBOARD_TOKEN || "";
-  const agentName = process.env.AGENTBOARD_AGENT_NAME || "";
-  const envProduct = flags.product || process.env.AGENTBOARD_PRODUCT || "";
-  const envBoard = flags.board || process.env.AGENTBOARD_BOARD || "";
+  if (positional[0] === "enroll") {
+    await enroll(positional, flags);
+    return;
+  }
+
+  // AGENTBOARD_TOKEN is named for what it holds rather than for one of the
+  // two things it can be: self-hosted sends its shared APP_PASSWORD, hosted
+  // sends an API key, and neither is a password to an account — an account
+  // created with Google or GitHub has none at all.
+  const conn = connectionSettings(flags);
+  const remoteUrl = conn.url;
+  const remoteToken = conn.token;
+  const agentName = conn.agentName;
+  const envProduct = conn.product;
+  const envBoard = conn.board;
 
   if (!remoteUrl) {
     die(
-      "Set AGENTBOARD_URL to the server URL (e.g. https://your-instance.vercel.app). Set AGENTBOARD_TOKEN to an API key, or to the shared password on a self-hosted instance with auth enabled."
+      "Set AGENTBOARD_URL to the server URL (e.g. https://your-instance.vercel.app). Set AGENTBOARD_TOKEN to an API key, or to the shared password on a self-hosted instance with auth enabled. With a setup prompt's enrollment token, run 'agentboard enroll <token> --url <server>' instead."
     );
   }
 
