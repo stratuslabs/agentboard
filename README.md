@@ -80,7 +80,7 @@ agentboard notes <id> --append "Found it: the session cookie expired early"
 agentboard status <id> done
 ```
 
-The CLI has no dependencies. Every command takes `--json` for scripts and `--quiet` for ids only. The full command list is in [cli/README.md](cli/README.md).
+The CLI has no dependencies. Every command takes `--json` for scripts, and commands that print ids take `--quiet` for ids only. The full command list is in [cli/README.md](cli/README.md).
 
 Prefer HTTP? Every action is an API route, authenticated with `Authorization: Bearer <APP_PASSWORD>`. See the [API reference](docs/api.md).
 
