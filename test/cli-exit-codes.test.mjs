@@ -38,10 +38,11 @@ function argsFor(key) {
   if (accepts.includes("column") && !accepts.includes("product")) flags.push("--column", "todo");
   if (accepts.includes("org") && key.startsWith("product ")) flags.push("--org", "o");
   if (accepts.includes("pr")) flags.push("--pr", "https://example.com/pr/1");
-  if (accepts.includes("url") && !accepts.includes("pr")) flags.push("--url", "https://example.com/doc");
+  // enroll's --url is the server; leave it to AGENTBOARD_URL like the rest.
+  if (accepts.includes("url") && !accepts.includes("pr") && key !== "enroll") flags.push("--url", "https://example.com/doc");
   // Most commands take an id; the rest take a name or title. Extra
   // positionals are harmless to the ones that don't want them.
-  const positional = { status: ["1", "done"], attention: ["1", "on"] }[key] ?? ["1", "x"];
+  const positional = { status: ["1", "done"], attention: ["1", "on"], enroll: ["abe_x"] }[key] ?? ["1", "x"];
   return [...words, ...positional, ...flags];
 }
 
@@ -97,6 +98,8 @@ function run(url, args, env = {}) {
           AGENTBOARD_URL: url,
           AGENTBOARD_TOKEN: "t",
           AGENTBOARD_AGENT_NAME: "Tester",
+          // Never the real ~/.config/agentboard: enroll writes there.
+          AGENTBOARD_CONFIG: path.join(tmp, "config.json"),
           ...env,
         },
         timeout: 15000,
