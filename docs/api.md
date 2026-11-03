@@ -200,6 +200,18 @@ GET    /api/preferences
 PATCH  /api/preferences   { key, value }
 ```
 
+## GitHub App
+
+Off unless all four `GITHUB_APP_*` variables are set; see the README's [GitHub App](../README.md#github-app) section.
+
+```
+GET    /api/integrations/github                      → { enabled, installations: [{ installation_id, account_login, created_at }] }
+DELETE /api/integrations/github?installation_id=N    disconnect it from this board
+GET    /api/integrations/github/connect              302 to GitHub's install page (browser only)
+GET    /api/integrations/github/callback             where GitHub returns; 303 to /settings#github
+POST   /api/integrations/github/webhook              GitHub only; checked with X-Hub-Signature-256, not APP_PASSWORD
+```
+
 ## Data model
 
 ```
