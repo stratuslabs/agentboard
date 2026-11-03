@@ -91,3 +91,110 @@ export function replayChoices(state, choices) {
     state,
   );
 }
+
+// Group by (card 298): each list can group by product (the default), by
+// priority, or not at all. The choice is remembered per list, each under its
+// own preference key, so changing one list never rewrites another's choice.
+
+export const GROUPINGS = /** @type {const} */ (["product", "priority", "none"]);
+
+/** @typedef {typeof GROUPINGS[number]} Grouping */
+
+const PRIORITY_ORDER = ["urgent", "high", "medium", "low"];
+const GROUPING_PREFIX = "agentboard-list-grouping:";
+
+/**
+ * A stored or requested grouping, or "product" when it isn't one we offer.
+ * @param {unknown} value
+ * @returns {Grouping}
+ */
+export function normalizeGrouping(value) {
+  return GROUPINGS.includes(/** @type {any} */ (value)) ? /** @type {Grouping} */ (value) : "product";
+}
+
+/** The preference key one list's grouping is saved under. @param {string} list */
+export function groupingPrefKey(list) {
+  return GROUPING_PREFIX + list;
+}
+
+/**
+ * Cards by priority, urgent first. A priority outside the usual four keeps its
+ * own group after Low, and cards with none share a "No priority" group last,
+ * so no card disappears. Order inside a group is the input order.
+ * @template {{ priority?: string | null }} T
+ * @param {T[]} cards
+ */
+function groupByPriority(cards) {
+  /** @type {Map<string, T[]>} */
+  const byPriority = new Map();
+  for (const card of cards) {
+    const p = typeof card.priority === "string" && card.priority ? card.priority : "";
+    const list = byPriority.get(p);
+    if (list) list.push(card); else byPriority.set(p, [card]);
+  }
+  const rank = (/** @type {string} */ p) => {
+    const i = PRIORITY_ORDER.indexOf(p);
+    return i >= 0 ? i : p ? PRIORITY_ORDER.length : PRIORITY_ORDER.length + 1;
+  };
+  return [...byPriority.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([p, list]) => ({
+      key: `priority:${p || "none"}`,
+      emoji: "",
+      name: p ? p.charAt(0).toUpperCase() + p.slice(1) : "No priority",
+      priority: p || undefined,
+      cards: list,
+    }));
+}
+
+/**
+ * Groups for a list under the chosen grouping. "none" gives one group marked
+ * `flat`, which the list shows without a header.
+ * @template {GroupableCard & { priority?: string | null }} T
+ * @param {T[]} cards
+ * @param {unknown} grouping
+ * @returns {{ key: string, emoji: string, name: string, org?: string, priority?: string, flat?: boolean, cards: T[] }[]}
+ */
+export function groupCards(cards, grouping) {
+  const g = normalizeGrouping(grouping);
+  if (g === "priority") return groupByPriority(cards);
+  if (g === "none") return cards.length ? [{ key: "all", emoji: "", name: "All cards", flat: true, cards: [...cards] }] : [];
+  return groupByProduct(cards);
+}
+
+/**
+ * The groupings to use once the stored preferences arrive. The server wins for
+ * every list except those changed here since the page loaded (their keys are
+ * in `touched`); a list with no valid stored choice gets the default.
+ * @param {Record<string, Grouping>} local
+ * @param {Record<string, unknown>} received
+ * @param {Set<string>} touched
+ * @returns {Record<string, Grouping>}
+ */
+export function mergeGroupings(local, received, touched) {
+  /** @type {Record<string, Grouping>} */
+  const out = {};
+  for (const [list, value] of Object.entries(local)) {
+    if (touched.has(groupingPrefKey(list))) out[list] = value;
+  }
+  for (const [key, value] of Object.entries(received)) {
+    if (!key.startsWith(GROUPING_PREFIX) || touched.has(key)) continue;
+    if (GROUPINGS.includes(/** @type {any} */ (value))) out[key.slice(GROUPING_PREFIX.length)] = /** @type {Grouping} */ (value);
+  }
+  return out;
+}
+
+/**
+ * The local cache of groupings, or nothing when it isn't the right shape.
+ * @param {unknown} value
+ * @returns {Record<string, Grouping>}
+ */
+export function normalizeGroupings(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  /** @type {Record<string, Grouping>} */
+  const out = {};
+  for (const [list, g] of Object.entries(value)) {
+    if (GROUPINGS.includes(/** @type {any} */ (g))) out[list] = /** @type {Grouping} */ (g);
+  }
+  return out;
+}
