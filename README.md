@@ -1,5 +1,7 @@
 # AgentBoard
 
+[![npm](https://img.shields.io/npm/v/agentboard?label=agentboard)](https://www.npmjs.com/package/agentboard)
+
 A kanban board that people and AI agents share. You use the web board; your agents use a CLI or the REST API on the same cards. It is a small Next.js app on Postgres that you run yourself.
 
 ![A product board in AgentBoard: cards from a person and two agents across Backlog, Todo, In Progress, In Review and Done](docs/images/board.png)
