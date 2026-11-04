@@ -7,7 +7,7 @@ import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { GROUPINGS, type Grouping, groupCards, isCollapsed, normalizeGrouping } from "../lib/list-groups";
-import { type Card, DUE_TEXT, cardKey, cardTitle, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, DUE_TEXT, cardKey, cardParamValue, cardTitle, displayAssignee, formatDueDate, getDueDateStatus, readCardParam, writeCardParam } from "../lib/cards";
 
 export interface ViewCard extends Card {
   org_name: string;
@@ -55,15 +55,20 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
   const idBase = useId();
 
   useEffect(() => {
-    const { cardId, full } = readCardParam();
-    if (!cardId) return;
-    setOpenCardId(cardId);
+    const { ref, full } = readCardParam();
+    if (!ref) return;
+    // A link by id can open from the list straight away; a key waits for the lookup.
+    const id = Number(ref);
+    if (Number.isInteger(id)) setOpenCardId(id);
     setCardView(full ? "page" : "panel");
-    fetch(`/api/cards/${cardId}`)
+    fetch(`/api/cards/${encodeURIComponent(ref)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((c) => {
-        if (c) setHeldCard({ org_name: "", product_emoji: "", column_color: "", ...c });
-        else { setOpenCardId(null); writeCardParam(null); }
+        if (!c) { setOpenCardId(null); writeCardParam(null); return; }
+        setHeldCard({ org_name: "", product_emoji: "", column_color: "", ...c });
+        setOpenCardId(c.id);
+        const value = cardParamValue(c);
+        if (value !== ref) writeCardParam(value, full);
       })
       .catch(() => {});
   }, []);
@@ -84,7 +89,7 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
     setHeldCard(card);
     setOpenCardId(cardId);
     setCardView(view);
-    writeCardParam(cardId, view === "page");
+    writeCardParam(cardParamValue(card), view === "page");
   }
 
   function close() {

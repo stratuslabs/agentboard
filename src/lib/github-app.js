@@ -90,15 +90,56 @@ export function normalizePrUrl(raw) {
   return `https://github.com/${owner.toLowerCase()}/${repo.toLowerCase()}/pull/${number}`;
 }
 
-function escapeRegExp(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// A URL in Markdown or prose runs until whitespace, quoting or a Markdown/HTML
+// delimiter. Like GitHub's autolinker, trailing sentence punctuation is not
+// part of it.
+const URL_IN_TEXT = /https?:\/\/[^\s<>"'`()[\]{}|\\^]+/gi;
+const TRAILING_PUNCTUATION = /[.,;:!?*_~]+$/;
+// The card references the app accepts (CARD_PARAM_KEY/CARD_PARAM_ID in
+// cards.ts, parseCardRef in card-keys.js).
+const CARD_KEY = /^[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]{0,9}$/;
+const CARD_ID = /^[1-9][0-9]{0,9}$/;
+
+/**
+ * The card a URL opens on this instance, read the way the app reads it: the
+ * `/c/<ref>` path segment, or else the board's first `?card=` value. Null for
+ * another origin, a URL with credentials, or a value the app would reject.
+ *
+ * @param {string} text
+ * @param {string} base This instance's origin
+ * @returns {string | null}
+ */
+function cardRefInUrl(text, base) {
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (url.origin !== base || url.username || url.password) return null;
+  const permalink = /^\/c\/([^/]+)\/?$/.exec(url.pathname);
+  let ref;
+  if (permalink) {
+    try {
+      ref = decodeURIComponent(permalink[1]);
+    } catch {
+      return null;
+    }
+  } else {
+    ref = url.searchParams.get("card");
+  }
+  return ref && (CARD_KEY.test(ref) || CARD_ID.test(ref)) ? ref : null;
 }
 
 /**
  * The cards a PR body links to on this instance, in order of first mention:
- * permalinks (`<origin>/c/<id or key>`) and board links (`...?card=<id>`).
+ * permalinks (`<origin>/c/<id or key>`) and board links (`...?card=<key or id>`).
  * Links to any other host are ignored. `Closes #N` is not a card reference:
  * on GitHub, #N is an issue in the PR's own repository.
+ *
+ * Each URL is parsed, not pattern-matched, so a reference is exactly the card
+ * the app would open from that link: `?card=AB-12-old`, `/c/AB-12.5` and
+ * `/c/12/x` link nothing, and `?card=AB-2&card=AB-1` links AB-2.
  *
  * Returns the references as written; the caller resolves them within the
  * installation's team, so a reference to another team's card finds nothing.
@@ -116,17 +157,9 @@ export function cardRefsInBody(body, origin) {
     return [];
   }
   if (base === "null") return [];
-  // Both forms need a "/" straight after the origin, so a longer host
-  // (app.agentboard.to.evil.example) or another port never matches.
-  const prefix = escapeRegExp(base);
-  const pattern = new RegExp(
-    `${prefix}(?:/c/([A-Za-z0-9-]*[A-Za-z0-9])(?![\\w-]|/[\\w])|/[^\\s)\\]>"'?#]*\\?(?:[^\\s)\\]>"'#]*&)?card=([0-9]+)\\b)`,
-    "gi"
-  );
-  // A permalink must end at the reference: /c/12_draft or /c/12/x is not card 12.
   const refs = [];
-  for (const match of body.matchAll(pattern)) {
-    const ref = match[1] ?? match[2];
+  for (const [text] of body.matchAll(URL_IN_TEXT)) {
+    const ref = cardRefInUrl(text.replace(TRAILING_PUNCTUATION, ""), base);
     if (ref && !refs.includes(ref)) refs.push(ref);
   }
   return refs;

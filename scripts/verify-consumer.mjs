@@ -183,7 +183,8 @@ try {
   check("team B sees none of team A's orgs", otherOrgs.status === 200 && Array.isArray(otherOrgs.data) && otherOrgs.data.length === 0, JSON.stringify(otherOrgs));
 
   const permalink = await call(teamA, `/c/${card.data.id}`);
-  const expected = `/${org.data.slug}/${product.data.slug}?card=${card.data.id}`;
+  // The board opens it by key when the card has one, by id otherwise.
+  const expected = `/${org.data.slug}/${product.data.slug}?card=${read.data?.key ?? card.data.id}`;
   check(
     "the card permalink page resolves the card for team A",
     [303, 307, 308].includes(permalink.status) && (permalink.location ?? "").endsWith(expected),

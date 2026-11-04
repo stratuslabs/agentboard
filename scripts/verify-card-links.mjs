@@ -2,8 +2,9 @@
 //
 // Permanent card links: `/c/<id>` and the card lookup behind it.
 //
-// Creates its own organization and product, checks that `/c/<id>` sends the
-// browser to the card's product with `?card=<id>` (the board page opens it
+// Creates its own organization and product, checks that `/c/<id>` and
+// `/c/<key>` send the browser to the card's product with `?card=<key>`
+// (`?card=<id>` for a card without a key; the board page opens it
 // from there, switching board tabs if it has to), and that anything that
 // isn't a card is a 404 rather than a redirect or a server error. Removes the
 // organization again; nothing else in the database is touched.
@@ -59,13 +60,15 @@ function page(path) {
   return fetch(`${BASE}${path}`, { headers: headers(), redirect: "manual" });
 }
 
-async function expectRedirect(label, cardId, orgSlug, productSlug) {
-  const res = await page(`/c/${cardId}`);
+/** `card` is the card as GET /api/cards/<id> returns it; `ref` is what the link uses. */
+async function expectRedirect(label, ref, card, orgSlug, productSlug) {
+  const res = await page(`/c/${encodeURIComponent(ref)}`);
   check(`${label}: redirects`, res.status === 307 || res.status === 308, `got ${res.status}`);
   const location = res.headers.get("location");
   const url = location ? new URL(location, BASE) : null;
   check(`${label}: to the card's product`, url?.pathname === `/${orgSlug}/${productSlug}`, `got ${location}`);
-  check(`${label}: with ?card=<id>`, url?.searchParams.get("card") === String(cardId), `got ${location}`);
+  const want = card.key ?? String(card.id);
+  check(`${label}: with ?card=${card.key ? "<key>" : "<id>"}`, url?.searchParams.get("card") === want, `got ${location}, want ${want}`);
 }
 
 async function main() {
@@ -93,14 +96,22 @@ async function main() {
     const onFirst = await call("POST", "/api/cards", { column_id: full.body.columns[0].id, title: "On the first board" });
     const onOther = await call("POST", "/api/cards", { column_id: otherCols.body[0].id, title: "On another board" });
 
+    const first = (await call("GET", `/api/cards/${onFirst.body.id}`)).body;
+    const other = (await call("GET", `/api/cards/${onOther.body.id}`)).body;
+    check("cards have keys", Boolean(first?.key && other?.key), `got ${first?.key} ${other?.key}`);
+
     section("/c/<id> finds the card");
-    await expectRedirect("card on the default board", onFirst.body.id, org.body.slug, product.body.slug);
-    await expectRedirect("card on another board", onOther.body.id, org.body.slug, product.body.slug);
+    await expectRedirect("card on the default board", first.id, first, org.body.slug, product.body.slug);
+    await expectRedirect("card on another board", other.id, other, org.body.slug, product.body.slug);
+
+    section("/c/<key> finds the card, in any case");
+    await expectRedirect("by key", first.key, first, org.body.slug, product.body.slug);
+    await expectRedirect("by lowercase key", first.key.toLowerCase(), first, org.body.slug, product.body.slug);
 
     section("The link survives renames");
     const renamed = await call("PATCH", `/api/products/${product.body.id}`, { name: "Links Product Renamed" });
     check("product rename accepted", renamed.status === 200, `got ${renamed.status}`);
-    await expectRedirect("after a product rename", onFirst.body.id, org.body.slug, renamed.body?.slug);
+    await expectRedirect("after a product rename", first.key, first, org.body.slug, renamed.body?.slug);
 
     section("Anything that isn't a card is a 404");
     await call("DELETE", `/api/cards/${onOther.body.id}`);

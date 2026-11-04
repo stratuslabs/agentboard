@@ -158,25 +158,61 @@ export function describeDue(dateStr: string): string {
 }
 
 /**
- * The open card lives in the URL as `?card=<id>`, with `&view=full` for the
- * expanded page, so a card can be linked to and survives a refresh. History is
- * replaced rather than pushed: stepping through cards should not fill the back
- * button with every one of them.
+ * The open card lives in the URL as `?card=AB-142`, with `&view=full` for the
+ * expanded page, so a card can be linked to and survives a refresh. A card
+ * without a key, and a link from before keys, uses its id: `?card=1340`. Both
+ * still open the card. History is replaced rather than pushed: stepping
+ * through cards should not fill the back button with every one of them.
  */
-export function readCardParam(): { cardId: number | null; full: boolean } {
-  if (typeof window === "undefined") return { cardId: null, full: false };
-  const sp = new URLSearchParams(window.location.search);
-  const id = Number(sp.get("card"));
-  return { cardId: Number.isInteger(id) && id > 0 ? id : null, full: sp.get("view") === "full" };
+// The same shapes the server's resolveCardRef accepts (src/lib/card-keys.js).
+const CARD_PARAM_KEY = /^[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]{0,9}$/;
+const CARD_PARAM_ID = /^[1-9][0-9]{0,9}$/;
+
+/** The card named by a query string's `?card=`: a key in any case, or an id. Null for anything else. */
+export function parseCardParam(search: string): { ref: string | null; full: boolean } {
+  const sp = new URLSearchParams(search);
+  const raw = sp.get("card");
+  const ref = raw && (CARD_PARAM_KEY.test(raw) || CARD_PARAM_ID.test(raw)) ? raw : null;
+  return { ref, full: sp.get("view") === "full" };
 }
 
-export function writeCardParam(cardId: number | null, full = false): void {
-  const url = new URL(window.location.href);
-  if (cardId) url.searchParams.set("card", String(cardId));
+/** What `?card=` says for a card: its key, or its id without one. */
+export function cardParamValue(card: CardRef, productKey?: string | null): string {
+  return cardKey(card, productKey) ?? String(card.id);
+}
+
+/** Whether a `?card=` value names this card, by id or by key (any case). */
+export function cardMatchesParam(card: CardRef, ref: string | null, productKey?: string | null): boolean {
+  if (!ref) return false;
+  if (CARD_PARAM_ID.test(ref)) return card.id === Number(ref);
+  const key = cardKey(card, productKey);
+  return key !== null && key.toUpperCase() === ref.toUpperCase();
+}
+
+/** `href` with `?card=` (and `&view=full`) set to `ref`, or both removed when `ref` is null. */
+export function withCardParam(href: string, ref: string | number | null, full = false): string {
+  const url = new URL(href);
+  if (ref) url.searchParams.set("card", String(ref));
   else url.searchParams.delete("card");
-  if (cardId && full) url.searchParams.set("view", "full");
+  if (ref && full) url.searchParams.set("view", "full");
   else url.searchParams.delete("view");
-  window.history.replaceState(window.history.state, "", url.toString());
+  return url.toString();
+}
+
+/** Where a card's permanent link lands: its product's page, opened at the card. */
+export function boardCardPath(card: { org_slug: string; product_slug: string; id: number; key?: string | null }): string {
+  const path = `/${encodeURIComponent(card.org_slug)}/${encodeURIComponent(card.product_slug)}`;
+  return `${path}?card=${encodeURIComponent(card.key || String(card.id))}`;
+}
+
+export function readCardParam(): { ref: string | null; full: boolean } {
+  if (typeof window === "undefined") return { ref: null, full: false };
+  return parseCardParam(window.location.search);
+}
+
+/** Put a card in the address bar: pass `cardParamValue(card)`, or null to clear it. */
+export function writeCardParam(ref: string | number | null, full = false): void {
+  window.history.replaceState(window.history.state, "", withCardParam(window.location.href, ref, full));
 }
 
 /**

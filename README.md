@@ -149,7 +149,7 @@ Connect a GitHub App and a merged pull request moves every card it's linked to i
 
 - its PR field is the PR's URL,
 - one of its links is the PR's URL, or
-- the PR description contains the card's URL on your board, such as `https://your-board.example.com/c/WEB-12` or a URL with `?card=12`.
+- the PR description contains the card's URL on your board, such as `https://your-board.example.com/c/WEB-12` or a board URL with `?card=WEB-12` (or `?card=` and the card's id).
 
 `Closes #12` doesn't count: on GitHub `#12` is an issue or PR number, not a card. The Done column is the one whose slug is `done`; a board without one gets only the History line.
 

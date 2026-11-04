@@ -141,6 +141,81 @@ test("card references in a PR body: this instance's links only", () => {
   assert.deepEqual(cardRefsInBody("HTTPS://App.AgentBoard.to/c/3", origin + "/"), ["3"]);
 });
 
+test("a board link copied from the address bar names the card by key", () => {
+  const origin = "https://app.agentboard.to";
+  const body = [
+    "Board link: https://app.agentboard.to/labs/agentboard?card=AB-106",
+    "Full page: https://app.agentboard.to/labs/agentboard?board=61&card=okb-20&view=full",
+    "Old style: https://app.agentboard.to/labs/agentboard?card=1344",
+    "Not a card: https://app.agentboard.to/labs/agentboard?card=AB-",
+    "Nor: https://app.agentboard.to/labs/agentboard?card=AB-12x https://app.agentboard.to/labs/agentboard?card=A-1",
+    "Elsewhere: https://other.example/labs/agentboard?card=AB-9",
+  ].join("\n");
+  assert.deepEqual(cardRefsInBody(body, origin), ["AB-106", "okb-20", "1344"]);
+});
+
+test("a card reference ends where its URL value ends, not at the first punctuation", () => {
+  const origin = "https://app.agentboard.to";
+  const board = "https://app.agentboard.to/labs/agentboard";
+  // The app reads the whole value (?card=AB-12-old, /c/AB-12.5) and rejects it,
+  // so the webhook must not link the AB-12 prefix and move that card to Done.
+  const malformed = [
+    `${board}?card=AB-12-old`,
+    `${board}?card=AB-12/x`,
+    `${board}?card=AB-12.5`,
+    `${board}?card=AB-12,x`,
+    `${board}?card=AB-12%2F`,
+    `${board}?card=12-old`,
+    `${board}?card=12.5`,
+    `${board}?x=1&card=12_draft`,
+    `${origin}/c/AB-12.5`,
+    `${origin}/c/12.5`,
+    `${origin}/c/AB-12,x`,
+    `${origin}/c/12%2F`,
+  ];
+  for (const text of malformed) {
+    assert.deepEqual(cardRefsInBody(`See ${text} here`, origin), [], text);
+    assert.deepEqual(cardRefsInBody(text, origin), [], text);
+  }
+
+  // Prose and Markdown around a well-formed link still end it.
+  const body = [
+    `Sentence end ${board}?card=AB-1.`,
+    `List ${board}?card=AB-2, then more`,
+    `Markdown [card](${board}?card=AB-3)`,
+    `Angle <${board}?card=AB-4>`,
+    `Fragment ${board}?card=AB-5#top`,
+    `More params ${board}?card=AB-6&view=full`,
+    `Bold **${board}?card=AB-7**`,
+    `Quoted "${board}?card=8"`,
+    `Excited ${board}?card=9!`,
+    `Permalink ${origin}/c/AB-10?view=full and ${origin}/c/11#x`,
+    `Trailing slash ${origin}/c/AB-12/ and colon ${origin}/c/13: done`,
+    `Last ${board}?card=AB-14`,
+  ].join("\n");
+  assert.deepEqual(cardRefsInBody(body, origin), [
+    "AB-1", "AB-2", "AB-3", "AB-4", "AB-5", "AB-6", "AB-7", "8", "9", "AB-10", "11", "AB-12", "13", "AB-14",
+  ]);
+});
+
+test("a board link names the card the app would open: the first card parameter", () => {
+  const origin = "https://app.agentboard.to";
+  const board = "https://app.agentboard.to/labs/agentboard";
+  // URLSearchParams.get("card") is what the board reads, so AB-2 here, not AB-1.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB-2&card=AB-1`, origin), ["AB-2"]);
+  assert.deepEqual(cardRefsInBody(`${board}?view=full&card=AB-3&x=1&card=AB-1`, origin), ["AB-3"]);
+  // A first value the app rejects opens nothing, so nothing links.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB-2-old&card=AB-1`, origin), []);
+  assert.deepEqual(cardRefsInBody(`${board}?card=&card=AB-1`, origin), []);
+  // Encoded values are read decoded, as the app reads them.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB%2D4`, origin), ["AB-4"]);
+  assert.deepEqual(cardRefsInBody(`${origin}/c/AB%2D5`, origin), ["AB-5"]);
+  // A permalink is the path; a ?card= on it doesn't change which card it opens.
+  assert.deepEqual(cardRefsInBody(`${origin}/c/AB-6?card=AB-1`, origin), ["AB-6"]);
+  // Credentials in the URL are not this instance's links.
+  assert.deepEqual(cardRefsInBody("https://someone@app.agentboard.to/c/7", origin), []);
+});
+
 test("the History line says what happened", () => {
   const date = new Date("2026-10-31T12:00:00Z");
   const pr = { repo: "stratuslabs/agentboard", number: 98, url: "https://github.com/stratuslabs/agentboard/pull/98" };

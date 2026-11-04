@@ -108,7 +108,7 @@ function QuickSearchDialog({ onClose }: { onClose: () => void }) {
       // The board on screen reads ?card= only when it mounts; ask it directly.
       // If it hasn't mounted yet (the product is still loading), leave the
       // link in the address bar for it to read when it does.
-      if (!requestOpenCard(result.id)) writeCardParam(result.id);
+      if (!requestOpenCard(result.id, result.key)) writeCardParam(result.key ?? result.id);
     } else {
       router.push(resultHref(result));
     }
