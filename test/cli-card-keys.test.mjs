@@ -158,8 +158,26 @@ test("new prints the new card's key first, and --quiet prints only the key", asy
   assert.equal(r.code, 0, r.stderr);
   assert.match(lines(r.stdout)[0], /^Created AB-107 on agentboard\/development in Todo$/);
 
+  // The card printed under that line starts with its key and link too.
+  assert.deepEqual(firstWords(r.stdout).slice(1, 4), ["key", "url", "id"]);
+
   const quiet = await run("task", "add", "Created", "--product", "agentboard", "--quiet");
   assert.equal(quiet.stdout, "AB-107\n");
+});
+
+test("task list's every-field table and update's output start with key, url and id", async () => {
+  const list = await run("task", "list", "--product", "agentboard");
+  assert.equal(list.code, 0, list.stderr);
+  const [, header] = lines(list.stdout);
+  assert.deepEqual(header.trim().split(/\s+/).slice(0, 3), ["key", "url", "id"]);
+
+  const update = await run("task", "update", "AB-105", "--priority", "low");
+  assert.equal(update.code, 0, update.stderr);
+  assert.deepEqual(firstWords(update.stdout).slice(0, 3), ["key", "url", "id"]);
+
+  // --json stays as the server sent it.
+  const json = await run("task", "update", "AB-105", "--priority", "low", "--json");
+  assert.equal(Object.keys(JSON.parse(json.stdout))[0], "id");
 });
 
 test("update, status and move --quiet print the card's key, whatever reference was passed", async () => {

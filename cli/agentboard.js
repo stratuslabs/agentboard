@@ -674,9 +674,16 @@ async function cardIdsForReorder(req, list) {
   return ids;
 }
 
-/** output() for a card or a list of them: --quiet prints keys. */
+/**
+ * output() for a card or a list of them: --quiet prints keys, and the plain
+ * output starts with key, link and id. --json is left as the server sent it.
+ */
 function outputCard(data, flags) {
-  output(data, flags, cardRef);
+  if (flags.json || flags.quiet) {
+    output(data, flags, cardRef);
+  } else {
+    output(Array.isArray(data) ? data.map(keyFirst) : keyFirst(data), flags);
+  }
 }
 
 /**
@@ -689,8 +696,14 @@ function withCardUrl(card, baseUrl) {
   if (!card || typeof card !== "object" || card.id === undefined) return card;
   const url =
     card.url ?? `${baseUrl.replace(/\/+$/, "")}/c/${encodeURIComponent(String(card.id))}`;
+  return keyFirst({ ...card, url });
+}
+
+/** The same card with its key, link and id as the first fields, in that order. */
+function keyFirst(card) {
+  if (!card || typeof card !== "object" || card.id === undefined) return card;
   const key = cardKey(card);
-  const first = { ...(key ? { key } : {}), url, id: card.id };
+  const first = { ...(key ? { key } : {}), ...(card.url ? { url: card.url } : {}), id: card.id };
   return { ...first, ...Object.fromEntries(Object.entries(card).filter(([k]) => !(k in first))) };
 }
 
@@ -1318,7 +1331,7 @@ function outputCards(cards, flags, { defaults = null, product = null, board = nu
   }
   const keys = fields || defaults;
   if (!keys) {
-    output(cards, flags);
+    outputCard(cards, flags);
     return;
   }
   process.stdout.write(
