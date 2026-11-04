@@ -58,11 +58,11 @@ for (const cmd of [["show"], ["task", "show"]]) {
     assert.equal(JSON.parse(r.stdout).url, LINK);
   });
 
-  test(`${name} prints the url right after the card's id and key`, async () => {
+  test(`${name} prints the url right after the card's key, then the id`, async () => {
     const r = await run([...cmd, "7"]);
     assert.equal(r.code, 0, r.stderr);
     const keys = r.stdout.split("\n").filter(Boolean).map((line) => line.split(/\s+/)[0]);
-    assert.deepEqual(keys.slice(0, 3), ["id", "key", "url"]);
+    assert.deepEqual(keys.slice(0, 3), ["key", "url", "id"]);
     assert.match(r.stdout, new RegExp(`^url\\s+${LINK}$`, "m"));
   });
 
@@ -76,8 +76,19 @@ for (const cmd of [["show"], ["task", "show"]]) {
   });
 }
 
-test("show --quiet still prints only the id", async () => {
+test("show --quiet prints only the key, or the id on a server without keys", async () => {
   const r = await run(["show", "7", "--quiet"]);
   assert.equal(r.code, 0, r.stderr);
-  assert.equal(r.stdout, "7\n");
+  assert.equal(r.stdout, "WG-7\n");
+
+  const older = await run(["show", "8", "--quiet"]);
+  assert.equal(older.code, 0, older.stderr);
+  assert.equal(older.stdout, "8\n");
+});
+
+test("a card without a key leads with its link and id", async () => {
+  const r = await run(["show", "8"]);
+  assert.equal(r.code, 0, r.stderr);
+  const keys = r.stdout.split("\n").filter(Boolean).map((line) => line.split(/\s+/)[0]);
+  assert.deepEqual(keys.slice(0, 2), ["url", "id"]);
 });

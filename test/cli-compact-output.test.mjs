@@ -112,12 +112,14 @@ function run(args, extraEnv = {}) {
 const lines = (s) => s.split("\n").filter((l) => l.length > 0);
 const cells = (line) => line.trim().split(/\s{2,}/);
 
-test("list's table is id, title, column, assignee and priority, under the board it read", async () => {
+test("list's table is key, title, column, assignee and priority, under the board it read", async () => {
   const r = await run(["list", "--product", "web"]);
   assert.equal(r.code, 0, r.stderr);
   const [where, header, , ...rows] = lines(r.stdout);
   assert.equal(where, "Board: web/development (Web App / Development)");
-  assert.deepEqual(cells(header), ["id", "title", "column", "assignee", "priority"]);
+  // These cards come from a server without keys, so the key column falls
+  // back to the id, which every command also takes.
+  assert.deepEqual(cells(header), ["key", "title", "column", "assignee", "priority"]);
   assert.deepEqual(rows.map(cells), [
     ["1", "Ship the thing", "Todo", "Remy", "high"],
     // A card from before members existed still shows who has it.
@@ -176,7 +178,7 @@ test("my-tasks' default table names product, board and column instead of every f
   const r = await run(["my-tasks"]);
   assert.equal(r.code, 0, r.stderr);
   const [header, , ...rows] = lines(r.stdout);
-  assert.deepEqual(cells(header), ["id", "title", "product", "board", "column", "priority"]);
+  assert.deepEqual(cells(header), ["key", "title", "product", "board", "column", "priority"]);
   assert.deepEqual(cells(rows[1]), ["4", "Infra card", "infra", "ops", "Inbox", "medium"]);
 });
 
@@ -211,10 +213,10 @@ test("--fields can't be empty or combined with --quiet", async () => {
 
   const quiet = await run(["list", "--product", "web", "--quiet", "--fields", "id,title"]);
   assert.notEqual(quiet.code, 0);
-  assert.match(quiet.stderr, /--quiet prints ids only/);
+  assert.match(quiet.stderr, /--quiet prints card keys only/);
 });
 
-test("--quiet still prints only ids, with no board line", async () => {
+test("--quiet prints only keys (ids on a server without keys), with no board line", async () => {
   const r = await run(["list", "--product", "web", "--quiet"]);
   assert.equal(r.code, 0, r.stderr);
   assert.equal(r.stdout, "1\n2\n");

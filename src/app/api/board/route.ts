@@ -105,6 +105,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     if (boards.length === 0) {
       return { kind: "empty" as const, serverTime };
     }
+    // Card rows carry their number but not the product's key, which the
+    // links below are built from.
+    const { rows: productRows } = await c.query(`SELECT key FROM products WHERE id = $1`, [productId]);
+    const productKey: string | null = productRows[0]?.key ?? null;
 
     // An unknown or foreign board_id falls back to the first board rather than
     // erroring: the client's remembered board may have been deleted by someone
@@ -148,6 +152,8 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       st.cards_max ?? "-", st.cards_count,
       st.columns_max ?? "-", st.columns_count,
       st.boards_max ?? "-", st.boards_count,
+      // The links on the cards use the key, so a renamed key is a new payload.
+      productKey ?? "-",
     ].join("|");
     const etag = `W/"${createHash("sha1").update(signature).digest("base64url")}"`;
 
@@ -198,7 +204,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       cards = all;
     }
 
-    return { kind: "full" as const, serverTime, boards, boardId, columns, cards, cardIds, etag };
+    return { kind: "full" as const, serverTime, boards, boardId, columns, cards, cardIds, productKey, etag };
   });
 
   if (snap.kind === "not-modified") {
@@ -222,7 +228,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
       boards: snap.boards,
       active_board_id: snap.boardId,
       columns: snap.columns,
-      cards: withCardUrl(request, snap.cards),
+      cards: withCardUrl(request, snap.cards, snap.productKey),
       ...(snap.cardIds ? { card_ids: snap.cardIds } : {}),
     },
     { headers: { ETag: snap.etag, "Cache-Control": "no-store" } }

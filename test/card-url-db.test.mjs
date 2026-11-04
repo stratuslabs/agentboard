@@ -1,8 +1,10 @@
-// Every card the API returns carries `url`, the card's permanent link on this
-// server (`<origin>/c/<id>`), so an agent can cite the card itself instead of
-// "card 142 on the Development board". The origin is the one the caller
-// reached: behind a proxy that's X-Forwarded-Proto/Host, the same public host
-// the origin check in middleware trusts.
+// Every card the API returns carries `url`, the card's link on this server,
+// so an agent can cite the card itself instead of "card 142 on the
+// Development board". The link uses the card's key (`<origin>/c/WG-7`), what
+// people see in the web app, and the id only for a card without a key. The
+// origin is the one the caller reached: behind a proxy that's
+// X-Forwarded-Proto/Host, the same public host the origin check in middleware
+// trusts.
 //
 //   AGENTBOARD_TEST_DATABASE_URL=postgres://... node --test test/
 //
@@ -51,6 +53,10 @@ const resolver = {
 };
 
 const PROXIED = { "x-forwarded-host": "board.example.com", "x-forwarded-proto": "https" };
+
+// The key a card in the test product links by. View and board rows carry
+// the number but not always the key, so it's built the same way for all.
+const ref = (card) => `WG-${card.number}`;
 
 before(async () => {
   if (skip) return;
@@ -118,22 +124,23 @@ async function newCard(extra = {}, opts = {}) {
 test("a created card comes back with its link on the host that was called", { skip }, async () => {
   const created = await newCard();
   assert.equal(created.status, 201);
-  assert.equal(created.data.url, `http://localhost/c/${created.data.id}`);
+  assert.match(created.data.key, /^WG-\d+$/);
+  assert.equal(created.data.url, `http://localhost/c/${created.data.key}`);
 
   const direct = await newCard({}, { base: "http://localhost:3000" });
-  assert.equal(direct.data.url, `http://localhost:3000/c/${direct.data.id}`);
+  assert.equal(direct.data.url, `http://localhost:3000/c/${direct.data.key}`);
 });
 
 test("behind a proxy the link uses the public host and scheme", { skip }, async () => {
   const created = await newCard({}, { headers: PROXIED, base: "http://127.0.0.1:3000" });
-  assert.equal(created.data.url, `https://board.example.com/c/${created.data.id}`);
+  assert.equal(created.data.url, `https://board.example.com/c/${created.data.key}`);
 
   // A proxy chain lists hops; the first is the client-facing one.
   const chained = await call(api.card.GET, `/api/cards/${created.data.id}`, {
     id: created.data.id,
     headers: { "x-forwarded-host": "board.example.com, inner:3000", "x-forwarded-proto": "https,http" },
   });
-  assert.equal(chained.data.url, `https://board.example.com/c/${created.data.id}`);
+  assert.equal(chained.data.url, `https://board.example.com/c/${created.data.key}`);
 });
 
 test("a forwarded scheme other than http or https is ignored", { skip }, async () => {
@@ -142,7 +149,7 @@ test("a forwarded scheme other than http or https is ignored", { skip }, async (
     id: created.data.id,
     headers: { "x-forwarded-host": "board.example.com", "x-forwarded-proto": "javascript" },
   });
-  assert.equal(odd.data.url, `http://board.example.com/c/${created.data.id}`);
+  assert.equal(odd.data.url, `http://board.example.com/c/${created.data.key}`);
 });
 
 test("a host header that can't form a URL falls back to the address that was called", { skip }, async () => {
@@ -152,27 +159,29 @@ test("a host header that can't form a URL falls back to the address that was cal
     headers: { "x-forwarded-host": "bad host/with spaces" },
   });
   assert.equal(bad.status, 200);
-  assert.equal(bad.data.url, `http://localhost/c/${created.data.id}`);
+  assert.equal(bad.data.url, `http://localhost/c/${created.data.key}`);
 });
 
-test("a card read by its key still links by its id", { skip }, async () => {
+test("a card links by its key however it was read", { skip }, async () => {
   const created = await newCard();
   assert.ok(created.data.key, "the product has a key, so the card has one");
   const byKey = await call(api.card.GET, `/api/cards/${created.data.key}`, { id: created.data.key });
   assert.equal(byKey.status, 200);
-  assert.equal(byKey.data.url, `http://localhost/c/${created.data.id}`);
+  assert.equal(byKey.data.url, `http://localhost/c/${created.data.key}`);
+  const byId = await call(api.card.GET, `/api/cards/${created.data.id}`, { id: created.data.id });
+  assert.equal(byId.data.url, `http://localhost/c/${created.data.key}`);
 });
 
 test("list, update, no-op update and move responses all carry the link", { skip }, async () => {
   const created = await newCard();
   const id = created.data.id;
-  const expected = `https://board.example.com/c/${id}`;
+  const expected = `https://board.example.com/c/${created.data.key}`;
 
   const list = await call(api.cards.GET, `/api/cards?product_id=${team.product.id}`, { headers: PROXIED });
   assert.equal(list.status, 200);
   assert.ok(list.data.length > 0);
   for (const card of list.data) {
-    assert.equal(card.url, `https://board.example.com/c/${card.id}`);
+    assert.equal(card.url, `https://board.example.com/c/${card.key}`);
   }
 
   const renamed = await call(api.card.PATCH, `/api/cards/${id}`, {
@@ -208,7 +217,8 @@ test("the today, assigned and past-due views carry the link", { skip }, async ()
     const ids = res.data.map((c) => c.id);
     assert.ok(ids.includes(name === "past-due" ? late.data.id : due.data.id), `${name} lists the card`);
     for (const card of res.data) {
-      assert.equal(card.url, `https://board.example.com/c/${card.id}`, name);
+      // These rows send product_key and number rather than key.
+      assert.equal(card.url, `https://board.example.com/c/${ref(card)}`, name);
     }
   }
 
@@ -222,7 +232,7 @@ test("quick search results carry the link", { skip }, async () => {
   const res = await call(api.search.GET, "/api/cards/search?q=zebra", { headers: PROXIED });
   assert.equal(res.status, 200);
   assert.ok(res.data.some((c) => c.id === hit.data.id), "search finds the card");
-  for (const card of res.data) assert.equal(card.url, `https://board.example.com/c/${card.id}`);
+  for (const card of res.data) assert.equal(card.url, `https://board.example.com/c/${card.key}`);
 });
 
 test("the board snapshot and its deltas carry the link", { skip }, async () => {
@@ -233,7 +243,8 @@ test("the board snapshot and its deltas carry the link", { skip }, async () => {
   assert.equal(full.status, 200);
   assert.ok(full.data.cards.some((c) => c.id === created.data.id), "the snapshot lists the card");
   for (const card of full.data.cards) {
-    assert.equal(card.url, `https://board.example.com/c/${card.id}`);
+    // Board rows carry the number; the key comes from the board's product.
+    assert.equal(card.url, `https://board.example.com/c/${ref(card)}`);
   }
 
   // A delta carries only changed cards, plus card_ids, which are ids, not cards.
@@ -246,8 +257,59 @@ test("the board snapshot and its deltas carry the link", { skip }, async () => {
   assert.equal(delta.status, 200);
   const changed = delta.data.cards.find((c) => c.id === created.data.id);
   assert.ok(changed, "the delta includes the edited card");
-  assert.equal(changed.url, `https://board.example.com/c/${created.data.id}`);
+  assert.equal(changed.url, `https://board.example.com/c/${created.data.key}`);
   assert.ok(delta.data.card_ids.every((id) => typeof id === "number"), "card_ids stay plain ids");
+});
+
+test("a renamed product key changes the links and the board's validator", { skip }, async () => {
+  const org = await call(api.orgs.POST, "/api/orgs", { method: "POST", body: { name: "Rename Co" } });
+  const product = await call(api.products.POST, "/api/products", {
+    method: "POST", body: { org_id: org.data.id, name: "Gadget", key: "GD" },
+  });
+  const board = await call(api.board.GET, `/api/board?product_id=${product.data.id}`);
+  const created = await call(api.cards.POST, "/api/cards", {
+    method: "POST", body: { column_id: board.data.columns[0].id, title: "rename me" },
+  });
+  assert.equal(created.data.url, `http://localhost/c/GD-${created.data.number}`);
+
+  const { NextRequest } = api.next;
+  const boardUrl = `http://localhost/api/board?product_id=${product.data.id}`;
+  const boardGet = (headers = {}) =>
+    api.board.GET(new NextRequest(boardUrl, { headers: { "x-test-team": String(team.id), ...headers } }));
+  const before = await boardGet();
+  const beforeTag = before.headers.get("etag");
+  assert.ok(beforeTag, "the board sends a validator");
+  assert.equal((await before.json()).cards[0].url, `http://localhost/c/GD-${created.data.number}`);
+
+  await db.query(`UPDATE products SET key = 'GZ' WHERE id = $1`, [product.data.id]);
+
+  const card = await call(api.card.GET, `/api/cards/${created.data.id}`, { id: created.data.id });
+  assert.equal(card.data.url, `http://localhost/c/GZ-${created.data.number}`);
+
+  // A client holding the validator from before the rename gets the new links
+  // rather than a 304: no card, column or board changed, only the key.
+  const stale = await boardGet({ "if-none-match": beforeTag });
+  assert.equal(stale.status, 200);
+  assert.equal((await stale.json()).cards[0].url, `http://localhost/c/GZ-${created.data.number}`);
+});
+
+test("a card in a product without a key links by its id", { skip }, async () => {
+  const org = await call(api.orgs.POST, "/api/orgs", { method: "POST", body: { name: "Keyless Co" } });
+  const product = await call(api.products.POST, "/api/products", {
+    method: "POST", body: { org_id: org.data.id, name: "Keyless" },
+  });
+  const board = await call(api.board.GET, `/api/board?product_id=${product.data.id}`);
+  const created = await call(api.cards.POST, "/api/cards", {
+    method: "POST", body: { column_id: board.data.columns[0].id, title: "no key" },
+  });
+  // A product from before keys, which setup backfills; null it to stand in.
+  await db.query(`UPDATE products SET key = NULL WHERE id = $1`, [product.data.id]);
+
+  const card = await call(api.card.GET, `/api/cards/${created.data.id}`, { id: created.data.id });
+  assert.equal(card.data.key, null);
+  assert.equal(card.data.url, `http://localhost/c/${created.data.id}`);
+  const after = await call(api.board.GET, `/api/board?product_id=${product.data.id}`);
+  assert.equal(after.data.cards[0].url, `http://localhost/c/${created.data.id}`);
 });
 
 test("errors are passed through untouched", { skip }, async () => {

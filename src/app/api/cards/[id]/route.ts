@@ -81,8 +81,10 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
     }
   }
 
+  // Nothing to change: answer with the same shape an update does, location
+  // and key included, so the link is the card's key here too.
   if (sets.length === 0) {
-    return NextResponse.json(withCardUrl(request, existing[0]));
+    return NextResponse.json(withCardUrl(request, await getCardWithLocation(teamId, id)));
   }
 
   sets.push("updated_at = NOW()");
