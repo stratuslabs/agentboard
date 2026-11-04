@@ -141,6 +141,19 @@ test("card references in a PR body: this instance's links only", () => {
   assert.deepEqual(cardRefsInBody("HTTPS://App.AgentBoard.to/c/3", origin + "/"), ["3"]);
 });
 
+test("a board link copied from the address bar names the card by key", () => {
+  const origin = "https://app.agentboard.to";
+  const body = [
+    "Board link: https://app.agentboard.to/labs/agentboard?card=AB-106",
+    "Full page: https://app.agentboard.to/labs/agentboard?board=61&card=okb-20&view=full",
+    "Old style: https://app.agentboard.to/labs/agentboard?card=1344",
+    "Not a card: https://app.agentboard.to/labs/agentboard?card=AB-",
+    "Nor: https://app.agentboard.to/labs/agentboard?card=AB-12x https://app.agentboard.to/labs/agentboard?card=A-1",
+    "Elsewhere: https://other.example/labs/agentboard?card=AB-9",
+  ].join("\n");
+  assert.deepEqual(cardRefsInBody(body, origin), ["AB-106", "okb-20", "1344"]);
+});
+
 test("the History line says what happened", () => {
   const date = new Date("2026-10-31T12:00:00Z");
   const pr = { repo: "stratuslabs/agentboard", number: 98, url: "https://github.com/stratuslabs/agentboard/pull/98" };
