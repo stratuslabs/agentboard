@@ -96,7 +96,7 @@ function escapeRegExp(text) {
 
 /**
  * The cards a PR body links to on this instance, in order of first mention:
- * permalinks (`<origin>/c/<id or key>`) and board links (`...?card=<id>`).
+ * permalinks (`<origin>/c/<id or key>`) and board links (`...?card=<key or id>`).
  * Links to any other host are ignored. `Closes #N` is not a card reference:
  * on GitHub, #N is an issue in the PR's own repository.
  *
@@ -120,7 +120,7 @@ export function cardRefsInBody(body, origin) {
   // (app.agentboard.to.evil.example) or another port never matches.
   const prefix = escapeRegExp(base);
   const pattern = new RegExp(
-    `${prefix}(?:/c/([A-Za-z0-9-]*[A-Za-z0-9])(?![\\w-]|/[\\w])|/[^\\s)\\]>"'?#]*\\?(?:[^\\s)\\]>"'#]*&)?card=([0-9]+)\\b)`,
+    `${prefix}(?:/c/([A-Za-z0-9-]*[A-Za-z0-9])(?![\\w-]|/[\\w])|/[^\\s)\\]>"'?#]*\\?(?:[^\\s)\\]>"'#]*&)?card=([0-9]+|[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]{0,9})\\b)`,
     "gi"
   );
   // A permalink must end at the reference: /c/12_draft or /c/12/x is not card 12.

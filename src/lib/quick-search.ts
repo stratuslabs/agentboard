@@ -23,6 +23,8 @@ export const OPEN_CARD_EVENT = "agentboard:open-card";
 
 export interface OpenCardDetail {
   cardId: number;
+  /** The card's key, AB-142, for the address bar. Absent without one. */
+  key?: string | null;
 }
 
 /** A row from GET /api/cards/search. */
@@ -56,8 +58,8 @@ export function searchShortcut(): string {
  * Ask the board on screen to open a card. Returns false when no mounted board
  * took it, so the caller can fall back to the `?card=` link.
  */
-export function requestOpenCard(cardId: number): boolean {
-  const event = new CustomEvent<OpenCardDetail>(OPEN_CARD_EVENT, { detail: { cardId }, cancelable: true });
+export function requestOpenCard(cardId: number, key?: string | null): boolean {
+  const event = new CustomEvent<OpenCardDetail>(OPEN_CARD_EVENT, { detail: { cardId, key }, cancelable: true });
   window.dispatchEvent(event);
   return event.defaultPrevented;
 }

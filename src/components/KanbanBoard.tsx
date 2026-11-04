@@ -36,7 +36,7 @@ import { orgPageHref } from "../lib/org-slug";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
-import { type Card, type Member, cardLink, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
+import { type Card, type Member, cardLink, cardMatchesParam, cardParamValue, cardTitle, readCardParam, writeCardParam } from "../lib/cards";
 import { cardMatchesSearch, parseSearchQuery } from "../lib/card-search";
 import { OPEN_CARD_EVENT, type OpenCardDetail } from "../lib/quick-search";
 
@@ -189,7 +189,8 @@ export default function KanbanBoard({
     openCardIdRef.current = openCardId;
   }, [openCardId]);
   // A `?card=` link still waiting for its board; see the effect further down.
-  const deepLinkRef = useRef<{ cardId: number; full: boolean; resolved: boolean } | null>(null);
+  // `ref` is the card's key or id as the link has it.
+  const deepLinkRef = useRef<{ ref: string; full: boolean; resolved: boolean } | null>(null);
 
   /**
    * The server's own clock, as of the last response. Sent back as
@@ -587,7 +588,8 @@ export default function KanbanBoard({
   function openCard(cardId: number, view: "panel" | "page" = cardView) {
     setOpenCardId(cardId);
     setCardView(view);
-    writeCardParam(cardId, view === "page");
+    const card = cards.find((c) => c.id === cardId);
+    writeCardParam(card ? cardParamValue(card, productKey) : cardId, view === "page");
   }
 
   function closeCard() {
@@ -607,19 +609,20 @@ export default function KanbanBoard({
   // may live on another of this product's boards, in which case that board is
   // switched to first and the card opens when its cards arrive.
   useEffect(() => {
-    const { cardId, full } = readCardParam();
-    if (cardId) deepLinkRef.current = { cardId, full, resolved: false };
+    const { ref, full } = readCardParam();
+    if (ref) deepLinkRef.current = { ref, full, resolved: false };
   }, []);
   // Quick search opening a card in this product: the same path as a link,
   // without remounting the board. The tick reruns the effect below.
   const [deepLinkTick, setDeepLinkTick] = useState(0);
   useEffect(() => {
     function onOpenCard(e: Event) {
-      const cardId = (e as CustomEvent<OpenCardDetail>).detail?.cardId;
-      if (!cardId) return;
+      const detail = (e as CustomEvent<OpenCardDetail>).detail;
+      if (!detail?.cardId) return;
       e.preventDefault(); // tells quick search this board took it
-      deepLinkRef.current = { cardId, full: false, resolved: false };
-      writeCardParam(cardId);
+      const ref = detail.key || String(detail.cardId);
+      deepLinkRef.current = { ref, full: false, resolved: false };
+      writeCardParam(ref);
       setDeepLinkTick((t) => t + 1);
     }
     window.addEventListener(OPEN_CARD_EVENT, onOpenCard);
@@ -628,26 +631,38 @@ export default function KanbanBoard({
   useEffect(() => {
     const link = deepLinkRef.current;
     if (!link || activeBoardId === null) return;
-    if (cards.some((c) => c.id === link.cardId)) {
+    const card = cards.find((c) => cardMatchesParam(c, link.ref, productKey));
+    if (card) {
       deepLinkRef.current = null;
-      setOpenCardId(link.cardId);
+      setOpenCardId(card.id);
       setCardView(link.full ? "page" : "panel");
+      // A link by id, by an old key or in another case shows the card's key from here on.
+      const value = cardParamValue(card, productKey);
+      if (value !== link.ref) writeCardParam(value, link.full);
       return;
     }
     if (link.resolved || loadedBoardId !== activeBoardId) return;
     link.resolved = true;
-    fetch(`/api/cards/${link.cardId}`)
+    fetch(`/api/cards/${encodeURIComponent(link.ref)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((found: { product_id: number; board_id: number } | null) => {
-        if (found && found.product_id === productId && found.board_id !== activeBoardIdRef.current) {
-          setActiveBoardId(found.board_id);
-        } else {
-          deepLinkRef.current = null;
-          if (!found || found.product_id !== productId) writeCardParam(null);
+      .then((found: { id: number; product_id: number; board_id: number } | null) => {
+        if (found && found.product_id === productId) {
+          // Follow the id from here: an old key won't match the board's cards.
+          link.ref = String(found.id);
+          if (found.board_id !== activeBoardIdRef.current) {
+            setActiveBoardId(found.board_id);
+            return;
+          }
+          if (cardsRef.current.some((c) => c.id === found.id)) {
+            setDeepLinkTick((t) => t + 1);
+            return;
+          }
         }
+        deepLinkRef.current = null;
+        if (!found || found.product_id !== productId) writeCardParam(null);
       })
       .catch(() => { deepLinkRef.current = null; });
-  }, [cards, loadedBoardId, activeBoardId, productId, deepLinkTick]);
+  }, [cards, loadedBoardId, activeBoardId, productId, productKey, deepLinkTick]);
 
   async function handleAddBoard() {
     if (!newBoardName.trim()) return;
