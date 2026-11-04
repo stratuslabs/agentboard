@@ -198,6 +198,24 @@ test("a card reference ends where its URL value ends, not at the first punctuati
   ]);
 });
 
+test("a board link names the card the app would open: the first card parameter", () => {
+  const origin = "https://app.agentboard.to";
+  const board = "https://app.agentboard.to/labs/agentboard";
+  // URLSearchParams.get("card") is what the board reads, so AB-2 here, not AB-1.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB-2&card=AB-1`, origin), ["AB-2"]);
+  assert.deepEqual(cardRefsInBody(`${board}?view=full&card=AB-3&x=1&card=AB-1`, origin), ["AB-3"]);
+  // A first value the app rejects opens nothing, so nothing links.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB-2-old&card=AB-1`, origin), []);
+  assert.deepEqual(cardRefsInBody(`${board}?card=&card=AB-1`, origin), []);
+  // Encoded values are read decoded, as the app reads them.
+  assert.deepEqual(cardRefsInBody(`${board}?card=AB%2D4`, origin), ["AB-4"]);
+  assert.deepEqual(cardRefsInBody(`${origin}/c/AB%2D5`, origin), ["AB-5"]);
+  // A permalink is the path; a ?card= on it doesn't change which card it opens.
+  assert.deepEqual(cardRefsInBody(`${origin}/c/AB-6?card=AB-1`, origin), ["AB-6"]);
+  // Credentials in the URL are not this instance's links.
+  assert.deepEqual(cardRefsInBody("https://someone@app.agentboard.to/c/7", origin), []);
+});
+
 test("the History line says what happened", () => {
   const date = new Date("2026-10-31T12:00:00Z");
   const pr = { repo: "stratuslabs/agentboard", number: 98, url: "https://github.com/stratuslabs/agentboard/pull/98" };
