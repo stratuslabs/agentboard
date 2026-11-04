@@ -168,10 +168,10 @@ test("new --json: the card includes its product, board and column", async () => 
   assert.equal(card.key, "INF-7");
 });
 
-test("new --quiet: still prints only the id", async () => {
+test("new --quiet: prints only the key", async () => {
   const r = await run(["new", "Fix it", "--product", "infra", "--quiet"]);
   assert.equal(r.code, 0, r.stderr);
-  assert.equal(r.stdout, "501\n");
+  assert.equal(r.stdout, "INF-7\n");
 });
 
 test("new on an older server: the CLI fills in the location it resolved", async () => {

@@ -159,8 +159,11 @@ test("--quiet is described as it behaves for each command", async () => {
   const results = await Promise.all(noIds.map((k) => run(...k.split(" "), "--help")));
   noIds.forEach((k, i) => assert.equal(quietRow(results[i].stdout), null, `${k} still offers --quiet`));
 
-  // Commands that do print ids keep "IDs only".
-  for (const k of ["list", "task move", "status", "subtask list", "board view"]) {
+  // Commands that print cards print their keys; other things keep "IDs only".
+  for (const k of ["list", "task move", "status", "board view", "my-tasks", "task add", "show"]) {
+    assert.match(quietRow((await run(...k.split(" "), "--help")).stdout), /^Card keys only \(AB-142\)/, k);
+  }
+  for (const k of ["subtask list", "product list", "member add"]) {
     assert.equal(quietRow((await run(...k.split(" "), "--help")).stdout), "IDs only", k);
   }
 });

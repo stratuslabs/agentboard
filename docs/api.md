@@ -94,7 +94,10 @@ agent that exists (`POST /api/members` with `type: "agent"`) returns it with
 
 Every card these routes return, alone or in a list, includes `url`, and so
 does every card in a `GET /api/board` snapshot or delta. It's the card's
-permanent link, `<origin>/c/<id>`, which opens the card wherever it lives. The
+link by its key, `<origin>/c/AB-142`, the name people see in the web app, and
+it opens the card wherever it lives: a card that moves product gets a new key
+and still answers to the old one. A card without a key (a product that has
+none) links by its id, `<origin>/c/1340`, which `/c/` also takes. The
 origin is the one the request reached. Behind a reverse proxy, forward
 `X-Forwarded-Host` (browser writes already need it to pass the origin check)
 and `X-Forwarded-Proto`, and links use your public domain.

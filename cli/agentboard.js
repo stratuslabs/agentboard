@@ -209,7 +209,7 @@ const FLAG_HELP = {
   label: ["<l>", "Labels, comma-separated"],
   assignee: ["<name>", "Member name or id"],
   "include-done": ["", "Include cards in Done"],
-  fields: ["<a,b>", "Fields to print, comma-separated: any card field, plus product, board, column and assignee. With --json, only these"],
+  fields: ["<a,b>", "Fields to print, comma-separated: any card field, plus key, product, board, column and assignee. With --json, only these"],
   description: ["<text>", "Card description (Markdown)"],
   due: ["<date>", "Due date, e.g. 2026-11-01"],
   title: ["<text>", "New title"],
@@ -255,7 +255,7 @@ const COMMAND_HELP = {
   notes: {
     usage: ["notes <id>"],
     summary: "Print a card's description, or change it with --set or --append.",
-    flags: { quiet: "With --set or --append, the card id only. Reading prints the description either way" },
+    flags: { quiet: "With --set or --append, the card key only. Reading prints the description either way" },
   },
   attention: { usage: ["attention <id> on|off"], summary: "Set a card's priority to urgent (on) or medium (off)." },
   "my-tasks": {
@@ -334,7 +334,11 @@ const COMMAND_HELP = {
   "task unlink": { usage: ["task unlink <id> --url <url>"], summary: "Remove a link from a card.", flags: { url: "The linked URL to remove" } },
   "task attach": { usage: ["task attach <id> --file <path>"], summary: "Attach a file to a card." },
   "task attachments": { usage: ["task attachments <id>"], summary: "List a card's attachments, with their ids." },
-  "task reorder": { usage: ["task reorder --ids <1,2,3>"], summary: "Set the order of cards." },
+  "task reorder": {
+    usage: ["task reorder --ids <AB-1,AB-2,...>"],
+    summary: "Set the order of cards.",
+    flags: { ids: "Card keys or ids in their new order, comma-separated" },
+  },
   settings: {
     usage: ["settings", "settings --key <k> --value <v>"],
     summary: "List the instance's settings, or change one.",
@@ -383,13 +387,21 @@ function quietPrintsNoIds(key) {
   return / (remove|reorder)$/.test(key) || NO_ID_COMMANDS.has(key);
 }
 
+// Commands that print cards, whose --quiet prints card keys rather than ids.
+const CARD_COMMANDS = new Set([
+  "list", "new", "status", "show", "rename", "attention", "my-tasks", "today", "past-due",
+  "board view", "task add", "task list", "task show", "task move", "task update", "task done",
+]);
+const QUIET_CARD_KEYS = "Card keys only (AB-142), or ids on a server without keys";
+
 function commandHelp(key) {
   const help = COMMAND_HELP[key];
   const lines = help.usage.map((u, i) => `${i === 0 ? "Usage:" : "      "} agentboard ${u}`);
   const names = [...COMMAND_FLAGS[key], "json", ...(quietPrintsNoIds(key) ? [] : ["quiet"])];
   const rows = names.map((f) => {
     const [arg, desc] = FLAG_HELP[f];
-    return [`--${f}${arg ? ` ${arg}` : ""}`, (help.flags && help.flags[f]) || desc];
+    const quietKeys = f === "quiet" && CARD_COMMANDS.has(key) ? QUIET_CARD_KEYS : null;
+    return [`--${f}${arg ? ` ${arg}` : ""}`, (help.flags && help.flags[f]) || quietKeys || desc];
   });
   return `${lines.join("\n")}
 
@@ -544,7 +556,8 @@ function output(data, flags, idField = "id") {
     process.stdout.write(JSON.stringify(data, null, 2) + "\n");
   } else if (flags.quiet) {
     const items = Array.isArray(data) ? data : [data];
-    items.forEach((item) => process.stdout.write(String(item[idField]) + "\n"));
+    const idOf = typeof idField === "function" ? idField : (item) => item[idField];
+    items.forEach((item) => process.stdout.write(String(idOf(item)) + "\n"));
   } else if (Array.isArray(data)) {
     if (data.length === 0) {
       process.stdout.write("(no results)\n");
@@ -619,15 +632,65 @@ function writeAttachment(file, content, force) {
 }
 
 /**
- * A card with its link (`url`) next to its id and key, where a reader looks
- * first. Servers send the link they're reached at; one from before cards
- * carried it gets the same `/c/<id>` link built from AGENTBOARD_URL.
+ * A card's readable key (AB-142): the one the server sent, else one built from
+ * the product key and number that cross-product views send. Null without one.
+ */
+function cardKey(card) {
+  if (card.key) return card.key;
+  return card.product_key && card.number ? `${card.product_key}-${card.number}` : null;
+}
+
+/**
+ * How the CLI names a card to people and to other commands: its key, which
+ * is what the web app shows, or its id on a server from before keys. Every
+ * command that takes a card takes either.
+ */
+function cardRef(card) {
+  return cardKey(card) ?? card.id;
+}
+
+/**
+ * The ids for `task reorder --ids`, which takes keys like every other card
+ * command. The reorder route only takes ids and skips one it doesn't know, so
+ * each key is looked up first, and anything that isn't a card stops the
+ * reorder before it starts.
+ */
+async function cardIdsForReorder(req, list) {
+  const refs = String(list).split(",").map((s) => s.trim()).filter(Boolean);
+  if (refs.length === 0) die("Usage: agentboard task reorder --ids <AB-1,AB-2,...>");
+  const ids = [];
+  for (const ref of refs) {
+    if (/^[1-9][0-9]*$/.test(ref)) {
+      ids.push(Number(ref));
+    } else if (/^[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]*$/.test(ref)) {
+      const card = await req("GET", `/api/cards/${encodeURIComponent(ref)}`, undefined, {
+        404: `No card answers to ${ref}; nothing was reordered`,
+      });
+      ids.push(card.id);
+    } else {
+      die(`Not a card id or key: ${ref}`);
+    }
+  }
+  return ids;
+}
+
+/** output() for a card or a list of them: --quiet prints keys. */
+function outputCard(data, flags) {
+  output(data, flags, cardRef);
+}
+
+/**
+ * A card led by its key and link (`url`), where a reader looks first, with
+ * the id after them. Servers send the link they're reached at; one from
+ * before cards carried it gets a `/c/<id>` link built from AGENTBOARD_URL,
+ * since such a server may not resolve keys there.
  */
 function withCardUrl(card, baseUrl) {
   if (!card || typeof card !== "object" || card.id === undefined) return card;
   const url =
     card.url ?? `${baseUrl.replace(/\/+$/, "")}/c/${encodeURIComponent(String(card.id))}`;
-  const first = { id: card.id, ...(card.key === undefined ? {} : { key: card.key }), url };
+  const key = cardKey(card);
+  const first = { ...(key ? { key } : {}), url, id: card.id };
   return { ...first, ...Object.fromEntries(Object.entries(card).filter(([k]) => !(k in first))) };
 }
 
@@ -677,7 +740,7 @@ function createdLine(card) {
 /** --json and --quiet as usual; the text output leads with where it landed. */
 function outputCreated(card, flags) {
   if (!flags.json && !flags.quiet) process.stdout.write(createdLine(card) + "\n");
-  output(card, flags);
+  outputCard(card, flags);
 }
 
 // ---- Status aliases -------------------------------------------------------
@@ -771,7 +834,7 @@ function findColumn(cols, input) {
 // any move failed, followed by a count and the ids that failed.
 async function moveEach(ids, flags, moveOne) {
   if (ids.length === 1) {
-    output((await moveOne(ids[0])).card, flags);
+    outputCard((await moveOne(ids[0])).card, flags);
     return;
   }
   const results = [];
@@ -780,8 +843,8 @@ async function moveEach(ids, flags, moveOne) {
       const { card, column } = await moveOne(id);
       results.push({ id, ok: true, column: column.slug, card });
       if (flags.json) continue;
-      if (flags.quiet) process.stdout.write(`${id}\n`);
-      else process.stdout.write(`Moved ${id} to ${column.name || column.slug}\n`);
+      if (flags.quiet) process.stdout.write(`${cardRef(card)}\n`);
+      else process.stdout.write(`Moved ${cardRef(card)} to ${column.name || column.slug}\n`);
     } catch (err) {
       if (!(err instanceof CliError)) throw err;
       results.push({ id, ok: false, error: err.message });
@@ -1177,11 +1240,13 @@ const CARD_FIELDS = {
   column: (c) => c.column_name ?? c.column_slug,
   // A card from before members existed names its assignee only as text.
   assignee: (c) => c.assignee_name || c.assignee,
+  // The key the web app shows; the id on a server from before keys.
+  key: cardRef,
 };
 
 // Default tables. Everything else is one --fields or --json away.
-const LIST_FIELDS = ["id", "title", "column", "assignee", "priority"];
-const MY_TASKS_FIELDS = ["id", "title", "product", "board", "column", "priority"];
+const LIST_FIELDS = ["key", "title", "column", "assignee", "priority"];
+const MY_TASKS_FIELDS = ["key", "title", "product", "board", "column", "priority"];
 
 function cardField(card, field) {
   const value = Object.hasOwn(CARD_FIELDS, field) ? CARD_FIELDS[field](card) : card[field];
@@ -1216,7 +1281,7 @@ function withLocation(cards, product, board, columns) {
 }
 
 /**
- * Print a card list. --quiet: ids. --json: the cards, or only --fields.
+ * Print a card list. --quiet: keys. --json: the cards, or only --fields.
  * Otherwise a table of --fields, or of `defaults`; with no defaults, every
  * field, as before. `board` is the board the cards came from, named above the
  * table so a product pinned by the environment is never a silent surprise.
@@ -1224,9 +1289,9 @@ function withLocation(cards, product, board, columns) {
 function outputCards(cards, flags, { defaults = null, product = null, board = null } = {}) {
   let fields = null;
   if (flags.fields !== undefined) {
-    if (flags.quiet) die("--quiet prints ids only; drop it to use --fields");
+    if (flags.quiet) die("--quiet prints card keys only; drop it to use --fields");
     fields = String(flags.fields).split(",").map((f) => f.trim()).filter(Boolean);
-    if (fields.length === 0) die("--fields needs at least one field, e.g. --fields id,column,title");
+    if (fields.length === 0) die("--fields needs at least one field, e.g. --fields key,column,title");
     if (cards.length > 0) {
       const known = new Set([...Object.keys(CARD_FIELDS), ...cards.flatMap((c) => Object.keys(c))]);
       const unknown = fields.filter((f) => !known.has(f));
@@ -1245,7 +1310,7 @@ function outputCards(cards, flags, { defaults = null, product = null, board = nu
     return;
   }
   if (flags.quiet) {
-    output(cards, flags);
+    outputCard(cards, flags);
     return;
   }
   if (product && board) {
@@ -1296,8 +1361,9 @@ Setup:
                                        this agent's key and save it (--name, --force)
 
 Card ids:
-  <id> is a card's number or its readable key: 142, AB-142 or ab-142.
-  A card that moved to another product still answers to its old key.
+  <id> is a card's key, as the web app shows it, or its number: AB-142,
+  ab-142 or 142. Output names cards by key. A card that moved to another
+  product still answers to its old key.
 
 Management Commands:
   org list|add|remove|rename|reorder
@@ -1332,10 +1398,11 @@ Management Commands:
 
 Output:
   --json     JSON output
-  --quiet    IDs only, for commands that print ids (see <command> --help)
+  --quiet    Card keys (or other ids) only, for commands that print them
+             (see <command> --help)
   --fields   list, task list, my-tasks: the fields to print, comma-separated,
-             e.g. id,product,board,column,title. Any card field works, plus
-             product, board, column and assignee. With --json, only these.
+             e.g. key,product,board,column,title. Any card field works, plus
+             key, product, board, column and assignee. With --json, only these.
 
 Unknown or unsupported flags are errors. Flag values may start with "--";
 use --flag=value or quote as usual.
@@ -1494,7 +1561,7 @@ async function main() {
       const cardId = positional[1];
       if (!cardId) die("Usage: agentboard show <id>");
       const data = await req("GET", `/api/cards/${cardId}`);
-      output(withCardUrl(data, remoteUrl), flags);
+      outputCard(withCardUrl(data, remoteUrl), flags);
     }
 
     // ---- rename ----
@@ -1503,7 +1570,7 @@ async function main() {
       const newTitle = positional[2];
       if (!cardId || !newTitle) die("Usage: agentboard rename <id> <title>");
       const data = await req("PATCH", `/api/cards/${cardId}`, { title: newTitle });
-      output(data, flags);
+      outputCard(data, flags);
     }
 
     // ---- notes ----
@@ -1515,7 +1582,7 @@ async function main() {
         const data = await req("PATCH", `/api/cards/${cardId}`, {
           description: String(flags.set),
         });
-        output(data, flags);
+        outputCard(data, flags);
       } else if (flags.append !== undefined) {
         const card = await req("GET", `/api/cards/${cardId}`);
         const current = card.description || "";
@@ -1523,7 +1590,7 @@ async function main() {
         const data = await req("PATCH", `/api/cards/${cardId}`, {
           description: current + sep + String(flags.append),
         });
-        output(data, flags);
+        outputCard(data, flags);
       } else {
         const card = await req("GET", `/api/cards/${cardId}`);
         if (flags.json) {
@@ -1543,7 +1610,7 @@ async function main() {
       }
       const priority = toggle === "on" ? "urgent" : "medium";
       const data = await req("PATCH", `/api/cards/${cardId}`, { priority });
-      output(data, flags);
+      outputCard(data, flags);
     }
 
     // ---- my-tasks ----
@@ -1593,7 +1660,7 @@ async function main() {
     else if (cmd === "today") {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       const data = await req("GET", `/api/cards/views?view=today&tz=${encodeURIComponent(tz)}`);
-      output(data, flags);
+      outputCard(data, flags);
     }
 
     // ---- past-due ----
@@ -1612,7 +1679,7 @@ async function main() {
         "GET",
         `/api/cards/views?view=past-due&member_id=${member.id}&tz=${encodeURIComponent(tz)}`
       );
-      output(data, flags);
+      outputCard(data, flags);
     }
 
     // ================================================================
@@ -1753,7 +1820,7 @@ async function main() {
         } else if (flags.quiet) {
           for (const col of result) {
             for (const card of col.cards) {
-              process.stdout.write(String(card.id) + "\n");
+              process.stdout.write(String(cardRef(card)) + "\n");
             }
           }
         } else {
@@ -1893,7 +1960,7 @@ async function main() {
       } else if (sub === "show") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task show <card-id>");
-        output(withCardUrl(await req("GET", `/api/cards/${id}`), remoteUrl), flags);
+        outputCard(withCardUrl(await req("GET", `/api/cards/${id}`), remoteUrl), flags);
       } else if (sub === "move") {
         const ids = positional.slice(2);
         const usage =
@@ -1973,12 +2040,12 @@ async function main() {
           for (const note of result.notes) process.stderr.write(`${note.replace("{id}", id)}\n`);
           if (result.changed) updates.labels = result.labels;
           if (Object.keys(updates).length === 0) {
-            output(card, flags);
+            outputCard(card, flags);
             return;
           }
         }
         if (Object.keys(updates).length === 0) die("Provide at least one field to update");
-        output(await req("PATCH", `/api/cards/${id}`, updates), flags);
+        outputCard(await req("PATCH", `/api/cards/${id}`, updates), flags);
       } else if (sub === "done") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task done <card-id>");
@@ -1986,7 +2053,7 @@ async function main() {
         if (!cols || cols.length === 0) die("Could not determine board for card");
         const doneCol = cols.find((c) => c.slug === "done");
         if (!doneCol) die("No 'done' column found on this board");
-        output(
+        outputCard(
           await req("PATCH", `/api/cards/${id}/move`, { column_id: doneCol.id }),
           flags
         );
@@ -2011,8 +2078,11 @@ async function main() {
           if (flags.title !== undefined) link.title = flags.title;
           result = await req("POST", `/api/cards/${id}/links`, link);
         }
-        if (Object.keys(body).length > 0) result = await req("PATCH", `/api/cards/${id}`, body);
-        output(result, flags);
+        if (Object.keys(body).length > 0) {
+          outputCard(await req("PATCH", `/api/cards/${id}`, body), flags);
+        } else {
+          output(result, flags);
+        }
       } else if (sub === "links") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task links <card-id>");
@@ -2045,9 +2115,8 @@ async function main() {
         if (!id) die("Usage: agentboard task attachments <card-id>");
         output(await req("GET", `/api/cards/${id}/attachments`), flags);
       } else if (sub === "reorder") {
-        if (!flags.ids) die("Usage: agentboard task reorder --ids <1,2,3>");
-        const ids = String(flags.ids).split(",").map((s) => parseInt(s.trim(), 10));
-        output(await req("PATCH", "/api/cards/reorder", { ids }), flags);
+        if (!flags.ids) die("Usage: agentboard task reorder --ids <AB-1,AB-2,...>");
+        output(await req("PATCH", "/api/cards/reorder", { ids: await cardIdsForReorder(req, flags.ids) }), flags);
       } else {
         die(
           `Unknown task command: ${sub}. Use: add, list, show, move, update, done, remove, link, links, unlink, attach, attachments, reorder`

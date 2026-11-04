@@ -38,25 +38,43 @@ export function publicOrigin(request: Request): string {
 }
 
 /**
- * A card's permanent link, `<origin>/c/<id>`. The id never changes, while a
- * readable key changes when the card moves product (old keys still resolve,
- * but the id is the one every CLI command and API route also takes).
+ * A card's link, `<origin>/c/<ref>`, where `ref` is its key (AB-142) or, for a
+ * card without one, its id. Both stay valid: a card that moves product gets a
+ * new key and still answers to the old one, and /c/ takes either.
  */
-export function cardUrl(origin: string, id: number | string): string {
-  return `${origin}/c/${encodeURIComponent(String(id))}`;
+export function cardUrl(origin: string, ref: number | string): string {
+  return `${origin}/c/${encodeURIComponent(String(ref))}`;
 }
 
-type CardRow = { id: number | string } & Record<string, unknown>;
+type CardRow = {
+  id: number | string;
+  key?: string | null;
+  number?: number | null;
+  product_key?: string | null;
+} & Record<string, unknown>;
+
+/**
+ * What a card's link names: the key the server put on the row, else one built
+ * from the row's product key (cross-product views) or `productKey` (the board
+ * the rows came from) and its number, else the id. Mirrors `cardKey` in
+ * cards.ts, which the web app's Copy link uses.
+ */
+function cardRef(row: CardRow, productKey?: string | null): number | string {
+  if (row.key) return row.key;
+  const prefix = row.product_key || productKey;
+  return prefix && row.number ? `${prefix}-${row.number}` : row.id;
+}
 
 /**
  * Add `url` to a card or a list of cards in an API response. Anything that
- * isn't a card (null, an error body) is returned unchanged.
+ * isn't a card (null, an error body) is returned unchanged. Pass `productKey`
+ * when the rows come from one product and don't carry its key themselves.
  */
-export function withCardUrl<T>(request: Request, data: T): T {
+export function withCardUrl<T>(request: Request, data: T, productKey?: string | null): T {
   const origin = publicOrigin(request);
   const add = (row: unknown) =>
     row && typeof row === "object" && "id" in row
-      ? { ...(row as CardRow), url: cardUrl(origin, (row as CardRow).id) }
+      ? { ...(row as CardRow), url: cardUrl(origin, cardRef(row as CardRow, productKey)) }
       : row;
   return (Array.isArray(data) ? data.map(add) : add(data)) as T;
 }
