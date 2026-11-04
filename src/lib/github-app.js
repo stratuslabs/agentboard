@@ -119,11 +119,18 @@ export function cardRefsInBody(body, origin) {
   // Both forms need a "/" straight after the origin, so a longer host
   // (app.agentboard.to.evil.example) or another port never matches.
   const prefix = escapeRegExp(base);
+  // A reference must end where the app's own parsing ends it, or the webhook
+  // links a card the URL doesn't name: /c/12_draft, /c/12/x, /c/AB-12.5 and
+  // ?card=AB-12-old are not card 12 or AB-12. The URL itself ends at
+  // whitespace, Markdown or quoting, or sentence punctuation before those.
+  const urlEnd = `$|[\\s)\\]>"'<\`*]`;
+  const sentenceEnd = `[.,;:!?]+(?:${urlEnd})`;
+  const permalinkEnd = `(?=${urlEnd}|[?#]|/(?![\\w])|${sentenceEnd})`;
+  const paramEnd = `(?=${urlEnd}|[&#]|${sentenceEnd})`;
   const pattern = new RegExp(
-    `${prefix}(?:/c/([A-Za-z0-9-]*[A-Za-z0-9])(?![\\w-]|/[\\w])|/[^\\s)\\]>"'?#]*\\?(?:[^\\s)\\]>"'#]*&)?card=([0-9]+|[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]{0,9})\\b)`,
+    `${prefix}(?:/c/([A-Za-z0-9-]*[A-Za-z0-9])${permalinkEnd}|/[^\\s)\\]>"'?#]*\\?(?:[^\\s)\\]>"'#]*&)?card=([0-9]+|[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]{0,9})${paramEnd})`,
     "gi"
   );
-  // A permalink must end at the reference: /c/12_draft or /c/12/x is not card 12.
   const refs = [];
   for (const match of body.matchAll(pattern)) {
     const ref = match[1] ?? match[2];

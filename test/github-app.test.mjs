@@ -154,6 +154,50 @@ test("a board link copied from the address bar names the card by key", () => {
   assert.deepEqual(cardRefsInBody(body, origin), ["AB-106", "okb-20", "1344"]);
 });
 
+test("a card reference ends where its URL value ends, not at the first punctuation", () => {
+  const origin = "https://app.agentboard.to";
+  const board = "https://app.agentboard.to/labs/agentboard";
+  // The app reads the whole value (?card=AB-12-old, /c/AB-12.5) and rejects it,
+  // so the webhook must not link the AB-12 prefix and move that card to Done.
+  const malformed = [
+    `${board}?card=AB-12-old`,
+    `${board}?card=AB-12/x`,
+    `${board}?card=AB-12.5`,
+    `${board}?card=AB-12,x`,
+    `${board}?card=AB-12%2F`,
+    `${board}?card=12-old`,
+    `${board}?card=12.5`,
+    `${board}?x=1&card=12_draft`,
+    `${origin}/c/AB-12.5`,
+    `${origin}/c/12.5`,
+    `${origin}/c/AB-12,x`,
+    `${origin}/c/12%2F`,
+  ];
+  for (const text of malformed) {
+    assert.deepEqual(cardRefsInBody(`See ${text} here`, origin), [], text);
+    assert.deepEqual(cardRefsInBody(text, origin), [], text);
+  }
+
+  // Prose and Markdown around a well-formed link still end it.
+  const body = [
+    `Sentence end ${board}?card=AB-1.`,
+    `List ${board}?card=AB-2, then more`,
+    `Markdown [card](${board}?card=AB-3)`,
+    `Angle <${board}?card=AB-4>`,
+    `Fragment ${board}?card=AB-5#top`,
+    `More params ${board}?card=AB-6&view=full`,
+    `Bold **${board}?card=AB-7**`,
+    `Quoted "${board}?card=8"`,
+    `Excited ${board}?card=9!`,
+    `Permalink ${origin}/c/AB-10?view=full and ${origin}/c/11#x`,
+    `Trailing slash ${origin}/c/AB-12/ and colon ${origin}/c/13: done`,
+    `Last ${board}?card=AB-14`,
+  ].join("\n");
+  assert.deepEqual(cardRefsInBody(body, origin), [
+    "AB-1", "AB-2", "AB-3", "AB-4", "AB-5", "AB-6", "AB-7", "8", "9", "AB-10", "11", "AB-12", "13", "AB-14",
+  ]);
+});
+
 test("the History line says what happened", () => {
   const date = new Date("2026-10-31T12:00:00Z");
   const pr = { repo: "stratuslabs/agentboard", number: 98, url: "https://github.com/stratuslabs/agentboard/pull/98" };
