@@ -105,8 +105,11 @@ agentboard rename <id> "New title"
 
 # Manage notes (description)
 agentboard notes <id>                     # view notes
-agentboard notes <id> --set "Full text"   # replace notes
+agentboard notes <id> --set "Full text"   # replace notes (prints old and new length)
 agentboard notes <id> --append "More"     # append to notes
+agentboard notes <id> --clear             # empty notes on purpose
+# --set "" (or only whitespace) is refused, so a script whose generator
+# failed can't wipe a card. task update --description "" is refused too.
 
 # Toggle attention flag (sets priority to urgent/medium)
 agentboard attention <id> on
