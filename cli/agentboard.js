@@ -40,6 +40,27 @@ function die(msg, code = 1) {
 // failure and carry on; anything that doesn't catch it exits as die() would.
 class CliError extends Error {}
 
+// ---- Descriptions ---------------------------------------------------------
+
+// A description change that would leave the card with no text. A script's
+// `--set "$(generate)"` passes "" when the generator fails, and that used to
+// wipe the card's description without a word (AB-110), so empty text is
+// refused and `notes <id> --clear` is the way to empty one on purpose.
+function isBlank(text) {
+  return String(text).trim() === "";
+}
+
+function blankDescriptionError(flag, id) {
+  return `${flag} has no text, so it would wipe the description of ${id}. Nothing was changed. ` +
+    `To empty a description on purpose, run: agentboard notes ${id} --clear`;
+}
+
+// "12 characters", counted as people count them, not in UTF-16 code units.
+function characters(text) {
+  const n = Array.from(String(text ?? "")).length;
+  return `${n} character${n === 1 ? "" : "s"}`;
+}
+
 // ---- Label edits ----------------------------------------------------------
 
 // Labels are stored as one comma-separated string. These split it the same
@@ -103,7 +124,7 @@ function applyLabelEdit(current, { add, remove }) {
 
 // ---- Arg parser -----------------------------------------------------------
 
-const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version", "force"]);
+const BOOLEAN_FLAGS = new Set(["json", "quiet", "include-done", "help", "version", "force", "clear"]);
 
 // Flags that always take a value. The next argument is consumed even when it
 // starts with "--", so `--description "--dry-run is broken"` keeps its text
@@ -134,7 +155,7 @@ const COMMAND_FLAGS = {
   status: [],
   show: [],
   rename: [],
-  notes: ["set", "append"],
+  notes: ["set", "append", "clear"],
   attention: [],
   "my-tasks": ["assignee", "fields"],
   today: [],
@@ -225,7 +246,8 @@ const FLAG_HELP = {
   color: ["<hex>", "Color, e.g. #3B82F6"],
   "avatar-url": ["<url>", "Avatar image URL"],
   position: ["<n>", "Position on the board"],
-  set: ["<text>", "Replace the description"],
+  set: ["<text>", "Replace the description. Empty text is refused; use --clear"],
+  clear: ["", "Empty the description on purpose"],
   append: ["<text>", "Add text to the end of the description"],
   key: ["<k>", "Key to change (with --value)"],
   value: ["<v>", "Value to set: JSON, or plain text"],
@@ -253,9 +275,9 @@ const COMMAND_HELP = {
   show: { usage: ["show <id>"], summary: "Show a card's details, with its link (url)." },
   rename: { usage: ["rename <id> <title>"], summary: "Rename a card." },
   notes: {
-    usage: ["notes <id>"],
-    summary: "Print a card's description, or change it with --set or --append.",
-    flags: { quiet: "With --set or --append, the card key only. Reading prints the description either way" },
+    usage: ["notes <id>", "notes <id> --set <text> | --append <text> | --clear"],
+    summary: "Print a card's description, or change it with --set, --append or --clear.",
+    flags: { quiet: "With --set, --append or --clear, the card key only. Reading prints the description either way" },
   },
   attention: { usage: ["attention <id> on|off"], summary: "Set a card's priority to urgent (on) or medium (off)." },
   "my-tasks": {
@@ -321,7 +343,11 @@ const COMMAND_HELP = {
   "task update": {
     usage: ["task update <id> [options]"],
     summary: "Change a card's fields. Only the flags you pass change.",
-    flags: { label: "Replace all labels, comma-separated ('' clears them)", assignee: "Assign to this member" },
+    flags: {
+      label: "Replace all labels, comma-separated ('' clears them)",
+      assignee: "Assign to this member",
+      description: "New description (Markdown). Empty text is refused; empty it with notes <id> --clear",
+    },
   },
   "task done": { usage: ["task done <id>"], summary: "Move a card to Done." },
   "task remove": { usage: ["task remove <id>"], summary: "Delete a card." },
@@ -1362,7 +1388,7 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   show <id>                            Show card details, with its link (url)
   rename <id> <title>                  Rename a card
   notes <id>                           View description
-    --set <text>  --append <text>
+    --set <text>  --append <text>  --clear
   attention <id> on|off                Set priority to urgent/medium
   my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME,
                                        with product, board and column (--fields <a,b>)
@@ -1590,12 +1616,24 @@ async function main() {
     else if (cmd === "notes") {
       const cardId = positional[1];
       if (!cardId) die("Usage: agentboard notes <id>");
+      const changes = ["set", "append", "clear"].filter((f) => flags[f] !== undefined);
+      if (changes.length > 1) die("Use only one of --set, --append and --clear");
+      if (flags.set !== undefined && isBlank(flags.set)) die(blankDescriptionError("--set", cardId));
 
-      if (flags.set !== undefined) {
-        const data = await req("PATCH", `/api/cards/${cardId}`, {
-          description: String(flags.set),
-        });
+      if (flags.set !== undefined || flags.clear) {
+        // Read it first only to say how much text is being replaced, so a
+        // wrong --set shows up in the output instead of on the card later.
+        const before = await req("GET", `/api/cards/${cardId}`);
+        const description = flags.clear ? "" : String(flags.set);
+        const data = await req("PATCH", `/api/cards/${cardId}`, { description });
         outputCard(data, flags);
+        const ref = cardRef(data) ?? cardId;
+        const was = characters(before.description);
+        process.stderr.write(
+          flags.clear
+            ? `Cleared the description of ${ref} (was ${was}).\n`
+            : `Replaced the description of ${ref} (was ${was}, now ${characters(description)}).\n`
+        );
       } else if (flags.append !== undefined) {
         const card = await req("GET", `/api/cards/${cardId}`);
         const current = card.description || "";
@@ -2034,6 +2072,9 @@ async function main() {
       } else if (sub === "update") {
         const id = positional[2];
         if (!id) die("Usage: agentboard task update <card-id> [--field value]");
+        if (flags.description !== undefined && isBlank(flags.description)) {
+          die(blankDescriptionError("--description", id));
+        }
         const labelEdit = parseLabelEdit(flags);
         const updates = {};
         if (flags.title) updates.title = flags.title;

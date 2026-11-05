@@ -95,13 +95,13 @@ test("notes --set reports the old and new length on stderr", async () => {
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(patches(), [{ method: "PATCH", url: "/api/cards/5", body: { description: "Brand new text" } }]);
   assert.equal(JSON.parse(r.stdout).description, "Brand new text", "stdout stays plain JSON");
-  assert.match(r.stderr, /Replaced the description of AB-5 \(was 9 characters, now 14\)/);
+  assert.match(r.stderr, /Replaced the description of AB-5 \(was 9 characters, now 14 characters\)/);
 });
 
-test("--clear can't be combined with --set or --append", async () => {
-  for (const other of [["--set", "x"], ["--append", "x"]]) {
-    const r = await run("notes", "5", "--clear", ...other);
-    assert.notEqual(r.code, 0, `--clear ${other[0]} should fail`);
+test("only one of --set, --append and --clear at a time", async () => {
+  for (const args of [["--clear", "--set", "x"], ["--clear", "--append", "x"], ["--set", "x", "--append", "y"]]) {
+    const r = await run("notes", "5", ...args);
+    assert.notEqual(r.code, 0, `${JSON.stringify(args)} should fail`);
     assert.deepEqual(requests, []);
     assert.match(r.stderr, /--clear/);
   }
