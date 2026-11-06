@@ -32,8 +32,8 @@ const ROWS = [
   },
   {
     id: 2, key: "INF-4", title: "Runner docs", product_slug: "infra", product_name: "Infra",
+    // Matched on its description, which a search row doesn't carry.
     board_name: "Ops", column_name: "Inbox", done: false, url: "http://x/c/INF-4",
-    description: "mentions task link in passing",
   },
   {
     id: 3, key: "WEB-2", title: "Old task link bug", product_slug: "web", product_name: "Web App",
@@ -155,6 +155,20 @@ test("--json prints the rows, and --fields picks what to print", async () => {
   const [header, , first] = lines(fields.stdout);
   assert.deepEqual(cells(header), ["key", "product"]);
   assert.deepEqual(cells(first), ["WEB-1", "web"]);
+});
+
+// A search row is the card's title, priority, labels and where it lives, not
+// the whole card. A field it doesn't carry is an error that says so and
+// points at `show`, rather than a blank column that reads as "no due date".
+test("--fields outside a search row is an error that points at show", async () => {
+  for (const field of ["description", "due_date"]) {
+    const r = await run(["search", "task link", "--fields", `key,${field}`]);
+    assert.equal(r.code, 1, field);
+    assert.match(r.stderr, new RegExp(`Unknown field: ${field}\\.`));
+    assert.match(r.stderr, /Search rows carry only these/);
+    assert.match(r.stderr, /agentboard show <key>/);
+    assert.equal(r.stdout, "");
+  }
 });
 
 test("no text is a usage error", async () => {
