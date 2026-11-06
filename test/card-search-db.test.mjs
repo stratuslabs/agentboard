@@ -207,7 +207,7 @@ test("exclude_done=1 leaves out cards in a Done column, before the cap", { skip 
 });
 
 test("a malformed product_id or exclude_done is a 400", { skip }, async () => {
-  for (const extra of ["&product_id=abc", "&product_id=0", "&product_id=-1", "&product_id=1.5", "&product_id=", "&exclude_done=yes"]) {
+  for (const extra of ["&product_id=abc", "&product_id=0", "&product_id=-1", "&product_id=1.5", "&product_id=", "&product_id=99999999999", "&exclude_done=yes"]) {
     const r = await search("login", extra);
     assert.equal(r.status, 400, extra);
     assert.match(r.data.error, /product_id|exclude_done/, extra);
