@@ -1475,8 +1475,9 @@ Output:
              (see <command> --help)
   --fields   list, task list, my-tasks, search: the fields to print,
              comma-separated, e.g. key,product,board,column,title. Any card
-             field works, plus key, product, board, column and assignee. With
-             --json, only these.
+             field works, plus key, product, board, column and assignee
+             (search rows carry fewer; see search --help). With --json, only
+             these.
 
 Unknown or unsupported flags are errors. Flag values may start with "--";
 use --flag=value or quote as usual.
