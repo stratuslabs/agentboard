@@ -134,7 +134,7 @@ const VALUE_FLAGS = new Set([
   "priority", "assignee", "label", "description", "due", "title",
   "issue", "pr", "url", "file", "ids", "name", "emoji", "org", "type", "color",
   "avatar-url", "position", "set", "append", "key", "value", "out", "fields",
-  "add-label", "remove-label",
+  "add-label", "remove-label", "before", "after",
 ]);
 
 // Value flags that may be given more than once. Their values collect into an
@@ -189,7 +189,7 @@ const COMMAND_FLAGS = {
   "task add": ["product", "board", "column", "description", "priority", "label", "assignee", "due"],
   "task list": ["product", "board", "column", "assignee", "priority", "label", "fields"],
   "task show": [],
-  "task move": ["column", "to-product", "to-board"],
+  "task move": ["column", "to-product", "to-board", "before", "after"],
   "task update": ["title", "description", "assignee", "priority", "label", "add-label", "remove-label", "due", "issue", "pr"],
   "task done": [],
   "task remove": [],
@@ -227,6 +227,8 @@ const FLAG_HELP = {
   column: ["<col>", "Column slug or name, any case"],
   "to-product": ["<slug>", "Product to move the card to (needs --to-board)"],
   "to-board": ["<slug>", "Board to move the card to"],
+  before: ["<id>", "Put the cards directly above this card, in its column"],
+  after: ["<id>", "Put the cards directly below this card, in its column"],
   priority: ["<p>", "urgent, high, medium or low"],
   label: ["<l>", "Labels, comma-separated"],
   assignee: ["<name>", "Member name or id"],
@@ -345,10 +347,11 @@ const COMMAND_HELP = {
   "task move": {
     usage: [
       "task move <id> [<id> ...] --column <col>",
+      "task move <id> [<id> ...] --before <id> | --after <id>",
       "task move <id> --to-board <slug> [--column <col>]",
       "task move <id> --to-product <slug> --to-board <slug> [--column <col>]",
     ],
-    summary: "Move cards to another column, or one card to another board or product.",
+    summary: "Move cards to another column or next to another card, or one card to another board or product.",
     flags: { column: "Column slug or name, any case (default: the card's current column slug)" },
   },
   "task update": {
@@ -913,6 +916,87 @@ async function moveEach(ids, flags, moveOne) {
   }
 }
 
+/** A card number or key (142, AB-142, ab-142), the forms every card command takes. */
+function isCardRef(ref) {
+  return /^[1-9][0-9]*$/.test(ref) || /^[A-Za-z][A-Za-z0-9]{1,9}-[1-9][0-9]*$/.test(ref);
+}
+
+/**
+ * `task move <id> [<id> ...] --before <id> | --after <id>` (AB-112): put cards
+ * directly above or below another card, as a drag on the board does. The cards
+ * join that card's column in the order given, then the whole column is written
+ * back in its new order through the reorder route, the same two calls the
+ * board makes after a drag. Writing only the moved cards' positions would
+ * collide with the cards around them, which is why a partial
+ * `task reorder --ids` list didn't work for this.
+ *
+ * Every card is looked up before anything is written, so a typo moves
+ * nothing, and running the same command again leaves the column as it is.
+ */
+async function placeCards(req, refs, flags) {
+  const placement = flags.before !== undefined ? "before" : "after";
+  const anchorRef = String(flags[placement]);
+  for (const ref of [anchorRef, ...refs]) {
+    if (!isCardRef(ref)) die(`Not a card id or key: ${ref || "(empty)"}`);
+  }
+  const lookUp = (ref) =>
+    req("GET", `/api/cards/${encodeURIComponent(ref)}`, undefined, {
+      404: `No card answers to ${ref}; nothing was moved`,
+    });
+
+  const anchor = await lookUp(anchorRef);
+  if (anchor.board_id === undefined || anchor.column_id === undefined) {
+    throw new CliError(`This server is too old for --${placement}; update AgentBoard.`);
+  }
+  const moving = [];
+  for (const ref of refs) {
+    const card = await lookUp(ref);
+    if (card.id === anchor.id) {
+      throw new CliError(`Can't put ${cardRef(anchor)} next to itself; nothing was moved`);
+    }
+    if (card.board_id !== anchor.board_id) {
+      throw new CliError(
+        `${cardRef(card)} and ${cardRef(anchor)} are on different boards ` +
+          `(${card.board_slug ?? card.board_id} and ${anchor.board_slug ?? anchor.board_id}); nothing was moved. ` +
+          `Move ${cardRef(card)} to ${anchor.board_slug ?? "that board"} first with --to-board, then run --${placement} again.`
+      );
+    }
+    if (!moving.some((c) => c.id === card.id)) moving.push(card);
+  }
+
+  // The column as the board shows it. A server that ignored column_id would
+  // answer with every card, so only the anchor's column counts.
+  const columnCards = async () =>
+    (await req("GET", `/api/cards?column_id=${encodeURIComponent(anchor.column_id)}`)).filter(
+      (c) => c.column_id === anchor.column_id
+    );
+  const movingIds = new Set(moving.map((c) => c.id));
+  const rest = (await columnCards()).map((c) => c.id).filter((id) => !movingIds.has(id));
+  const at = rest.indexOf(anchor.id);
+  if (at === -1) {
+    throw new CliError(`${cardRef(anchor)} left its column while this ran; nothing was moved. Run it again.`);
+  }
+  const split = placement === "before" ? at : at + 1;
+  const ids = [...rest.slice(0, split), ...moving.map((c) => c.id), ...rest.slice(split)];
+
+  for (const card of moving) {
+    if (card.column_id !== anchor.column_id) {
+      await req("PATCH", `/api/cards/${card.id}/move`, { column_id: anchor.column_id, position: ids.indexOf(card.id) });
+    }
+  }
+  await req("PATCH", "/api/cards/reorder", { ids });
+
+  // Read the cards back, so the output shows where they landed.
+  const landed = new Map((await columnCards()).map((c) => [c.id, c]));
+  const placed = moving.map((c) => landed.get(c.id) ?? c);
+  if (placed.length > 1 && !flags.json && !flags.quiet) {
+    const column = anchor.column_name || anchor.column_slug || "its column";
+    process.stdout.write(`Moved ${placed.map(cardRef).join(", ")} ${placement} ${cardRef(anchor)} in ${column}\n`);
+  } else {
+    outputCard(placed.length === 1 ? placed[0] : placed, flags);
+  }
+}
+
 // ===========================================================================
 // HTTP request helper
 // ===========================================================================
@@ -1454,6 +1538,7 @@ Management Commands:
     task update <id> --remove-label <l>           Remove only these labels
     task update <id> --label <l>                  Replace all labels ('' clears them)
     task move <id> [<id> ...] --column <col>
+    task move <id> [<id> ...] --before|--after <id>   Put cards above or below a card
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
   settings [--key <k> --value <v>]
@@ -2084,8 +2169,23 @@ async function main() {
         const ids = positional.slice(2);
         const usage =
           "Usage: agentboard task move <card-id> [<card-id> ...] --column <slug>\n" +
+          "       agentboard task move <card-id> [<card-id> ...] --before <card-id> | --after <card-id>\n" +
           "       agentboard task move <card-id> --to-board <slug> [--column <slug>]\n" +
           "       agentboard task move <card-id> --to-product <slug> --to-board <slug> [--column <slug>]";
+        const placement = ["before", "after"].filter((f) => flags[f] !== undefined);
+        if (placement.length > 0) {
+          if (ids.length === 0) die(usage);
+          if (placement.length > 1) die("Use --before or --after, not both.");
+          const other = ["column", "to-board", "to-product"].find((f) => flags[f] !== undefined);
+          if (other) {
+            die(
+              `--${placement[0]} can't be combined with --${other}: the cards go into the column of the card it names. ` +
+                `To change boards, move with --to-board first, then run --${placement[0]}.`
+            );
+          }
+          await placeCards(req, ids, flags);
+          return;
+        }
         if (ids.length === 0 || !(flags.column || flags["to-board"] || flags["to-product"])) die(usage);
         // A product has several boards; picking one silently would be a guess.
         if (flags["to-product"] && !flags["to-board"]) {

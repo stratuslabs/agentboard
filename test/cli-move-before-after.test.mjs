@@ -30,6 +30,8 @@ let cards;
 /** @type {{ method: string, url: string, body: unknown }[]} */
 let requests = [];
 let failReorder = false;
+// An older server that ignores ?column_id= and lists every card.
+let ignoreColumnFilter = false;
 let server;
 let baseUrl;
 
@@ -46,6 +48,7 @@ function reset() {
   add(9, 101, 0);
   add(20, 201, 0);
   failReorder = false;
+  ignoreColumnFilter = false;
 }
 
 function withLocation(card) {
@@ -93,7 +96,7 @@ before(async () => {
       };
       let m;
       if (req.method === "GET" && url.pathname === "/api/cards") {
-        const columnId = Number(url.searchParams.get("column_id"));
+        const columnId = ignoreColumnFilter ? 0 : Number(url.searchParams.get("column_id"));
         const rows = [...cards.values()]
           .filter((c) => !columnId || c.column_id === columnId)
           .sort(byBoardOrder)
@@ -204,6 +207,26 @@ test("running the same move twice changes nothing the second time", async () => 
   assert.deepEqual(order(102), once);
 });
 
+test("a card named twice is placed once", async () => {
+  const r = await run("task", "move", "AB-3", "3", "--before", "AB-1", "--quiet");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(order(102), ["AB-3", "AB-1", "AB-2", "AB-4"]);
+  assert.deepEqual(r.stdout.split("\n").filter(Boolean), ["AB-3"]);
+  const reorder = requests.find((q) => q.url === "/api/cards/reorder");
+  assert.deepEqual(reorder.body.ids, [3, 1, 2, 4]);
+});
+
+test("a server that lists every card for ?column_id= leaves other columns' positions alone", async () => {
+  ignoreColumnFilter = true;
+  cards.get(9).position = 7;
+  cards.get(20).position = 5;
+  const r = await run("task", "move", "AB-4", "--before", "AB-2");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(order(102), ["AB-1", "AB-4", "AB-2", "AB-3"]);
+  assert.equal(cards.get(9).position, 7);
+  assert.equal(cards.get(20).position, 5);
+});
+
 test("--json prints the moved card with its new position; several cards print a list", async () => {
   const one = await run("task", "move", "AB-4", "--before", "AB-1", "--json");
   assert.equal(one.code, 0, one.stderr);
@@ -250,7 +273,7 @@ test("a moving card that isn't a card stops the move before anything changes", a
 });
 
 test("an anchor on another board is refused, pointing at --to-board", async () => {
-  await refused(["task", "move", "AB-4", "--before", "AB-20"], /another board.*--to-board/);
+  await refused(["task", "move", "AB-4", "--before", "AB-20"], /different boards.*--to-board/);
 });
 
 test("--column or --to-board alongside --before is refused", async () => {

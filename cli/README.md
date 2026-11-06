@@ -172,6 +172,8 @@ agentboard task add "Title" --product <slug> --board <slug> [options]
 agentboard task list --product <slug> --board <slug> [--assignee X --priority X]
 agentboard task show <id>
 agentboard task move <id> [<id> ...] --column <slug>             # same board
+agentboard task move <id> [<id> ...] --before <id>               # directly above that card, in its column
+agentboard task move <id> [<id> ...] --after <id>                # directly below it
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
@@ -187,7 +189,7 @@ agentboard task link <id> --issue <url>
 agentboard task link <id> --pr <url>
 agentboard task attach <id> --file <path>
 agentboard task attachments <id>
-agentboard task reorder --ids 1,2,3
+agentboard task reorder --ids 1,2,3                # a whole column, in its new order
 
 # Attachments (ids come from `task attachments <card-id>`)
 agentboard attachment get <id>                   # print the content to stdout
@@ -217,6 +219,8 @@ Every card has a key made of its product's key and a per-product number, like `A
 `task move` keeps the card's current column slug unless `--column` is given, and fails with the destination's available columns if that slug doesn't exist there. The output includes the card's new `product_slug`, `board_slug` and `column_slug`. Labels and assignee carry over unchanged.
 
 `status` and `task move --column` take several ids. Each card is moved on its own: one that fails (no such card, no such column on its board) is reported as `Error: <id>: ...` and the rest still move. Each moved card prints `Moved <key> to <column>`, or just its key with `--quiet`; `--json` prints one `{ id, ok, column, card | error }` per card. If any failed, the last line counts them and lists their ids, and the exit code is 1. Moving several cards to another board (`--to-board`) isn't supported; with one id the output is the moved card, as before.
+
+`task move --before <id>` and `--after <id>` put cards directly above or below another card, the way dragging them on the board does: `task move AB-7 --before AB-3` puts AB-7 right above AB-3, in AB-3's column, and `task move AB-7 AB-9 --after AB-3` puts both below it in that order. A card from another column on the same board moves into that column. The whole column is renumbered in its new order, as after a drag, so the board shows exactly that order. Every card is looked up first, so a card that doesn't exist, the anchor itself, or a card on another board moves nothing; move a card with `--to-board` first, then place it. `--before` and `--after` can't be combined with each other, `--column` or `--to-board`. With one card the output is the card; with several it is one `Moved <keys> before <key> in <column>` line, their keys with `--quiet`, or the cards with `--json`. `task reorder --ids` sets the order of the cards it is given, so give it the whole column.
 
 A column's slug follows its name. `column rename 12 --name "Can't replicate"` changes the slug from `todo` to `can-t-replicate`, so `status <id> todo` stops finding that column and fails with the board's columns instead of moving a card somewhere that no longer means Todo. A rename whose slug another column on the board already uses is refused. Columns renamed before this rule get their slug updated once when the server starts.
 
