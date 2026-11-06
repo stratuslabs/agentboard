@@ -83,7 +83,18 @@ DELETE /api/cards/:id
 PATCH  /api/cards/:id/move { column_id, position? }
 PATCH  /api/cards/reorder  { ids: [1, 2, 3] }
 GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_id=
+GET    /api/cards/search?q=&limit=&product_id=&exclude_done=1
 ```
+
+`GET /api/cards/search` finds cards anywhere in the team. Every word of `q`
+has to be in the title, description or labels, or name the card by key
+(`AB-12`, old keys too) or number (`#41`, `41`). Cards a key names come first,
+then title matches, then the rest, with open cards before ones in a Done
+column. `limit` is 20 by default and at most 50. `product_id` keeps to one
+product and `exclude_done=1` leaves out cards in a Done column; both apply
+before the limit, and a malformed value is a `400`. Each row carries `key`,
+`url`, `done` and where the card lives (`product_id`, `product_slug`,
+`board_name`, `board_slug`, `column_name`, `column_slug`, ...).
 
 Card creation accepts an `X-Agent-Name` header. The named agent is registered
 as a member on first use and assigned to the card, unless the request names

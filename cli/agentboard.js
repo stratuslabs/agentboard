@@ -158,6 +158,7 @@ const COMMAND_FLAGS = {
   notes: ["set", "append", "clear"],
   attention: [],
   "my-tasks": ["assignee", "fields"],
+  search: ["product", "include-done", "fields"],
   today: [],
   "past-due": ["assignee"],
   "org list": [],
@@ -284,6 +285,16 @@ const COMMAND_HELP = {
     usage: ["my-tasks"],
     summary: "Cards assigned to you, with product, board and column.",
     flags: { assignee: "Member name or id (default: AGENTBOARD_AGENT_NAME)" },
+  },
+  search: {
+    usage: ["search <text>"],
+    summary:
+      "Find cards in every product whose title, description or labels hold every word, or by key (AB-142). Done is hidden unless --include-done.",
+    flags: {
+      product: "Only this product's cards (default: every product; AGENTBOARD_PRODUCT is not used)",
+      fields:
+        "Fields to print, comma-separated: key, id, number, title, priority, labels, updated_at, url, done, product, board, column, assignee. show <key> has the rest",
+    },
   },
   today: { usage: ["today"], summary: "Cards due today." },
   "past-due": {
@@ -415,7 +426,7 @@ function quietPrintsNoIds(key) {
 
 // Commands that print cards, whose --quiet prints card keys rather than ids.
 const CARD_COMMANDS = new Set([
-  "list", "new", "status", "show", "rename", "attention", "my-tasks", "today", "past-due",
+  "list", "new", "status", "show", "rename", "attention", "my-tasks", "search", "today", "past-due",
   "board view", "task add", "task list", "task show", "task move", "task update", "task done",
 ]);
 const QUIET_CARD_KEYS = "Card keys only (AB-142), or ids on a server without keys";
@@ -1286,6 +1297,24 @@ const CARD_FIELDS = {
 // Default tables. Everything else is one --fields or --json away.
 const LIST_FIELDS = ["key", "title", "column", "assignee", "priority"];
 const MY_TASKS_FIELDS = ["key", "title", "product", "board", "column", "priority"];
+const SEARCH_FIELDS = ["key", "title", "product", "board", "column"];
+
+// The most cards GET /api/cards/search returns at once.
+const SEARCH_LIMIT = 50;
+
+/**
+ * Search rows that pass search's own filters. A server from before AB-111
+ * ignores product_id and exclude_done, so the CLI applies them too; a row from
+ * such a server has no product_id, and names its product by slug and name.
+ */
+function searchMatches(rows, { product = null, includeDone = false } = {}) {
+  return rows.filter((c) => {
+    if (!includeDone && c.done === true) return false;
+    if (!product) return true;
+    if (c.product_id != null) return String(c.product_id) === String(product.id);
+    return c.product_slug === product.slug && c.product_name === product.name;
+  });
+}
 
 function cardField(card, field) {
   const value = Object.hasOwn(CARD_FIELDS, field) ? CARD_FIELDS[field](card) : card[field];
@@ -1324,8 +1353,10 @@ function withLocation(cards, product, board, columns) {
  * Otherwise a table of --fields, or of `defaults`; with no defaults, every
  * field, as before. `board` is the board the cards came from, named above the
  * table so a product pinned by the environment is never a silent surprise.
+ * `unknownHint` follows the list of available fields when --fields names one
+ * the cards don't carry.
  */
-function outputCards(cards, flags, { defaults = null, product = null, board = null } = {}) {
+function outputCards(cards, flags, { defaults = null, product = null, board = null, unknownHint = null } = {}) {
   let fields = null;
   if (flags.fields !== undefined) {
     if (flags.quiet) die("--quiet prints card keys only; drop it to use --fields");
@@ -1337,7 +1368,8 @@ function outputCards(cards, flags, { defaults = null, product = null, board = nu
       if (unknown.length > 0) {
         die(
           `Unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. ` +
-            `Available: ${[...known].sort().join(", ")}`
+            `Available: ${[...known].sort().join(", ")}` +
+            (unknownHint ? `. ${unknownHint}` : "")
         );
       }
     }
@@ -1392,6 +1424,8 @@ Simple Commands (use AGENTBOARD_PRODUCT / AGENTBOARD_BOARD env vars):
   attention <id> on|off                Set priority to urgent/medium
   my-tasks                             Tasks assigned to AGENTBOARD_AGENT_NAME,
                                        with product, board and column (--fields <a,b>)
+  search <text>                        Cards in every product matching every word,
+                                       or a key (--product <slug>, --include-done)
   today                                Tasks due today
   past-due                             Overdue tasks
 
@@ -1439,9 +1473,11 @@ Output:
   --json     JSON output
   --quiet    Card keys (or other ids) only, for commands that print them
              (see <command> --help)
-  --fields   list, task list, my-tasks: the fields to print, comma-separated,
-             e.g. key,product,board,column,title. Any card field works, plus
-             key, product, board, column and assignee. With --json, only these.
+  --fields   list, task list, my-tasks, search: the fields to print,
+             comma-separated, e.g. key,product,board,column,title. Any card
+             field works, plus key, product, board, column and assignee
+             (search rows carry fewer; see search --help). With --json, only
+             these.
 
 Unknown or unsupported flags are errors. Flag values may start with "--";
 use --flag=value or quote as usual.
@@ -1662,6 +1698,38 @@ async function main() {
       const priority = toggle === "on" ? "urgent" : "medium";
       const data = await req("PATCH", `/api/cards/${cardId}`, { priority });
       outputCard(data, flags);
+    }
+
+    // ---- search ----
+    // Every product unless --product: AGENTBOARD_PRODUCT pins the commands that
+    // work on one board, and a search that only looked there would miss the
+    // duplicate it was run to find.
+    else if (cmd === "search") {
+      const text = positional.slice(1).join(" ").trim();
+      if (!text) die("Usage: agentboard search <text> [--product <slug>] [--include-done]");
+      const product = flags.product ? await resolve.resolveProduct(flags.product) : null;
+      const includeDone = Boolean(flags["include-done"]);
+
+      const params = new URLSearchParams({ q: text, limit: String(SEARCH_LIMIT) });
+      if (product) params.set("product_id", String(product.id));
+      if (!includeDone) params.set("exclude_done", "1");
+      const rows = await req("GET", `/api/cards/search?${params.toString()}`, undefined, {
+        404: "This server has no card search; update AgentBoard, or use list --include-done on each board",
+      });
+      if (!Array.isArray(rows)) die(`Expected a list of cards from /api/cards/search, got: ${snippet(JSON.stringify(rows))}`);
+
+      // A search row is the card's title, priority, labels and where it lives,
+      // not the whole card, so a field like description or due_date is `show`'s.
+      outputCards(searchMatches(rows, { product, includeDone }), flags, {
+        defaults: SEARCH_FIELDS,
+        unknownHint: "Search rows carry only these; agentboard show <key> prints the whole card",
+      });
+      // The server stops at SEARCH_LIMIT. An older one counts cards the CLI
+      // then filters out, so fewer may show; either way, more may match.
+      if (rows.length >= SEARCH_LIMIT) {
+        const narrow = product ? "Add words to narrow it." : "Add words or --product to narrow it.";
+        process.stderr.write(`Search stopped at ${SEARCH_LIMIT} matches; more cards may match. ${narrow}\n`);
+      }
     }
 
     // ---- my-tasks ----

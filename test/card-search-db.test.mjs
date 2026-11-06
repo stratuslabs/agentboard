@@ -185,3 +185,38 @@ test("results are capped, 20 by default and at most 50", { skip }, async () => {
   assert.ok(card.data.length <= 20);
   assert.equal((await search("bulk", "&limit=abc")).status, 200);
 });
+
+// `agentboard search --product` and its default of hiding Done (AB-111) ask
+// the server to filter, so the 50-row cap applies to the cards wanted rather
+// than to whatever ranked first.
+
+test("product_id keeps the search to one product, before the cap", { skip }, async () => {
+  assert.deepEqual(titles(await search("login", `&product_id=${okb.id}`)), ["Login for the docs site"]);
+  // Unfiltered, the newest match comes first and fills a one-row page.
+  assert.notEqual(titles(await search("login", "&limit=1"))[0], "Fix login redirect");
+  assert.deepEqual(titles(await search("login", `&product_id=${ab.id}&limit=1`)), ["Fix login redirect"]);
+  assert.deepEqual(titles(await search("login", "&product_id=999999999")), []);
+});
+
+test("exclude_done=1 leaves out cards in a Done column, before the cap", { skip }, async () => {
+  const open = titles(await search("login", "&exclude_done=1"));
+  assert.deepEqual(new Set(open), new Set(["Fix login redirect", "Login for the docs site"]));
+  assert.deepEqual(titles(await search("copy", "&exclude_done=1")), []);
+  assert.deepEqual(titles(await search("copy")), ["Login page copy"], "still found without it");
+  assert.deepEqual(titles(await search("copy", "&exclude_done=0")), ["Login page copy"]);
+});
+
+test("a malformed product_id or exclude_done is a 400", { skip }, async () => {
+  for (const extra of ["&product_id=abc", "&product_id=0", "&product_id=-1", "&product_id=1.5", "&product_id=", "&product_id=99999999999", "&exclude_done=yes"]) {
+    const r = await search("login", extra);
+    assert.equal(r.status, 400, extra);
+    assert.match(r.data.error, /product_id|exclude_done/, extra);
+  }
+});
+
+test("each result names its product id and board and column slugs", { skip }, async () => {
+  const [hit] = (await search("redirect")).data;
+  assert.equal(hit.product_id, ab.id);
+  assert.equal(hit.board_slug, "development");
+  assert.equal(typeof hit.column_slug, "string");
+});
