@@ -7,6 +7,9 @@
 // through failed the INSERT or UPDATE with "invalid byte sequence", an HTTP
 // 500 (AB-117). Every string a card write stores is checked for one first.
 //
+// Priority is one of four words, as the cards table's CHECK constraint has
+// it. Anything else failed the write the same way (AB-119).
+//
 // Plain JavaScript with JSDoc types so `node --test` can run it without a
 // build step.
 
@@ -19,6 +22,9 @@ export const CARD_TEXT_FIELDS = ["title", "description", "labels", "assignee"];
  */
 const STORED_STRING_FIELDS = [...CARD_TEXT_FIELDS, "priority", "github_issue_url", "github_pr_url"];
 
+/** The priorities a card can have, the same four as cards_priority_check. */
+export const PRIORITIES = ["low", "medium", "high", "urgent"];
+
 /** @param {unknown} value */
 function kind(value) {
   if (value === null) return "null";
@@ -29,10 +35,14 @@ function kind(value) {
  * Check the text fields of a card create or update body. Absent fields are
  * fine; whether one is required is the route's call.
  *
+ * Priority, when present, is one of PRIORITIES, or null: on update null
+ * clears it, and on create null or an empty string means the default, medium.
+ *
  * @param {unknown} body
+ * @param {{ create?: boolean }} [options] create: the body makes a new card
  * @returns {string | null} an error message, or null when the body is fine
  */
-export function checkCardText(body) {
+export function checkCardText(body, { create = false } = {}) {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return "Request body must be a JSON object";
   }
@@ -53,5 +63,19 @@ export function checkCardText(body) {
       return `${field} can't contain a NUL character (\\u0000)`;
     }
   }
-  return null;
+  const priority = fields.priority;
+  if (priority === undefined || priority === null || (create && priority === "")) return null;
+  if (typeof priority === "string" && PRIORITIES.includes(priority)) return null;
+  return `priority must be low, medium, high or urgent, got ${shown(priority)}`;
+}
+
+/**
+ * A value for an error message: a string quoted and cut short, anything else
+ * by its kind.
+ *
+ * @param {unknown} value
+ */
+function shown(value) {
+  if (typeof value !== "string") return kind(value);
+  return JSON.stringify(value.length > 20 ? `${value.slice(0, 20)}\u2026` : value);
 }

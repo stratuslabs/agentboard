@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CARD_TEXT_FIELDS, checkCardText } from "../src/lib/card-text.js";
+import { CARD_TEXT_FIELDS, PRIORITIES, checkCardText } from "../src/lib/card-text.js";
 
 const D = "Intro\n--column todo moves it\n  --priority high\nend";
 
@@ -66,7 +66,44 @@ test("a NUL character in any stored string is rejected, naming the field", () =>
 
 test("other control characters and non-ASCII text still pass", () => {
   const text = "tab\there\nnewline \u0001\u001f\u007f é 😀  ";
-  for (const field of STORED_STRINGS) {
+  // Not priority: it's one of four words (AB-119, below).
+  for (const field of STORED_STRINGS.filter((f) => f !== "priority")) {
     assert.equal(checkCardText({ title: "T", [field]: text }), null, field);
   }
+});
+
+// AB-119: priority is one of four words. Anything else reached the write and
+// failed the cards_priority_check constraint, an HTTP 500.
+test("the four priorities pass, on create and update", () => {
+  assert.deepEqual(PRIORITIES, ["low", "medium", "high", "urgent"]);
+  for (const priority of PRIORITIES) {
+    assert.equal(checkCardText({ title: "T", priority }), null, priority);
+    assert.equal(checkCardText({ title: "T", priority }, { create: true }), null, priority);
+  }
+});
+
+test("no priority passes: absent or null, and on create an empty string; create makes those medium", () => {
+  assert.equal(checkCardText({ title: "T" }), null);
+  assert.equal(checkCardText({ priority: null }), null);
+  assert.equal(checkCardText({ title: "T", priority: null }, { create: true }), null);
+  assert.equal(checkCardText({ title: "T", priority: "" }, { create: true }), null);
+});
+
+test("any other priority is rejected, saying what is allowed and what came", () => {
+  const bad = [["bogus", '"bogus"'], ["High", '"High"'], [" low", '" low"'], ["med", '"med"'], [3, "number"], [true, "boolean"], [["high"], "array"], [{}, "object"]];
+  for (const [value, got] of bad) {
+    for (const opts of [undefined, { create: true }]) {
+      const err = checkCardText({ title: "T", priority: value }, opts);
+      assert.equal(err, `priority must be low, medium, high or urgent, got ${got}`, JSON.stringify(value));
+    }
+  }
+});
+
+test("an empty priority on update is rejected: there it would be stored", () => {
+  assert.equal(checkCardText({ priority: "" }), 'priority must be low, medium, high or urgent, got ""');
+});
+
+test("a long bad priority is cut short in the message", () => {
+  const err = checkCardText({ priority: "x".repeat(500) });
+  assert.equal(err, `priority must be low, medium, high or urgent, got "${"x".repeat(20)}\u2026"`);
 });

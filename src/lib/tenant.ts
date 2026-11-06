@@ -124,16 +124,30 @@ export async function pageTenant(): Promise<TenantContext> {
   return tenantResolver().fromPage();
 }
 
+/**
+ * SQLSTATE 22021, invalid byte sequence. Strings reach Postgres as UTF-8, so
+ * the only byte it refuses is a NUL character (U+0000), which text can't
+ * store. That is the caller's input, never the server's fault.
+ */
+const INVALID_BYTE_SEQUENCE = "22021";
+
 function tenantErrorResponse(e: unknown): Response {
   if (e instanceof TenantError) {
     return NextResponse.json({ error: e.message }, { status: e.status });
+  }
+  // A backstop for every route: one that checks its own input (cards, see
+  // card-text.js) names the field, and any other still answers 400, not 500
+  // (AB-119).
+  if ((e as { code?: unknown } | null)?.code === INVALID_BYTE_SEQUENCE) {
+    return NextResponse.json({ error: "Text can't contain a NUL character (\\u0000)" }, { status: 400 });
   }
   throw e;
 }
 
 /**
  * Wrap a route handler so it always runs with a resolved team, and so a
- * TenantError from a guard becomes its status instead of a 500.
+ * TenantError from a guard becomes its status instead of a 500, as does a NUL
+ * character Postgres refused.
  */
 export function withTenant(
   handler: (request: NextRequest, ctx: TenantContext) => Promise<Response>,
