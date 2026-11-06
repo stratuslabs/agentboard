@@ -95,7 +95,10 @@ after(async () => {
 
 test("a bad due date on update is a 400 naming it, and nothing is written", { skip }, async () => {
   await patch({ due_date: "2026-11-01" });
-  for (const value of ["null", "none", "soon", "2026-13-45", "2026-02-30", "  "]) {
+  // Each a different Postgres data exception: 22007, 22008, 22021 for a NUL
+  // character and 22023 for an unknown time zone.
+  const bad = ["null", "none", "soon", "2026-13-45", "2026-02-30", "  ", "2026-11-01\u0000", "2026-11-01 America/Nowhere"];
+  for (const value of bad) {
     const r = await patch({ due_date: value, title: "Renamed" });
     assert.equal(r.status, 400, `${JSON.stringify(value)}: ${JSON.stringify(r.data)}`);
     assert.match(r.data.error, /^due_date /);

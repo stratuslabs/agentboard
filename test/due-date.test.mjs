@@ -74,7 +74,18 @@ test("a value that isn't a string or null is refused without a database call", a
   }
 });
 
+test("any data exception from the cast is the value's fault, so a 400", async () => {
+  // The cast reads only this one value, so a class 22 error is about it:
+  // 22021 is a NUL character in the text, 22P02 any other unreadable text.
+  for (const code of ["22021", "22P02", "22009"]) {
+    const err = await checkDueDate({ due_date: "2026-11-01\u0000" }, async () => { throw pgError(code, "bad"); });
+    assert.match(err ?? "", /^due_date "2026-11-01\\u0000" is not a date/, code);
+  }
+});
+
 test("a database failure that isn't about the date is not hidden as a 400", async () => {
-  const down = async () => { throw pgError("57P01", "terminating connection"); };
-  await assert.rejects(checkDueDate({ due_date: "2026-11-01" }, down), /terminating connection/);
+  for (const code of ["57P01", "08006", "53300", "XX000", undefined]) {
+    const down = async () => { throw pgError(code, `terminating connection (${code})`); };
+    await assert.rejects(checkDueDate({ due_date: "2026-11-01" }, down), /terminating connection/, String(code));
+  }
 });

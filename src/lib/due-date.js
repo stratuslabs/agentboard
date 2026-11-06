@@ -10,11 +10,19 @@
 // Plain JavaScript with JSDoc types so `node --test` can run it without a
 // build step.
 
-/** Postgres errors that mean the input wasn't a date it could read. */
-const NOT_A_DATE = new Set([
-  "22007", // invalid_datetime_format: "null", "soon"
-  "22008", // datetime_field_overflow: "2026-13-45", "2026-02-30"
-]);
+/**
+ * Whether a Postgres error from the cast means the value isn't a date. The
+ * cast reads only this one value, so any SQLSTATE in class 22 (data
+ * exception) is the value's fault: 22007 for "null" or "soon", 22008 for
+ * "2026-02-30", 22021 for a NUL character in the text. Anything else (a
+ * dropped connection, 08xxx or 57xxx) is the server's problem and is thrown.
+ *
+ * @param {unknown} err
+ */
+function notADate(err) {
+  const code = /** @type {{ code?: unknown }} */ (err)?.code;
+  return typeof code === "string" && code.startsWith("22");
+}
 
 /** @param {unknown} value */
 function kind(value) {
@@ -50,8 +58,7 @@ export async function checkDueDate(body, parse) {
   try {
     await parse(value);
   } catch (err) {
-    const code = /** @type {{ code?: unknown }} */ (err)?.code;
-    if (typeof code === "string" && NOT_A_DATE.has(code)) {
+    if (notADate(err)) {
       return `due_date ${quoted(value)} is not a date. Use YYYY-MM-DD, like 2026-11-01, or null to clear it`;
     }
     throw err;
