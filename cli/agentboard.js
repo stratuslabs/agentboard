@@ -2179,8 +2179,8 @@ async function main() {
           const other = ["column", "to-board", "to-product"].find((f) => flags[f] !== undefined);
           if (other) {
             die(
-              `--${placement[0]} can't be combined with --${other}: the cards go into the column of the card it names. ` +
-                `To change boards, move with --to-board first, then run --${placement[0]}.`
+              `--${placement[0]} can't be combined with --${other}: the cards go into the column of the card it names.` +
+                (other === "column" ? "" : ` To change boards, move with --to-board first, then run --${placement[0]}.`)
             );
           }
           await placeCards(req, ids, flags);
