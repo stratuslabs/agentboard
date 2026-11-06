@@ -202,7 +202,7 @@ test("a binary attachment is a 400 that says attachments hold text", { skip }, a
   const png = "\uFFFDPNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR";
   const r = await call(api.attachments.POST, `/api/cards/${ids.card}/attachments`, { method: "POST", body: { filename: "shot.png", content: png }, id: ids.card });
   assert.equal(r.status, 400, JSON.stringify(r.data));
-  assert.equal(r.data.error, "content can't contain a NUL character (\\u0000): attachments hold text, and a binary file such as an image has NUL bytes");
+  assert.equal(r.data.error, "content can't contain a NUL character (\\u0000): attachments hold text, not binary files");
   assert.equal(await count(), n);
   const ok = await call(api.attachments.POST, `/api/cards/${ids.card}/attachments`, { method: "POST", body: { filename: "notes.md", content: "tab\there \u0001 é 😀" }, id: ids.card });
   assert.equal(ok.status, 201, JSON.stringify(ok.data));

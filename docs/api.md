@@ -216,8 +216,9 @@ GET    /api/attachments/:id        # one attachment, with its content
 DELETE /api/attachments/:id
 ```
 
-`content` is text. A binary file, such as an image, has NUL bytes, so it is a
-`400` saying so.
+`content` is text; binary files aren't supported. Content with a NUL character
+(`\u0000`), as most images have, is a `400` saying so. A binary file without
+one isn't caught here and would be stored as mangled text.
 
 ## Members, Settings & Preferences
 
