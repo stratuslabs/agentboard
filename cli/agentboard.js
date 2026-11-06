@@ -1711,10 +1711,11 @@ async function main() {
       if (!Array.isArray(rows)) die(`Expected a list of cards from /api/cards/search, got: ${snippet(JSON.stringify(rows))}`);
 
       outputCards(searchMatches(rows, { product, includeDone }), flags, { defaults: SEARCH_FIELDS });
+      // The server stops at SEARCH_LIMIT. An older one counts cards the CLI
+      // then filters out, so fewer may show; either way, more may match.
       if (rows.length >= SEARCH_LIMIT) {
-        process.stderr.write(
-          `Showing the first ${SEARCH_LIMIT} matches; more cards may match. Add words or --product to narrow the search.\n`
-        );
+        const narrow = product ? "Add words to narrow it." : "Add words or --product to narrow it.";
+        process.stderr.write(`Search stopped at ${SEARCH_LIMIT} matches; more cards may match. ${narrow}\n`);
       }
     }
 

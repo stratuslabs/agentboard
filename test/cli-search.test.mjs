@@ -177,8 +177,13 @@ test("a full page of results says more cards may match", async () => {
   const r = await run(["search", "bulk", "--quiet"]);
   assert.equal(r.code, 0, r.stderr);
   assert.equal(lines(r.stdout).length, 50);
-  assert.match(r.stderr, /first 50 matches/);
+  assert.match(r.stderr, /stopped at 50 matches; more cards may match/);
   assert.match(r.stderr, /--product/);
+
+  const narrowed = await run(["search", "bulk", "--product", "web", "--quiet"]);
+  assert.equal(narrowed.code, 0, narrowed.stderr);
+  assert.match(narrowed.stderr, /stopped at 50 matches/);
+  assert.doesNotMatch(narrowed.stderr, /--product/, "already narrowed by product");
 });
 
 test("a server without card search says so", async () => {
