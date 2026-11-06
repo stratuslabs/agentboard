@@ -235,7 +235,7 @@ const FLAG_HELP = {
   "include-done": ["", "Include cards in Done"],
   fields: ["<a,b>", "Fields to print, comma-separated: any card field, plus key, product, board, column and assignee. With --json, only these"],
   description: ["<text>", "Card description (Markdown)"],
-  due: ["<date>", "Due date, e.g. 2026-11-01"],
+  due: ["<date>", "Due date, e.g. 2026-11-01; none clears it"],
   title: ["<text>", "New title"],
   issue: ["<url>", "GitHub issue URL"],
   pr: ["<url>", "GitHub pull request URL"],
@@ -749,6 +749,15 @@ function keyFirst(card) {
 
 // ---- Created cards --------------------------------------------------------
 
+/**
+ * `--due none` (or `null`, any case) means no due date: on `task update` it
+ * clears the card's date. The API takes null for that; the word itself would
+ * reach Postgres as text and be refused (AB-114).
+ */
+function clearsDue(value) {
+  return typeof value === "string" && /^(none|null)$/i.test(value.trim());
+}
+
 /** The POST /api/cards body for `new` and `task add`, minus the column. */
 function newCardFields(title, flags) {
   const fields = {
@@ -758,7 +767,7 @@ function newCardFields(title, flags) {
     labels: flags.label || "",
   };
   if (flags.assignee) fields.assignee = flags.assignee;
-  if (flags.due) fields.due_date = flags.due;
+  if (flags.due && !clearsDue(flags.due)) fields.due_date = flags.due;
   return fields;
 }
 
@@ -2250,7 +2259,9 @@ async function main() {
         if (flags.assignee) updates.assignee = flags.assignee;
         if (flags.priority) updates.priority = flags.priority;
         if (flags.label !== undefined) updates.labels = flags.label;
-        if (flags.due) updates.due_date = flags.due;
+        // An empty --due is still ignored, as it always was, so a script's
+        // empty variable can't wipe a date; `--due none` clears it.
+        if (flags.due) updates.due_date = clearsDue(flags.due) ? null : flags.due;
         if (flags.issue) updates.github_issue_url = flags.issue;
         if (flags.pr) updates.github_pr_url = flags.pr;
         if (labelEdit) {
@@ -2266,7 +2277,9 @@ async function main() {
             return;
           }
         }
-        if (Object.keys(updates).length === 0) die("Provide at least one field to update");
+        if (Object.keys(updates).length === 0) {
+          die(flags.due === "" ? "--due needs a date, e.g. 2026-11-01. To clear the due date, use --due none" : "Provide at least one field to update");
+        }
         outputCard(await req("PATCH", `/api/cards/${id}`, updates), flags);
       } else if (sub === "done") {
         const id = positional[2];

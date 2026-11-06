@@ -177,6 +177,7 @@ agentboard task move <id> [<id> ...] --after <id>                # directly belo
 agentboard task move <id> --to-board <slug> [--column <slug>]    # another board, same product
 agentboard task move <id> --to-product <slug> --to-board <slug> [--column <slug>]
 agentboard task update <id> [--title X --description X --priority X --due X]
+agentboard task update <id> --due none               # clear the due date
 agentboard task update <id> --add-label bug,cli      # add labels, keep the rest
 agentboard task update <id> --remove-label feedback  # remove one label, keep the rest
 agentboard task update <id> --label "a,b"            # replace all labels ("" clears)

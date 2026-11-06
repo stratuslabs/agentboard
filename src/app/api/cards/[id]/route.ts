@@ -4,6 +4,7 @@ import { sql, db as pool } from "../../../../lib/sql";
 import { boardIdForCard, notifyBoards } from "../../../../lib/realtime/notify";
 import { cardIdFromRef, getCardWithLocation } from "../../../../lib/card-location";
 import { checkCardText } from "../../../../lib/card-text";
+import { checkDueDate } from "../../../../lib/due-date";
 import { memberIdByName, resolveAgentMember } from "../../../../lib/members";
 import { settleAssignee } from "../../../../lib/assignee";
 import { assertColumn, assertMember, withTenantParams } from "../../../../lib/tenant";
@@ -31,6 +32,12 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   const textError = checkCardText(body);
   if (textError) {
     return NextResponse.json({ error: textError }, { status: 400 });
+  }
+  // Checked before anything is written: a date Postgres can't read is the
+  // caller's mistake, a 400, not a failed UPDATE.
+  const dueError = await checkDueDate(body, (value) => sql`SELECT ${value}::date`);
+  if (dueError) {
+    return NextResponse.json({ error: dueError }, { status: 400 });
   }
 
   const { rows: existing } = await sql`SELECT * FROM cards WHERE id = ${id}`;
