@@ -88,6 +88,7 @@ before(async () => {
     subtasks: await load("cards/[id]/subtasks"),
     subtask: await load("subtasks/[id]"),
     search: await load("cards/search"),
+    attachments: await load("cards/[id]/attachments"),
   };
 
   const org = await call(api.orgs.POST, "/api/orgs", { method: "POST", body: { name: "Input Labs" } });
@@ -120,6 +121,7 @@ test("a NUL in what a route stores is a 400, not a 500, and nothing is written",
     ["POST /api/members", () => call(api.members.POST, "/api/members", { method: "POST", body: { name: "Ada\u0000", type: "human" } })],
     ["POST /api/cards/:id/subtasks", () => call(api.subtasks.POST, `/api/cards/${ids.card}/subtasks`, { method: "POST", body: { title: "x\u0000y" }, id: ids.card })],
     ["PATCH /api/subtasks/:id", () => call(api.subtask.PATCH, `/api/subtasks/${ids.subtask}`, { method: "PATCH", body: { title: "x\u0000y" }, id: ids.subtask })],
+    ["POST /api/cards/:id/attachments (filename)", () => call(api.attachments.POST, `/api/cards/${ids.card}/attachments`, { method: "POST", body: { filename: "a\u0000.txt", content: "hello" }, id: ids.card })],
   ];
   const before = await snapshot();
   for (const [name, run] of cases) {
@@ -191,4 +193,18 @@ test("the backstop answers only SQLSTATE 22021; any other error still propagates
     const other = Object.assign(new Error(`db said ${code}`), { code });
     await assert.rejects(failing(other)(request()), (e) => e === other, String(code));
   }
+});
+
+test("a binary attachment is a 400 that says attachments hold text", { skip }, async () => {
+  const count = async () => Number((await db.query("SELECT count(*) FROM attachments")).rows[0].count);
+  const n = await count();
+  // What a PNG read as UTF-8 looks like: its header has NUL bytes.
+  const png = "\uFFFDPNG\r\n\u001a\n\u0000\u0000\u0000\rIHDR";
+  const r = await call(api.attachments.POST, `/api/cards/${ids.card}/attachments`, { method: "POST", body: { filename: "shot.png", content: png }, id: ids.card });
+  assert.equal(r.status, 400, JSON.stringify(r.data));
+  assert.equal(r.data.error, "content can't contain a NUL character (\\u0000): attachments hold text, and a binary file such as an image has NUL bytes");
+  assert.equal(await count(), n);
+  const ok = await call(api.attachments.POST, `/api/cards/${ids.card}/attachments`, { method: "POST", body: { filename: "notes.md", content: "tab\there \u0001 é 😀" }, id: ids.card });
+  assert.equal(ok.status, 201, JSON.stringify(ok.data));
+  assert.equal(await count(), n + 1);
 });
