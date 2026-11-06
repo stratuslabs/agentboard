@@ -171,6 +171,19 @@ test("--fields outside a search row is an error that points at show", async () =
   }
 });
 
+// Every place that says what --fields takes has to say search rows carry
+// fewer fields (Codex r4489916096): the general help wraps its text, so match
+// it with the line breaks folded.
+test("the general help qualifies --fields for search", async () => {
+  for (const args of [["help"], ["--help"]]) {
+    const r = await run(args);
+    assert.equal(r.code, 0, r.stderr);
+    const text = r.stdout.replace(/\s+/g, " ");
+    assert.match(text, /--fields list, task list, my-tasks, search: /, args.join(" "));
+    assert.match(text, /search rows carry fewer; see search --help/, args.join(" "));
+  }
+});
+
 test("no text is a usage error", async () => {
   for (const args of [["search"], ["search", "  "]]) {
     const r = await run(args);
