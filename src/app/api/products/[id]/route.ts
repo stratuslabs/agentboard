@@ -50,6 +50,11 @@ export const PATCH = withTenantParams<{ id: string }>(async (request: NextReques
   if ("error" in updated) {
     return NextResponse.json({ error: updated.error }, { status: updated.status });
   }
+  // Every card on the product's boards shows the key, so open boards need to
+  // hear about a new one. After the commit, so they read the new key.
+  if (keyChange) {
+    await notifyBoards(teamId, await boardIdsUnderProducts([productId]));
+  }
   return NextResponse.json(updated.product);
 });
 

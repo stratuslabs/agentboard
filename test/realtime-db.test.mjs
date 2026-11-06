@@ -248,8 +248,11 @@ test("the sweep sees a product key change that nothing announced", { skip }, asy
   // mechanism where LISTEN isn't available.
   const stream = await openStream();
   try {
-    assert.equal(await stream.next(5_000), "hello");
-    assert.equal(await stream.next(600), null, "quiet before the rename");
+    // The previous test's notification can still be in flight, and a change
+    // may come before hello. Drain to quiet first.
+    const opening = [];
+    for (let e = await stream.next(5_000); e !== null; e = await stream.next(600)) opening.push(e);
+    assert.ok(opening.includes("hello"), `opening events: ${opening}`);
     await db.query(`UPDATE products SET key = 'SWK' WHERE id = $1`, [team.product.id]);
     assert.equal(await stream.next(2_000), "change");
   } finally {

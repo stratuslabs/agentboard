@@ -24,6 +24,9 @@ import { withCardUrl } from "../../../lib/public-url";
  *   GET /api/board?product_id=1
  *   GET /api/board?product_id=1&board_id=4
  *   GET /api/board?product_id=1&board_id=4&updated_since=<server_time>
+ *
+ * `product_key` is the product's current key, the AB in AB-142, on every
+ * response including a delta.
  */
 
 /**
@@ -98,17 +101,20 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     const { rows: timeRows } = await c.query(`SELECT ${SERVER_TIME} AS server_time`);
     const serverTime: string = timeRows[0].server_time;
 
+    // Card rows carry their number but not the product's key, which the
+    // links below are built from. It is also returned on its own: an open
+    // board shows the key on every tile, and a renamed key changes no card, so
+    // a delta is the only way the board would hear about it.
+    const { rows: productRows } = await c.query(`SELECT key FROM products WHERE id = $1`, [productId]);
+    const productKey: string | null = productRows[0]?.key ?? null;
+
     const { rows: boards } = await c.query(
       `SELECT * FROM boards WHERE product_id = $1 ORDER BY position, id`,
       [productId]
     );
     if (boards.length === 0) {
-      return { kind: "empty" as const, serverTime };
+      return { kind: "empty" as const, serverTime, productKey };
     }
-    // Card rows carry their number but not the product's key, which the
-    // links below are built from.
-    const { rows: productRows } = await c.query(`SELECT key FROM products WHERE id = $1`, [productId]);
-    const productKey: string | null = productRows[0]?.key ?? null;
 
     // An unknown or foreign board_id falls back to the first board rather than
     // erroring: the client's remembered board may have been deleted by someone
@@ -214,6 +220,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   if (snap.kind === "empty") {
     return NextResponse.json({
       server_time: snap.serverTime,
+      product_key: snap.productKey,
       boards: [],
       active_board_id: null,
       columns: [],
@@ -225,6 +232,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   return NextResponse.json(
     {
       server_time: snap.serverTime,
+      product_key: snap.productKey,
       boards: snap.boards,
       active_board_id: snap.boardId,
       columns: snap.columns,
