@@ -90,6 +90,11 @@ GET    /api/cards/search?q=&limit=&product_id=&exclude_done=1
 taken), or `null` for none; on `PATCH`, `null` or `""` clears it. A value that
 isn't a date is a `400` naming it, and nothing is written.
 
+The text fields (`title`, `description`, `assignee`, `labels`) must be strings,
+or `null` to clear one other than the title. No string field may contain a NUL
+character (`\u0000`), which Postgres text can't store. Either mistake is a
+`400` naming the field, and nothing is written.
+
 `GET /api/cards/search` finds cards anywhere in the team. Every word of `q`
 has to be in the title, description or labels, or name the card by key
 (`AB-12`, old keys too) or number (`#41`, `41`). Cards a key names come first,
