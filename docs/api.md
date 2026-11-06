@@ -86,6 +86,10 @@ GET    /api/cards/views?view=today|past-due|past-due-count|assigned&tz=&member_i
 GET    /api/cards/search?q=&limit=&product_id=&exclude_done=1
 ```
 
+`due_date` is a date, `YYYY-MM-DD` (anything Postgres reads as a date is
+taken), or `null` for none; on `PATCH`, `null` or `""` clears it. A value that
+isn't a date is a `400` naming it, and nothing is written.
+
 `GET /api/cards/search` finds cards anywhere in the team. Every word of `q`
 has to be in the title, description or labels, or name the card by key
 (`AB-12`, old keys too) or number (`#41`, `41`). Cards a key names come first,

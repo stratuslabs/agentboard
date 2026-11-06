@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql, db as pool } from "../../../lib/sql";
 import { boardIdForColumn, notifyBoard } from "../../../lib/realtime/notify";
 import { checkCardText } from "../../../lib/card-text";
+import { checkDueDate } from "../../../lib/due-date";
 import { getCardWithLocation } from "../../../lib/card-location";
 import { memberIdByName, resolveAgentMember } from "../../../lib/members";
 import { settleAssignee } from "../../../lib/assignee";
@@ -101,6 +102,10 @@ export const POST = withTenant(async (request: NextRequest, { teamId, memberId }
   const textError = checkCardText(body);
   if (textError) {
     return NextResponse.json({ error: textError }, { status: 400 });
+  }
+  const dueError = await checkDueDate(body, (value) => sql`SELECT ${value}::date`);
+  if (dueError) {
+    return NextResponse.json({ error: dueError }, { status: 400 });
   }
   const { title, description, priority, labels, github_issue_url, github_pr_url, due_date } = body;
 
