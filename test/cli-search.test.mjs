@@ -214,4 +214,6 @@ test("search --help names its flags", async () => {
   for (const flag of ["--product", "--include-done", "--fields", "--quiet", "--json"]) {
     assert.match(r.stdout, new RegExp(flag));
   }
+  assert.match(r.stdout, /--fields <a,b> +Fields to print, comma-separated: key, id, number, title/);
+  assert.doesNotMatch(r.stdout, /any card field/, "search rows aren't whole cards");
 });

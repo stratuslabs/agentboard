@@ -290,7 +290,11 @@ const COMMAND_HELP = {
     usage: ["search <text>"],
     summary:
       "Find cards in every product whose title, description or labels hold every word, or by key (AB-142). Done is hidden unless --include-done.",
-    flags: { product: "Only this product's cards (default: every product; AGENTBOARD_PRODUCT is not used)" },
+    flags: {
+      product: "Only this product's cards (default: every product; AGENTBOARD_PRODUCT is not used)",
+      fields:
+        "Fields to print, comma-separated: key, id, number, title, priority, labels, updated_at, url, done, product, board, column, assignee. show <key> has the rest",
+    },
   },
   today: { usage: ["today"], summary: "Cards due today." },
   "past-due": {
@@ -1349,8 +1353,10 @@ function withLocation(cards, product, board, columns) {
  * Otherwise a table of --fields, or of `defaults`; with no defaults, every
  * field, as before. `board` is the board the cards came from, named above the
  * table so a product pinned by the environment is never a silent surprise.
+ * `unknownHint` follows the list of available fields when --fields names one
+ * the cards don't carry.
  */
-function outputCards(cards, flags, { defaults = null, product = null, board = null } = {}) {
+function outputCards(cards, flags, { defaults = null, product = null, board = null, unknownHint = null } = {}) {
   let fields = null;
   if (flags.fields !== undefined) {
     if (flags.quiet) die("--quiet prints card keys only; drop it to use --fields");
@@ -1362,7 +1368,8 @@ function outputCards(cards, flags, { defaults = null, product = null, board = nu
       if (unknown.length > 0) {
         die(
           `Unknown field${unknown.length > 1 ? "s" : ""}: ${unknown.join(", ")}. ` +
-            `Available: ${[...known].sort().join(", ")}`
+            `Available: ${[...known].sort().join(", ")}` +
+            (unknownHint ? `. ${unknownHint}` : "")
         );
       }
     }
@@ -1710,7 +1717,12 @@ async function main() {
       });
       if (!Array.isArray(rows)) die(`Expected a list of cards from /api/cards/search, got: ${snippet(JSON.stringify(rows))}`);
 
-      outputCards(searchMatches(rows, { product, includeDone }), flags, { defaults: SEARCH_FIELDS });
+      // A search row is the card's title, priority, labels and where it lives,
+      // not the whole card, so a field like description or due_date is `show`'s.
+      outputCards(searchMatches(rows, { product, includeDone }), flags, {
+        defaults: SEARCH_FIELDS,
+        unknownHint: "Search rows carry only these; agentboard show <key> prints the whole card",
+      });
       // The server stops at SEARCH_LIMIT. An older one counts cards the CLI
       // then filters out, so fewer may show; either way, more may match.
       if (rows.length >= SEARCH_LIMIT) {
