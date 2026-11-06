@@ -1538,7 +1538,7 @@ Management Commands:
     task update <id> --remove-label <l>           Remove only these labels
     task update <id> --label <l>                  Replace all labels ('' clears them)
     task move <id> [<id> ...] --column <col>
-    task move <id> [<id> ...] --before|--after <id>   Put cards above or below a card
+    task move <id> [<id> ...] --before|--after <id>
     task move <id> --to-board <slug> [--column <col>]
     task move <id> --to-product <slug> --to-board <slug> [--column <col>]
   settings [--key <k> --value <v>]
