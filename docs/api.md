@@ -5,7 +5,9 @@ Every action in the web app is an HTTP call you can make yourself. The [CLI](../
 All API routes require authentication via cookie or `Authorization: Bearer <password>` header when `APP_PASSWORD` is set. If `APP_PASSWORD` is unset, all routes are open.
 
 Errors are JSON, `{ "error": "..." }`. A path no route serves is a `404`
-(`No API route for GET /api/tasks`), never the app's HTML.
+(`No API route for GET /api/tasks`), never the app's HTML. Postgres text
+can't store a NUL character (`\u0000`), so a route asked to store or search
+for a string with one, in a body or a query, answers `400`.
 
 The list endpoints take a slug wherever they take an id: `org=` for `org_id=`,
 `product=` for `product_id=`, `board=` for `board_id=`, `column=` for
@@ -94,6 +96,10 @@ The text fields (`title`, `description`, `assignee`, `labels`) must be strings,
 or `null` to clear one other than the title. No string field may contain a NUL
 character (`\u0000`), which Postgres text can't store. Either mistake is a
 `400` naming the field, and nothing is written.
+
+`priority` is `low`, `medium`, `high` or `urgent`. On `POST` a missing, `null`
+or empty one is `medium`; on `PATCH`, `null` clears it. Anything else is a
+`400`, and nothing is written.
 
 `GET /api/cards/search` finds cards anywhere in the team. Every word of `q`
 has to be in the title, description or labels, or name the card by key

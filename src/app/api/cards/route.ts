@@ -99,7 +99,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
 export const POST = withTenant(async (request: NextRequest, { teamId, memberId }) => {
   await initDb();
   const body = await request.json();
-  const textError = checkCardText(body);
+  const textError = checkCardText(body, { create: true });
   if (textError) {
     return NextResponse.json({ error: textError }, { status: 400 });
   }
