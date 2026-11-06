@@ -22,10 +22,24 @@ const MAX_LIMIT = 50;
  * title, then the rest; open cards before ones in a Done column, then most
  * recently updated. Each says where the card lives, so the dialog can show
  * it and open `/c/<key>`. A blank query finds nothing.
+ *
+ * Two optional filters, for `agentboard search` (AB-111), apply before the
+ * limit so it counts only the cards asked for: `product_id=<id>` keeps to one
+ * product, and `exclude_done=1` leaves out cards in a Done column. Anything
+ * else in either is a 400 rather than a filter quietly not applied.
  */
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {
   await initDb();
   const sp = request.nextUrl.searchParams;
+  const productId = sp.get("product_id");
+  if (productId !== null && !/^[1-9][0-9]{0,8}$/.test(productId)) {
+    return NextResponse.json({ error: "product_id must be a product id" }, { status: 400 });
+  }
+  const excludeDone = sp.get("exclude_done");
+  if (excludeDone !== null && !["0", "1", "true", "false"].includes(excludeDone)) {
+    return NextResponse.json({ error: "exclude_done must be 1 or 0" }, { status: 400 });
+  }
+
   const { terms } = parseSearchQuery(sp.get("q"));
   if (terms.length === 0) return NextResponse.json([]);
 
@@ -66,6 +80,8 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     }
     matches.push(`(${alternatives.join(" OR ")})`);
   }
+  if (productId !== null) matches.push(`p.id = ${param(productId)}`);
+  if (excludeDone === "1" || excludeDone === "true") matches.push("LOWER(col.name) <> 'done'");
   // Postgres refuses a bare constant in ORDER BY, so a rank with nothing to
   // rank by is left out.
   const rank = (conditions: string[]) => (conditions.length > 0 ? `(${conditions.join(" OR ")}) DESC, ` : "");
@@ -74,9 +90,10 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
     `SELECT cards.id, cards.number, cards.title, cards.priority, cards.labels, cards.updated_at,
        CASE WHEN p.key IS NOT NULL AND cards.number IS NOT NULL
          THEN p.key || '-' || cards.number END AS key,
-       p.key AS product_key, p.name AS product_name, p.slug AS product_slug, p.emoji AS product_emoji,
-       o.name AS org_name, o.slug AS org_slug,
-       b.name AS board_name, col.name AS column_name, col.color AS column_color,
+       p.id AS product_id, p.key AS product_key, p.name AS product_name, p.slug AS product_slug,
+       p.emoji AS product_emoji, o.name AS org_name, o.slug AS org_slug,
+       b.name AS board_name, b.slug AS board_slug,
+       col.name AS column_name, col.slug AS column_slug, col.color AS column_color,
        LOWER(col.name) = 'done' AS done,
        m.name AS assignee_name, m.type AS assignee_type, m.color AS assignee_color
      FROM cards
