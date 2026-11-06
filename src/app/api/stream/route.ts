@@ -89,10 +89,15 @@ async function stampFor(teamId: number, boardId: number | null): Promise<string>
         to_char((SELECT MAX(updated_at) FROM team_columns), ${STAMP_FORMAT}) AS lm,
         (SELECT COUNT(*) FROM team_columns)                                  AS lc,
         to_char((SELECT MAX(updated_at) FROM team_boards), ${STAMP_FORMAT})  AS bm,
-        (SELECT COUNT(*) FROM team_boards)                                   AS bc
+        (SELECT COUNT(*) FROM team_boards)                                   AS bc,
+        -- Every card shows its product's key, and a renamed key moves no
+        -- timestamp above.
+        (SELECT string_agg(p.id || ':' || COALESCE(p.key, ''), ',' ORDER BY p.id)
+           FROM products p JOIN organizations o ON o.id = p.org_id
+          WHERE o.team_id = ${teamId})                                       AS pk
     `;
     const r = rows[0];
-    return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}|${r.bc}`;
+    return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}|${r.bc}|${r.pk ?? "-"}`;
   }
   const { rows } = await sql`
     SELECT
@@ -106,10 +111,12 @@ async function stampFor(teamId: number, boardId: number | null): Promise<string>
         WHERE board_id = ${boardId}), ${STAMP_FORMAT})                  AS lm,
       (SELECT COUNT(*) FROM columns WHERE board_id = ${boardId})        AS lc,
       to_char((SELECT updated_at FROM boards
-        WHERE id = ${boardId}), ${STAMP_FORMAT})                        AS bm
+        WHERE id = ${boardId}), ${STAMP_FORMAT})                        AS bm,
+      (SELECT p.key FROM boards b JOIN products p ON p.id = b.product_id
+        WHERE b.id = ${boardId})                                        AS pk
   `;
   const r = rows[0];
-  return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}`;
+  return `${r.cm ?? "-"}|${r.cc}|${r.lm ?? "-"}|${r.lc}|${r.bm ?? "-"}|${r.pk ?? "-"}`;
 }
 
 export const GET = withTenant(async (request: NextRequest, { teamId }) => {

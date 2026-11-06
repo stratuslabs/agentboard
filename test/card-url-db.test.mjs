@@ -83,6 +83,7 @@ before(async () => {
     next: require("next/server.js"),
     orgs: await load("orgs"),
     products: await load("products"),
+    product: await load("products/[id]"),
     board: await load("board"),
     cards: await load("cards"),
     card: await load("cards/[id]"),
@@ -291,6 +292,40 @@ test("a renamed product key changes the links and the board's validator", { skip
   const stale = await boardGet({ "if-none-match": beforeTag });
   assert.equal(stale.status, 200);
   assert.equal((await stale.json()).cards[0].url, `http://localhost/c/GZ-${created.data.number}`);
+});
+
+test("the board snapshot and its deltas name the product's current key", { skip }, async () => {
+  // An open board shows the key on tiles, copied links, the tab title and
+  // ?card=. It learns a renamed key from its next refresh, which is a delta:
+  // no card changed, so the key has to ride on the response itself.
+  const org = await call(api.orgs.POST, "/api/orgs", { method: "POST", body: { name: "Rekey Co" } });
+  const product = await call(api.products.POST, "/api/products", {
+    method: "POST", body: { org_id: org.data.id, name: "Rekey", key: "RK" },
+  });
+  const path = `/api/board?product_id=${product.data.id}`;
+  const full = await call(api.board.GET, path);
+  assert.equal(full.status, 200);
+  assert.equal(full.data.product_key, "RK");
+
+  const since = full.data.server_time;
+  const renamed = await call(api.product.PATCH, `/api/products/${product.data.id}`, {
+    method: "PATCH", id: product.data.id, body: { key: "RX" },
+  });
+  assert.equal(renamed.status, 200);
+  const delta = await call(api.board.GET, `${path}&updated_since=${encodeURIComponent(since)}`);
+  assert.equal(delta.status, 200);
+  assert.deepEqual(delta.data.cards, [], "no card changed");
+  assert.equal(delta.data.product_key, "RX");
+
+  // A product with no boards still names its key, so the answer has one shape.
+  const bare = await call(api.products.POST, "/api/products", {
+    method: "POST", body: { org_id: org.data.id, name: "Bare", key: "BR" },
+  });
+  await db.query(`DELETE FROM boards WHERE product_id = $1`, [bare.data.id]);
+  const empty = await call(api.board.GET, `/api/board?product_id=${bare.data.id}`);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(empty.data.boards, []);
+  assert.equal(empty.data.product_key, "BR");
 });
 
 test("a card in a product without a key links by its id", { skip }, async () => {

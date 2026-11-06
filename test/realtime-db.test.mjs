@@ -56,13 +56,16 @@ async function load(path) {
   return import(new URL(`../src/app/api/${path}/route.ts`, import.meta.url).href);
 }
 
-async function call(handler, path, { method = "GET", body } = {}) {
+async function call(handler, path, { method = "GET", body, id } = {}) {
   const { NextRequest } = api.next;
-  const response = await handler(new NextRequest(`http://localhost${path}`, {
+  const request = new NextRequest(`http://localhost${path}`, {
     method,
     headers: { "content-type": "application/json", "x-test-team": String(team.id) },
     body: body === undefined ? undefined : JSON.stringify(body),
-  }));
+  });
+  const response = id === undefined
+    ? await handler(request)
+    : await handler(request, { params: Promise.resolve({ id: String(id) }) });
   return { status: response.status, data: await response.json() };
 }
 
@@ -153,6 +156,7 @@ before(async () => {
     next: require("next/server.js"),
     orgs: await load("orgs"),
     products: await load("products"),
+    product: await load("products/[id]"),
     board: await load("board"),
     stream: await load("stream"),
   };
@@ -166,7 +170,9 @@ before(async () => {
   const product = await call(api.products.POST, "/api/products", {
     method: "POST", body: { org_id: org.data.id, name: "Widget" },
   });
-  await call(api.board.GET, `/api/board?product_id=${product.data.id}`);
+  team.product = product.data;
+  const board = await call(api.board.GET, `/api/board?product_id=${product.data.id}`);
+  team.board = board.data.active_board_id;
 });
 
 after(async () => {
@@ -217,6 +223,38 @@ test("a stream whose baseline failed reports a change once the database answers"
   try {
     assert.equal(await stream.next(2_000), "change");
     assert.equal(await stream.next(1_000), null, "then quiet again: one invalidation, not one per sweep");
+  } finally {
+    await stream.close();
+  }
+});
+
+test("a product key change tells the product's boards", { skip }, async () => {
+  // Every open board of the product shows the key, so a rename is a change to
+  // each of them, announced like any other write rather than left to the sweep.
+  const before = poolNotifies.length;
+  const renamed = await call(api.product.PATCH, `/api/products/${team.product.id}`, {
+    method: "PATCH", id: team.product.id, body: { key: "RTK" },
+  });
+  assert.equal(renamed.status, 200);
+  const sent = poolNotifies.slice(before).map((p) => JSON.parse(p));
+  assert.ok(
+    sent.some((c) => c.board_id === team.board && c.team_id === TEAM_ID),
+    `notifications after the rename: ${JSON.stringify(sent)}`,
+  );
+});
+
+test("the sweep sees a product key change that nothing announced", { skip }, async () => {
+  // The safety net for a write path that forgets to notify, and the whole
+  // mechanism where LISTEN isn't available.
+  const stream = await openStream();
+  try {
+    // The previous test's notification can still be in flight, and a change
+    // may come before hello. Drain to quiet first.
+    const opening = [];
+    for (let e = await stream.next(5_000); e !== null; e = await stream.next(600)) opening.push(e);
+    assert.ok(opening.includes("hello"), `opening events: ${opening}`);
+    await db.query(`UPDATE products SET key = 'SWK' WHERE id = $1`, [team.product.id]);
+    assert.equal(await stream.next(2_000), "change");
   } finally {
     await stream.close();
   }

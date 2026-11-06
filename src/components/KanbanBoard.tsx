@@ -110,7 +110,7 @@ export default function KanbanBoard({
   orgPage = false,
   productName,
   productEmoji,
-  productKey = null,
+  productKey: initialProductKey = null,
   onBack,
 }: KanbanBoardProps) {
   const { isStarred: isStarredFn, toggleStarredProduct } = usePreferences();
@@ -125,6 +125,13 @@ export default function KanbanBoard({
   );
   const [columns, setColumns] = useState<Column[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
+  // The key as the last board refresh reported it, so a key renamed from
+  // another tab or the CLI reaches the tiles, copied links, the tab title and
+  // ?card= without a reload. The prop is what the page was rendered with.
+  // Tagged with its product: on a switch the old product's key must not label
+  // the new one's cards before the first refresh answers.
+  const [refreshedKey, setRefreshedKey] = useState<{ productId: number; key: string | null } | null>(null);
+  const productKey = refreshedKey?.productId === productId ? refreshedKey.key : initialProductKey;
   // The board `cards` belongs to. Lags `activeBoardId` while a switch loads,
   // and tells "this board has no cards" apart from "not loaded yet".
   const [loadedBoardId, setLoadedBoardId] = useState<number | null>(null);
@@ -276,6 +283,7 @@ export default function KanbanBoard({
         if (activeBoardIdRef.current !== requestedBoardId) return;
         appliedSeqRef.current = seq;
 
+        if ("product_key" in data) setRefreshedKey({ productId, key: data.product_key ?? null });
         setBoards(data.boards);
         setColumns(data.columns);
 
@@ -823,6 +831,16 @@ export default function KanbanBoard({
   const openCardObj = openCardId !== null ? cards.find((c) => c.id === openCardId) ?? null : null;
   const activeBoard = boards.find((b) => b.id === activeBoardId);
   useDocumentTitle(pageTitle(cardTitle(openCardObj, productKey), activeBoard?.name, productName));
+
+  // The open card's `?card=` follows a renamed key, as the tiles do. Left alone
+  // while a link is still resolving: that effect owns the param until then.
+  useEffect(() => {
+    if (!openCardObj || deepLinkRef.current) return;
+    const { ref, full } = readCardParam();
+    if (ref === null) return;
+    const value = cardParamValue(openCardObj, productKey);
+    if (value !== ref) writeCardParam(value, full);
+  }, [openCardObj, productKey]);
 
   function cardDetailProps(card: Card) {
     // Prev/next walks the card's column as it is shown; if a filter hides the
