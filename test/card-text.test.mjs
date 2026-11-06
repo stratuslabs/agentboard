@@ -48,3 +48,25 @@ test("a body that is not an object is rejected", () => {
     assert.match(checkCardText(body), /JSON object/);
   }
 });
+
+// AB-117: Postgres text can't hold a NUL character, so one that got through
+// failed the write with "invalid byte sequence" and an HTTP 500. Every string
+// a card write stores is checked, the ones with their own rules too.
+const STORED_STRINGS = [...CARD_TEXT_FIELDS, "priority", "github_issue_url", "github_pr_url"];
+
+test("a NUL character in any stored string is rejected, naming the field", () => {
+  for (const field of STORED_STRINGS) {
+    for (const value of ["\u0000", "a\u0000b", "ends with\u0000"]) {
+      const err = checkCardText({ title: "T", [field]: value });
+      assert.ok(err, `${field}=${JSON.stringify(value)} should be rejected`);
+      assert.match(err, new RegExp(`^${field} can't contain a NUL character`));
+    }
+  }
+});
+
+test("other control characters and non-ASCII text still pass", () => {
+  const text = "tab\there\nnewline \u0001\u001f\u007f é 😀  ";
+  for (const field of STORED_STRINGS) {
+    assert.equal(checkCardText({ title: "T", [field]: text }), null, field);
+  }
+});
