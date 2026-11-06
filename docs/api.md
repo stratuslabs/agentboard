@@ -216,6 +216,9 @@ GET    /api/attachments/:id        # one attachment, with its content
 DELETE /api/attachments/:id
 ```
 
+`content` is text. A binary file, such as an image, has NUL bytes, so it is a
+`400` saying so.
+
 ## Members, Settings & Preferences
 
 ```

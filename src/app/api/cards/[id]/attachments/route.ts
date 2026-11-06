@@ -34,6 +34,15 @@ export const POST = withTenantParams<{ id: string }>(async (request: NextRequest
     );
   }
 
+  // Postgres text can't store a NUL character, and a binary file read as
+  // text has them. Without this the INSERT fails; say why instead (AB-119).
+  if (content.includes("\u0000")) {
+    return NextResponse.json(
+      { error: "content can't contain a NUL character (\\u0000): attachments hold text, and a binary file such as an image has NUL bytes" },
+      { status: 400 }
+    );
+  }
+
   if (filename.length > MAX_FILENAME_LENGTH) {
     return NextResponse.json(
       { error: `filename must be at most ${MAX_FILENAME_LENGTH} characters` },
