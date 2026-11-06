@@ -117,7 +117,9 @@ GET /api/stream              # every board
 GET /api/stream?board_id=4   # one board
 ```
 
-`GET /api/board` returns `{ server_time, boards, active_board_id, columns, cards }`.
+`GET /api/board` returns `{ server_time, product_key, boards, active_board_id, columns, cards }`.
+`product_key` is the product's current card key (the `AB` in `AB-142`), on
+deltas too, so a board that stays open picks up a renamed key.
 A `board_id` that no longer exists opens the product's first board; a `board=`
 slug that matches nothing is a `404`.
 Boards and columns always come back whole — they are a handful of rows, and
