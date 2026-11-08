@@ -51,7 +51,7 @@
     "@emoji-mart/react": "^1.1.1",
     "@types/pg": "^8.23.1",
     "emoji-mart": "^5.6.0",
-    "geist": "^1.8.2",
+    "geist": "^1.9.1",
     "lucide-react": "^1.64.0",
     "pg": "^8.23.1"
   },
