@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # The default (auto, which means increase for a private package) moved
+    # next's peerDependencies floor along with its devDependencies range on a
+    # patch bump (agentboard#115), dropping the oldest Next the core supports
+    # (CI's consumer job tests it). Only move a range when the new version
+    # falls outside it; the lockfile still updates, and exact pins still bump.
+    versioning-strategy: increase-if-necessary
     groups:
       # react-dom requires the exact same react version, so they must land
       # in one PR. Listed before dev-dependencies so the @types packages
