@@ -35,6 +35,10 @@
   --color-silver: #b8bbc1;
 
   --color-danger: #e5604f;
+  /* Filled danger buttons: darker than --color-danger so white text stays
+     above 4.5:1 at rest (5.1:1) and on hover (4.7:1). */
+  --color-danger-fill: #c4402f;
+  --color-danger-fill-hover: #cc4433;
   --color-warn: #e3b341;
   --color-success: #7db88a;
 
