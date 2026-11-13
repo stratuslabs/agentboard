@@ -13,10 +13,18 @@ interface DialogProps {
   /** Set false when the dialog must not be dismissed by Escape or a scrim click. */
   dismissable?: boolean;
   z?: number;
+  /**
+   * The id of the element that names the dialog, usually its visible title,
+   * so a screen reader announces "Delete card, dialog" rather than "dialog".
+   * Several space-separated ids are read in order.
+   */
+  labelledBy?: string;
+  /** The dialog's name when it has no visible title to point at. Ignored when labelledBy is set. */
+  label?: string;
 }
 
 /** A centred modal on a scrim, portalled to <body>. */
-export function Dialog({ onClose, children, className, heavy, dismissable = true, z = 100 }: DialogProps) {
+export function Dialog({ onClose, children, className, heavy, dismissable = true, z = 100, labelledBy, label }: DialogProps) {
   useEffect(() => {
     if (!dismissable) return;
     function onKey(e: KeyboardEvent) {
@@ -41,6 +49,8 @@ export function Dialog({ onClose, children, className, heavy, dismissable = true
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={labelledBy}
+        aria-label={labelledBy ? undefined : label}
         className={cx(
           "fade-in max-h-full overflow-hidden rounded-[14px] border border-border-strong bg-surface-1",
           "shadow-[0_24px_64px_rgba(0,0,0,0.7)]",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { Pin, Star, X } from "lucide-react";
 import { usePreferences } from "../contexts/PreferencesContext";
@@ -28,6 +28,7 @@ interface OrgProductsDialogProps {
 /** An org's "All products" list, opened from the sidebar's org menu or a card page's org crumb. */
 export default function OrgProductsDialog({ org, products, onClose, onProductClick }: OrgProductsDialogProps) {
   const { prefs, toggleStarredProduct } = usePreferences();
+  const titleId = useId();
   const starredProducts = new Set(prefs.starredProducts);
   const [fetched, setFetched] = useState<OrgProductsDialogProduct[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -45,10 +46,10 @@ export default function OrgProductsDialog({ org, products, onClose, onProductCli
   const list = products ?? fetched;
 
   return (
-    <Dialog onClose={onClose} z={50} className="flex max-h-[70vh] w-[340px] flex-col rounded-xl">
+    <Dialog onClose={onClose} z={50} labelledBy={`${titleId} ${titleId}-sub`} className="flex max-h-[70vh] w-[340px] flex-col rounded-xl">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border pr-2.5 pl-4">
-        <h3 className="text-[13px] font-semibold text-text-1">{org.name}</h3>
-        <span className="flex-1 text-[13px] text-text-3">All products</span>
+        <h3 id={titleId} className="text-[13px] font-semibold text-text-1">{org.name}</h3>
+        <span id={`${titleId}-sub`} className="flex-1 text-[13px] text-text-3">All products</span>
         <IconButton onClick={onClose} aria-label="Close">
           <X className="h-4 w-4" />
         </IconButton>

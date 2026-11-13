@@ -137,7 +137,7 @@ function QuickSearchDialog({ onClose }: { onClose: () => void }) {
   const optionId = (i: number) => `${listId}-option-${i}`;
 
   return (
-    <Dialog onClose={onClose} className="w-[560px] max-w-full self-start mt-[12vh]">
+    <Dialog onClose={onClose} label="Search cards" className="w-[560px] max-w-full self-start mt-[12vh]">
       <div className="flex items-center gap-2.5 border-b border-border px-4">
         <Search className="h-4 w-4 shrink-0 text-text-3" />
         <input

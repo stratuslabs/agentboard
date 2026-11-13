@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { UserRound } from "lucide-react";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { Avatar, Button, ColorSwatches, Dialog, Field, Input, PRESET_COLORS } from "./ui";
@@ -8,6 +8,7 @@ import { Avatar, Button, ColorSwatches, Dialog, Field, Input, PRESET_COLORS } fr
 
 export default function ProfileSetup() {
   const { prefs, isLoaded, setProfileMemberId } = usePreferences();
+  const titleId = useId();
   const [name, setName] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[5]);
   const [submitting, setSubmitting] = useState(false);
@@ -67,12 +68,12 @@ export default function ProfileSetup() {
   }
 
   return (
-    <Dialog onClose={() => {}} dismissable={false} heavy z={200} className="w-[384px] max-w-full rounded-2xl">
+    <Dialog onClose={() => {}} dismissable={false} heavy z={200} labelledBy={titleId} className="w-[384px] max-w-full rounded-2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-5 p-7">
         {/* Header */}
         <div className="flex flex-col items-center gap-2 text-center">
           <Avatar name={name.trim() || "?"} color={color} size={48} className="mb-1" />
-          <h2 className="text-lg font-semibold tracking-[-0.3px] text-text-1">Set up your profile</h2>
+          <h2 id={titleId} className="text-lg font-semibold tracking-[-0.3px] text-text-1">Set up your profile</h2>
           <p className="text-[13px] text-text-2">
             Tell us who you are so your team knows it&apos;s you.
           </p>
