@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Palette, Pencil, UserMinus } from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 import { Button, ColorSwatches, Input, MenuDivider, MenuItem, PRESET_COLORS, Select } from "../ui";
@@ -36,6 +36,24 @@ export async function fetchBoardMembers(): Promise<BoardMember[] | null> {
 }
 
 /**
+ * Runs member loads and hands each answer to `apply`, except one that a newer
+ * load has superseded. Loads overlap when a member is added while the page's
+ * first load is still on its way; without this, the older answer could land
+ * last and replace the newer list with a stale one, or with an error.
+ */
+export function membersLoader(
+  apply: (members: BoardMember[] | null) => void,
+  fetchMembers: () => Promise<BoardMember[] | null> = fetchBoardMembers,
+) {
+  let latest = 0;
+  return async () => {
+    const id = ++latest;
+    const next = await fetchMembers();
+    if (id === latest) apply(next);
+  };
+}
+
+/**
  * `loaded` turns true once the first load finishes, whether or not it worked;
  * `failed` says the latest load didn't, and `members` keeps the last list that
  * did. `reload` resolves when the new load is done.
@@ -44,12 +62,13 @@ export function useBoardMembers() {
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  const load = useCallback(async () => {
-    const next = await fetchBoardMembers();
-    if (next) setMembers(next);
-    setFailed(!next);
-    setLoaded(true);
-  }, []);
+  const [load] = useState(() =>
+    membersLoader((next) => {
+      if (next) setMembers(next);
+      setFailed(!next);
+      setLoaded(true);
+    }),
+  );
   useEffect(() => {
     void load();
     const onChange = () => void load();
