@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Palette, Pencil, UserMinus } from "lucide-react";
 import ConfirmModal from "../ConfirmModal";
 import { Button, ColorSwatches, Input, MenuDivider, MenuItem, PRESET_COLORS, Select } from "../ui";
-import { MemberEditor, MemberGroupHeader, MemberListCard, MemberRow, RowMenu } from "./MemberList";
+import { MemberEditor, MemberGroupHeader, MemberListCard, MemberListError, MemberRow, RowMenu } from "./MemberList";
 import { saveMember } from "../../lib/member-save";
 
 export interface BoardMember {
@@ -19,12 +19,35 @@ export interface BoardMember {
 /** Fired after members change so other sections (connected agents) refresh. */
 export const MEMBERS_CHANGED = "agentboard:members-changed";
 
+/**
+ * The team's board members, or null when they couldn't be loaded: offline, a
+ * dropped connection, a server error or an answer that isn't the list. Never
+ * throws, so whoever waits on it always stops waiting.
+ */
+export async function fetchBoardMembers(): Promise<BoardMember[] | null> {
+  try {
+    const res = await fetch("/api/members");
+    if (!res.ok) return null;
+    const members: unknown = await res.json();
+    return Array.isArray(members) ? (members as BoardMember[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `loaded` turns true once the first load finishes, whether or not it worked;
+ * `failed` says the latest load didn't, and `members` keeps the last list that
+ * did. `reload` resolves when the new load is done.
+ */
 export function useBoardMembers() {
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const load = useCallback(async () => {
-    const res = await fetch("/api/members");
-    if (res.ok) setMembers(await res.json());
+    const next = await fetchBoardMembers();
+    if (next) setMembers(next);
+    setFailed(!next);
     setLoaded(true);
   }, []);
   useEffect(() => {
@@ -33,7 +56,7 @@ export function useBoardMembers() {
     window.addEventListener(MEMBERS_CHANGED, onChange);
     return () => window.removeEventListener(MEMBERS_CHANGED, onChange);
   }, [load]);
-  return { members, loaded, reload: load };
+  return { members, loaded, failed, reload: load };
 }
 
 export function announceMembersChanged() {
@@ -191,7 +214,7 @@ export function RemoveMemberConfirm({ member, message, onDone }: { member: Board
 
 /** The self-hosted Members section: the people and agents cards are assigned to. */
 export default function BoardMembers() {
-  const { members, loaded } = useBoardMembers();
+  const { members, loaded, failed, reload } = useBoardMembers();
   const [removing, setRemoving] = useState<BoardMember | null>(null);
   const people = members.filter((m) => m.type === "human");
   const agents = members.filter((m) => m.type === "agent");
@@ -201,6 +224,8 @@ export default function BoardMembers() {
       <AddBoardMember />
       {!loaded ? (
         <div className="py-4 text-xs text-text-3">Loading members…</div>
+      ) : failed ? (
+        <MemberListError title="Couldn't load members" onRetry={reload} />
       ) : members.length === 0 ? (
         <div className="rounded-[10px] border border-border bg-surface-1 px-4 py-6 text-center text-[13px] text-text-3">
           No members yet. Add your first team member above.
