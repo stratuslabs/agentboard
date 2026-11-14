@@ -31,6 +31,8 @@ import {
 import ConfirmModal from "./ConfirmModal";
 import { Avatar, Button, Chip, GithubIcon, IconButton, MenuDivider, MenuItem, MenuPanel, cx } from "./ui";
 import RichText from "./RichText";
+import { stoplistedPrefixes } from "../lib/rich-text";
+import { loadTeamProductKeys } from "../lib/team-product-keys";
 import Subtasks from "./Subtasks";
 import CardLinks from "./CardLinks";
 import OrgProductsDialog from "./OrgProductsDialog";
@@ -288,6 +290,19 @@ export default function CardDetail({
   // This card's own product key always links in its description (TLS-13 in a
   // product keyed TLS), even where it reads like a standard.
   const ownKeys = [card.product_key, context.productKey].filter((k): k is string => Boolean(k));
+  // A key that reads like a standard from another product (TLS-13 on an AB
+  // card) links only once the team's keys are known. They are loaded for the
+  // few descriptions that have one; a failed load leaves those as text (AB-148).
+  const [teamKeys, setTeamKeys] = useState<string[] | null>(null);
+  const needTeamKeys = teamKeys === null && !editingDescription
+    && stoplistedPrefixes(description).some((p) => !ownKeys.includes(p));
+  useEffect(() => {
+    if (!needTeamKeys) return;
+    let live = true;
+    void loadTeamProductKeys().then((keys) => { if (live) setTeamKeys(keys); });
+    return () => { live = false; };
+  }, [needTeamKeys]);
+  const linkKeys = teamKeys ? [...ownKeys, ...teamKeys] : ownKeys;
   const rootRef = useRef<HTMLDivElement>(null);
 
   // --- Saving ---
@@ -740,7 +755,7 @@ export default function CardDetail({
           }}
           className={cx(descriptionText, "cursor-text transition-colors hover:bg-surface-1 focus-visible:bg-surface-1 focus-visible:outline-none")}
         >
-          <RichText text={description} cardKeys={ownKeys} />
+          <RichText text={description} cardKeys={linkKeys} />
         </div>
       ) : (
       <AutoTextarea

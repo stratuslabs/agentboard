@@ -220,9 +220,23 @@ test("stoplistedPrefixes finds the stoplisted prefixes written as keys", () => {
 });
 
 test("stoplistedPrefixes ignores everything that could never link", () => {
-  for (const s of ["", "AB-142 and OKB2-7", "tls-13", "xTLS-13", "TLS-0", "TLS-13x", "repo/TLS-13", "TLS-", "TLS 13"]) {
+  for (const s of [
+    "",
+    "AB-142 and OKB2-7",
+    "tls-13",
+    "xTLS-13",
+    "TLS-0",
+    "TLS-13x",
+    "repo/TLS-13",
+    "TLS-",
+    "TLS 13",
+    "`TLS-13`",
+    "[TLS-13](https://example.com)",
+    "https://example.com/TLS-13",
+  ]) {
     assert.deepEqual(stoplistedPrefixes(s), [], s);
   }
+  assert.deepEqual(stoplistedPrefixes(null), []);
 });
 
 test("a team key from another product links once the caller passes it", () => {

@@ -184,6 +184,36 @@ const CARD_REF = new RegExp(`${CARD_KEY}|${CARD_ID}`, "g");
 const NOT_CARD_KEYS = new Set(["UTF", "ISO", "SHA", "CVE", "RFC", "HTTP", "TLS", "PEP", "ES", "GPT", "UTC", "GMT"]);
 
 /**
+ * The stoplisted prefixes of the references in `text` that would link if
+ * their prefix were a real key (TLS for TLS-13), sorted. A caller that knows
+ * just its own product's key can tell from this whether the team's other keys
+ * are worth loading (AB-148). It parses the way RichText does, so code spans,
+ * link labels and URLs don't count. Empty for almost every description.
+ * @param {string | null | undefined} text
+ * @returns {string[]}
+ */
+export function stoplistedPrefixes(text) {
+  /** @type {Set<string>} */
+  const found = new Set();
+  const visit = (/** @type {Inline[]} */ nodes) => {
+    for (const n of nodes) {
+      if (n.type === "card") {
+        const dash = n.ref.indexOf("-");
+        if (dash > 0 && NOT_CARD_KEYS.has(n.ref.slice(0, dash))) found.add(n.ref.slice(0, dash));
+      } else if (n.type === "strong" || n.type === "link") {
+        visit(n.children);
+      }
+    }
+  };
+  for (const block of parseRichText(text, { cardKeys: NOT_CARD_KEYS })) {
+    if (block.type === "paragraph") block.lines.forEach(visit);
+    else if (block.type === "heading") visit(block.content);
+    else block.items.forEach((item) => item.forEach(visit));
+  }
+  return [...found].sort();
+}
+
+/**
  * Split line[from, to) into text and card references. A reference only names
  * the card: it links to /c/<ref>, which the app resolves (old keys included)
  * or answers with its not-found page.
