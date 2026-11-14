@@ -730,30 +730,41 @@ export default function CardDetail({
 
   // A description shows its formatting until you click into it; an empty one
   // is the editor straight away. Links in the formatted view open as links.
+  // The formatted text holds those links, so it can't be a button itself
+  // (nested-interactive): clicking the text edits for mouse users, and a
+  // separate Edit button does it from the keyboard (AB-151).
   const descriptionText = cx(
     "-mx-2 rounded-md px-2 py-1 text-text-1",
     isPage ? "min-h-[3em] text-[15px] leading-[1.7]" : "min-h-[2.5em] text-[14px] leading-[1.65]",
   );
   const showFormatted = !editingDescription && description.trim() !== "";
+  const editDescription = () => setEditingDescription(true);
   const descriptionField = (
-    <div className="flex flex-col gap-2.5">
-      {!isPage && <SectionHead title="Description" />}
+    <div className={cx("flex flex-col gap-2.5", isPage && "group/desc relative")}>
+      {!isPage && (
+        <SectionHead title="Description">
+          {showFormatted && (
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" aria-label="Edit description" onClick={editDescription}>
+              <Pencil className="h-3 w-3" />Edit
+            </Button>
+          )}
+        </SectionHead>
+      )}
+      {showFormatted && isPage && (
+        <IconButton size={28} aria-label="Edit description" title="Edit description" onClick={editDescription}
+          className="absolute top-0 right-0 z-10 opacity-0 group-hover/desc:opacity-100 focus-visible:opacity-100">
+          <Pencil className="h-[13px] w-[13px]" />
+        </IconButton>
+      )}
       {showFormatted ? (
         <div
-          role="button"
-          tabIndex={0}
-          aria-label="Edit description"
           data-testid="description-view"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest("a")) return;
             if (window.getSelection()?.toString()) return;
-            setEditingDescription(true);
+            editDescription();
           }}
-          onKeyDown={(e) => {
-            if (e.target !== e.currentTarget) return;
-            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setEditingDescription(true); }
-          }}
-          className={cx(descriptionText, "cursor-text transition-colors hover:bg-surface-1 focus-visible:bg-surface-1 focus-visible:outline-none")}
+          className={cx(descriptionText, isPage && "pr-9", "cursor-text transition-colors hover:bg-surface-1")}
         >
           <RichText text={description} cardKeys={linkKeys} />
         </div>
