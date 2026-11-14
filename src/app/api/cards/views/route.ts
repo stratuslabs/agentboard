@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "../../../../lib/sql";
 import { withTenant } from "../../../../lib/tenant";
 import { withCardUrl } from "../../../../lib/public-url";
+import { withOrgPage } from "../../../../lib/org-slug";
 
 // Every view joins up to organizations and filters on the team, so a member id
 // from another team, like one that doesn't exist, matches no cards.
@@ -50,7 +51,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         AND LOWER(col.name) != 'done'
       ORDER BY cards.due_date ASC, cards.priority, cards.position
     `;
-    return NextResponse.json(withCardUrl(request, rows));
+    return NextResponse.json(withCardUrl(request, withOrgPage(rows)));
   }
 
   if (view === "past-due-count") {
@@ -107,7 +108,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         AND cards.due_date = (NOW() AT TIME ZONE ${tz})::date
       ORDER BY p.name, cards.priority, cards.position
     `;
-    return NextResponse.json(withCardUrl(request, rows));
+    return NextResponse.json(withCardUrl(request, withOrgPage(rows)));
   }
 
   if (view === "assigned") {
@@ -147,7 +148,7 @@ export const GET = withTenant(async (request: NextRequest, { teamId }) => {
         AND LOWER(col.name) != 'done'
       ORDER BY p.name, cards.priority, cards.position
     `;
-    return NextResponse.json(withCardUrl(request, rows));
+    return NextResponse.json(withCardUrl(request, withOrgPage(rows)));
   }
 
   return NextResponse.json({ error: "Invalid view. Use 'today' or 'assigned'." }, { status: 400 });

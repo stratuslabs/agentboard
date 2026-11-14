@@ -34,6 +34,7 @@ import RichText from "./RichText";
 import Subtasks from "./Subtasks";
 import CardLinks from "./CardLinks";
 import OrgProductsDialog from "./OrgProductsDialog";
+import { orgCrumbHref } from "../lib/org-slug";
 import { boardHref, isPlainClick, productHref } from "../lib/breadcrumbs";
 import {
   type Card,
@@ -62,7 +63,12 @@ interface Attachment {
 
 export interface CardContext {
   orgName?: string;
-  /** With the org's id and slug, the full page's org crumb opens its "All products" list. */
+  /**
+   * Whether the org has a page at /<orgSlug> in this app (the server's
+   * `org_page`). When it does, the full page's org crumb links there.
+   */
+  orgPage?: boolean;
+  /** Without an org page, the org's id and slug let the org crumb open its "All products" list instead. */
   orgId?: number;
   orgSlug?: string;
   productEmoji?: string;
@@ -829,7 +835,8 @@ export default function CardDetail({
   const boardLink = boardHref(context.orgSlug, context.productSlug, context.boardId);
   const hasBoardCrumb = Boolean(context.boardName);
   const boardFallback = boardLink ? undefined : onClose;
-  const orgDialogTarget = context.orgName && context.orgId && context.orgSlug
+  const orgLink = orgCrumbHref(context.orgSlug, context.orgPage);
+  const orgDialogTarget = !orgLink && context.orgName && context.orgId && context.orgSlug
     ? { id: context.orgId, name: context.orgName, slug: context.orgSlug }
     : null;
   if (isPage) {
@@ -839,7 +846,9 @@ export default function CardDetail({
           <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 text-text-3">
             {context.orgName && (
               <span className="flex min-w-0 items-center gap-2 max-md:hidden">
-                {orgDialogTarget ? (
+                {orgLink ? (
+                  <Crumb href={orgLink}>{context.orgName}</Crumb>
+                ) : orgDialogTarget ? (
                   <button type="button" className={cx(CRUMB_LINK, "text-left")} aria-haspopup="dialog" onClick={() => setOrgDialogOpen(true)}>{context.orgName}</button>
                 ) : (
                   <span className="truncate">{context.orgName}</span>

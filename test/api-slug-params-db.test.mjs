@@ -309,3 +309,42 @@ test("products/by-slug says whether the org has an org page", { skip }, async ()
     configure(previous);
   }
 });
+
+// AB-145: a card page opened from Today, Assigned or Past due links its org
+// crumb by the same rule as the board, so every view says it per card.
+test("the views say whether each card's org has an org page", { skip }, async () => {
+  const crumb = await seed(A, "Crumb Org", "Crumbs");
+  const member = await call(A, api.members.POST, "/api/members", { method: "POST", body: { name: "Crumb Agent", type: "agent" } });
+  assert.equal(member.status, 201, JSON.stringify(member.data));
+  const today = new Date().toISOString().slice(0, 10);
+  const [dueToday, pastDue] = crumb.cards;
+  for (const [card, due_date] of [[dueToday, today], [pastDue, "2020-01-01"]]) {
+    const patched = await call(A, (req) => api.card.PATCH(req, { params: Promise.resolve({ id: String(card.id) }) }),
+      `/api/cards/${card.id}`, { method: "PATCH", body: { assignee_id: member.data.id, due_date } });
+    assert.equal(patched.status, 200, JSON.stringify(patched.data));
+  }
+  const views = {
+    today: [`/api/cards/views?view=today&tz=UTC`, dueToday.id],
+    assigned: [`/api/cards/views?view=assigned&member_id=${member.data.id}`, dueToday.id],
+    "past-due": [`/api/cards/views?view=past-due&member_id=${member.data.id}&tz=UTC`, pastDue.id],
+  };
+  const orgPage = async (name) => {
+    const [path, id] = views[name];
+    const row = (await ok(A, api.views.GET, path)).data.find((c) => c.id === id);
+    assert.ok(row, `${name}: card ${id} listed`);
+    assert.equal(row.org_slug, crumb.org.slug, name);
+    return row.org_page;
+  };
+
+  const previous = getConfig();
+  try {
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: [] });
+    for (const name of Object.keys(views)) assert.equal(await orgPage(name), true, name);
+    configure({ ...previous, orgPages: true, reservedOrgSlugs: [crumb.org.slug] });
+    for (const name of Object.keys(views)) assert.equal(await orgPage(name), false, `${name}: reserved by the app`);
+    configure({ ...previous, orgPages: false });
+    for (const name of Object.keys(views)) assert.equal(await orgPage(name), false, `${name}: no org page mounted`);
+  } finally {
+    configure(previous);
+  }
+});

@@ -92,3 +92,37 @@ test("orgPageHref links an org's page, except on a core-reserved slug", async ()
     assert.equal(slugs.orgPageHref(reserved), null, reserved);
   }
 });
+
+// AB-145: a card page's org crumb follows the board's rule. It links to
+// /<org-slug> only when the server said the org has a page there (`org_page`),
+// and never on a core-reserved slug.
+test("orgCrumbHref links only when the org has a page", async () => {
+  const slugs = await fresh("lib/org-slug.ts");
+  assert.equal(slugs.orgCrumbHref("northwind", true), "/northwind");
+  assert.equal(slugs.orgCrumbHref("northwind", false), null);
+  assert.equal(slugs.orgCrumbHref("northwind", undefined), null);
+  assert.equal(slugs.orgCrumbHref(undefined, true), null);
+  assert.equal(slugs.orgCrumbHref("", true), null);
+  assert.equal(slugs.orgCrumbHref("today", true), null);
+});
+
+// The cross-product views (Today, Assigned, Past due) say per card whether its
+// org has a page, so a card page opened from one can link its org crumb.
+test("withOrgPage adds org_page to cards that carry org_slug", async () => {
+  const { configure } = await fresh("configure.ts");
+  const slugs = await fresh("lib/org-slug.ts");
+
+  configure({ orgPages: true, reservedOrgSlugs: ["billing"] });
+  assert.deepEqual(
+    slugs.withOrgPage([{ id: 1, org_slug: "northwind" }, { id: 2, org_slug: "billing" }, { id: 3, org_slug: "today" }]),
+    [{ id: 1, org_slug: "northwind", org_page: true }, { id: 2, org_slug: "billing", org_page: false }, { id: 3, org_slug: "today", org_page: false }],
+  );
+  assert.deepEqual(slugs.withOrgPage({ id: 4, org_slug: "northwind" }), { id: 4, org_slug: "northwind", org_page: true });
+  // Anything without an org slug passes through untouched.
+  assert.deepEqual(slugs.withOrgPage([{ id: 5 }]), [{ id: 5 }]);
+  assert.equal(slugs.withOrgPage(null), null);
+
+  // An app that didn't mount the org page has none to link to.
+  configure({ orgPages: false });
+  assert.deepEqual(slugs.withOrgPage([{ id: 1, org_slug: "northwind" }]), [{ id: 1, org_slug: "northwind", org_page: false }]);
+});
