@@ -4,8 +4,8 @@
 // EXISTS` is not safe to run twice at once: both sessions see the table
 // missing, both create it, and the second fails on the catalog's unique index
 // (`duplicate key value violates unique constraint "pg_type_typname_nsp_index"`).
-// Several requests in one process, or several processes, must set the schema
-// up one at a time.
+// Requests in one process share one run, and processes starting together
+// take turns on each schema statement.
 //
 // To make the race happen every time rather than now and then, each test
 // first creates `organizations` in a transaction of its own and holds it open.
@@ -47,12 +47,12 @@ async function createDatabase(name) {
   return urlFor(name);
 }
 
-/** Open a transaction that has created `organizations` and not committed. */
-async function holdOrganizations(dbUrl) {
+/** Open a transaction that has created `table` and not committed. */
+async function holdTable(dbUrl, table = "organizations") {
   const blocker = new pg.Client({ connectionString: dbUrl });
   await blocker.connect();
   await blocker.query("BEGIN");
-  await blocker.query("CREATE TABLE organizations (id INTEGER)");
+  await blocker.query(`CREATE TABLE ${table} (id INTEGER)`);
   return blocker;
 }
 
@@ -75,8 +75,8 @@ async function untilWaiting(name, n, timeoutMs = 15_000) {
 }
 
 function startChild(dbUrl) {
-  // A pool of one: the lock must not wait on a pool slot its own setup needs.
-  const child = spawn(process.execPath, [CHILD], {
+  // A pool of one: the lock must not need a second connection.
+  const child = spawn(process.execPath, [CHILD, "--start"], {
     env: { ...process.env, POSTGRES_URL: dbUrl, DATABASE_URL: "", POSTGRES_POOL_MAX: "1", NODE_NO_WARNINGS: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -147,7 +147,7 @@ test("concurrent first requests in one process all succeed", { skip }, async () 
   await require("../src/lib/sql.js").end();
   const { initDb } = await import(new URL("../src/lib/db.ts?fresh=1", import.meta.url).href);
 
-  const blocker = await holdOrganizations(urlFor(name));
+  const blocker = await holdTable(urlFor(name));
   const requests = Array.from({ length: 5 }, () => initDb());
   const results = Promise.allSettled(requests);
   try {
@@ -164,27 +164,30 @@ test("concurrent first requests in one process all succeed", { skip }, async () 
   assert.deepEqual(await tables(urlFor(name)), { cards: true, teams: true, github: true });
 });
 
-test("two processes starting on one empty database both succeed", { skip }, async () => {
-  const name = `${PREFIX}_procs`;
-  const dbUrl = await createDatabase(name);
-  const blocker = await holdOrganizations(dbUrl);
-  let first;
-  let second;
-  try {
-    first = startChild(dbUrl);
-    second = startChild(dbUrl);
-    // Both processes are queued: on the held CREATE, or one of them behind
-    // the other's lock.
-    await untilWaiting(name, 2);
-  } finally {
-    await blocker.query("ROLLBACK");
-    await blocker.end();
-  }
-  const outcomes = await Promise.all([first, second]);
-  assert.deepEqual(
-    outcomes.map((o) => o.code),
-    [0, 0],
-    outcomes.map((o) => o.output).join("\n"),
-  );
-  assert.deepEqual(await tables(dbUrl), { cards: true, teams: true, github: true });
-});
+// The first table, and the last migration's (it has no lock of its own).
+for (const table of ["organizations", "github_installations"]) {
+  test(`two processes starting on one empty database both succeed (race on ${table})`, { skip }, async () => {
+    const name = `${PREFIX}_procs_${table}`;
+    const dbUrl = await createDatabase(name);
+    const blocker = await holdTable(dbUrl, table);
+    let first;
+    let second;
+    try {
+      first = startChild(dbUrl);
+      second = startChild(dbUrl);
+      // Both processes are queued: on the held CREATE, or one of them behind
+      // the other's schema lock.
+      await untilWaiting(name, 2);
+    } finally {
+      await blocker.query("ROLLBACK");
+      await blocker.end();
+    }
+    const outcomes = await Promise.all([first, second]);
+    assert.deepEqual(
+      outcomes.map((o) => o.code),
+      [0, 0],
+      outcomes.map((o) => o.output).join("\n"),
+    );
+    assert.deepEqual(await tables(dbUrl), { cards: true, teams: true, github: true });
+  });
+}

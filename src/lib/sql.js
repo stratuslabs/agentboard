@@ -207,42 +207,6 @@ async function withClient(fn) {
   }
 }
 
-/**
- * Run `fn` while holding a Postgres advisory lock, so only one process at a
- * time runs it against this database.
- *
- * The lock is transaction-scoped and held on a connection of its own, opened
- * outside the pool: a session lock taken through a transaction-mode pooler
- * (Neon's pooled endpoint, PgBouncer) can outlive its unlock on another
- * server connection, and a pool slot spent waiting would deadlock a pool of
- * one. `fn` runs its statements through the pool as usual, each committing
- * on its own. Closing the connection ends the transaction and releases the
- * lock, also when this process dies first.
- *
- * @template T
- * @param {number} key
- * @param {() => Promise<T>} fn
- * @returns {Promise<T>}
- */
-async function withAdvisoryLock(key, fn) {
-  const url = connectionString();
-  if (!url) getPool(); // throws the error that names every variable tried
-  const { Client } = require("pg");
-  const client = new Client({ connectionString: url, ssl: sslConfig(url), connectionTimeoutMillis: 10_000 });
-  // The server dropping the connection while `fn` runs must not take the
-  // process down; it releases the lock, which is all this connection is for.
-  client.on("error", () => {});
-  try {
-    await client.connect();
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1)", [key]);
-    return await fn();
-  } finally {
-    await client.query("ROLLBACK").catch(() => {});
-    await client.end().catch(() => {});
-  }
-}
-
 /** Close the pool so a short-lived script can exit. */
 async function end() {
   if (pool) {
@@ -251,4 +215,4 @@ async function end() {
   }
 }
 
-module.exports = { sql, db, readSnapshot, withClient, withAdvisoryLock, end, sslConfig, connectionString, CONNECTION_STRING_VARS };
+module.exports = { sql, db, readSnapshot, withClient, end, sslConfig, connectionString, CONNECTION_STRING_VARS };

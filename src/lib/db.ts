@@ -1,4 +1,4 @@
-import { sql, db, withAdvisoryLock } from "./sql";
+import { sql, db } from "./sql";
 import { DEFAULT_BOARD_MIGRATION } from "./default-board-migration";
 import { columnsFromSetting } from "./default-columns";
 import { SHADOWED_ORG_SLUGS } from "./org-slug";
@@ -9,33 +9,48 @@ import { TENANCY_MIGRATION } from "./tenancy";
 import { AGENT_NAME_MIGRATION } from "./agent-names";
 import { GITHUB_APP_MIGRATION } from "./github-tables";
 
-/** Advisory lock key that serializes schema setup across processes (AB-147). */
-const INIT_DB_LOCK = 147147;
-
 let ready: Promise<void> | null = null;
 
 /**
  * Create and migrate the schema, once per process, on the first request.
- *
- * `CREATE TABLE IF NOT EXISTS` is not safe to run twice at once: on an empty
- * database both runs see the table missing, and one fails on Postgres's
- * catalog index (`pg_type_typname_nsp_index`). So requests in this process
- * share one run, and processes take turns under an advisory lock; a later
- * run finds the tables there and only checks the migrations.
- *
- * A failure is not cached, so a database that was briefly unreachable is
- * tried again by the next request.
+ * Requests that arrive while that runs wait for the same run. A failure is
+ * not cached, so a database that was briefly unreachable is tried again by
+ * the next request.
  */
 export function initDb(): Promise<void> {
-  ready ??= withAdvisoryLock(INIT_DB_LOCK, ensureTables).catch((err) => {
+  ready ??= ensureTables().catch((err) => {
     ready = null;
     throw err;
   });
   return ready;
 }
 
+/** Advisory lock key that serializes schema statements across processes (AB-147). */
+const SCHEMA_LOCK = 147147;
+
+/**
+ * Run a schema statement while holding the schema lock.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is not safe to run twice at once: both runs
+ * see the table missing, and one fails on Postgres's catalog index
+ * (`pg_type_typname_nsp_index`). Several processes start on one database
+ * (serverless instances, a restart during a deploy), so their schema
+ * statements take turns.
+ *
+ * The lock and the statement go in one message, which Postgres runs as one
+ * implicit transaction, releasing the lock when the statement commits. That
+ * holds no connection beyond the statement's own, keeps table locks as short
+ * as they were, and works through a transaction-mode pooler. Plain text only:
+ * a query with parameters can't carry two statements.
+ */
+function ddl(text: string) {
+  return db.query(`SELECT pg_advisory_xact_lock(${SCHEMA_LOCK});\n${text}`);
+}
+
+// Schema statements go through ddl(), so processes starting together take
+// turns; the data fixes between them are guarded on their own.
 export async function ensureTables() {
-  await sql`
+  await ddl(`
     CREATE TABLE IF NOT EXISTS organizations (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -43,8 +58,8 @@ export async function ensureTables() {
       position INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW()
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
       org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -55,8 +70,8 @@ export async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE(org_id, slug)
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS boards (
       id SERIAL PRIMARY KEY,
       product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -65,8 +80,8 @@ export async function ensureTables() {
       position INTEGER DEFAULT 0,
       UNIQUE(product_id, slug)
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS columns (
       id SERIAL PRIMARY KEY,
       board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -76,8 +91,8 @@ export async function ensureTables() {
       color TEXT DEFAULT '#6B7280',
       UNIQUE(board_id, slug)
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS cards (
       id SERIAL PRIMARY KEY,
       column_id INTEGER NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
@@ -92,8 +107,8 @@ export async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS members (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -102,16 +117,16 @@ export async function ensureTables() {
       avatar_url TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
-  `;
+  `);
   // Migration: add assignee_id to cards if not present
   try {
-    await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES members(id) ON DELETE SET NULL`;
+    await ddl(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS assignee_id INTEGER REFERENCES members(id) ON DELETE SET NULL`);
   } catch {
     // Column may already exist
   }
   // Migration: add due_date to cards if not present
   try {
-    await sql`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`;
+    await ddl(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS due_date DATE`);
   } catch {
     // Column may already exist
   }
@@ -119,12 +134,12 @@ export async function ensureTables() {
   // can ask for everything that changed since a timestamp instead of refetching
   // the whole board every few seconds. `IF NOT EXISTS` is already idempotent,
   // so this needs no guard.
-  await sql`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
-  await sql`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`;
+  await ddl(`ALTER TABLE boards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
+  await ddl(`ALTER TABLE columns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
   // Migration: a product's default board is where the CLI lands when no board
   // is named. Products that predate it get their `development` board, once,
   // atomically with adding the column (see default-board-migration.js).
-  await db.query(DEFAULT_BOARD_MIGRATION);
+  await ddl(DEFAULT_BOARD_MIGRATION);
   // Migration: an organization slugged `c` or `api` is shadowed by the app's
   // own routes (`/c/<id>`, `/api/...`), so none of its product pages can be
   // reached. Move it to `<slug>-org` (or `<slug>-org-2`, ... if that is taken).
@@ -174,33 +189,33 @@ export async function ensureTables() {
       `;
     }
   }
-  await sql`
+  await ddl(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW()
     )
-  `;
-  await sql`
+  `);
+  await ddl(`
     CREATE TABLE IF NOT EXISTS user_preferences (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       updated_at TIMESTAMP DEFAULT NOW()
     )
-  `;
+  `);
   // Migration: tenancy. A teams table and team_id on the root tables, an
   // existing install moved into one default team, uniques per team (see
   // tenancy.js). Before card numbers, whose product keys are per team.
-  await db.query(TENANCY_MIGRATION);
+  await ddl(TENANCY_MIGRATION);
   // Migration: one agent per name per team, so an agent registering again
   // lands on its own row (see agent-names.js). Needs members.team_id.
-  await db.query(AGENT_NAME_MIGRATION);
+  await ddl(AGENT_NAME_MIGRATION);
   // Migration: human-readable card ids. Products get a key (AB) and a
   // counter, cards a per-product number (AB-142), assigned by a trigger and
   // backfilled for existing cards in one atomic statement (see card-keys.js).
-  await db.query(CARD_NUMBER_MIGRATION);
+  await ddl(CARD_NUMBER_MIGRATION);
   await ensureProductKeys((text, values) => db.query(text, values));
-  await sql`
+  await ddl(`
     CREATE TABLE IF NOT EXISTS attachments (
       id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -208,10 +223,10 @@ export async function ensureTables() {
       content TEXT NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
     )
-  `;
+  `);
   // Sub-tasks: a checklist on a card. Every write also bumps the card's
   // updated_at, so board deltas and the realtime stream pick it up.
-  await sql`
+  await ddl(`
     CREATE TABLE IF NOT EXISTS subtasks (
       id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -221,12 +236,12 @@ export async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`;
+  `);
+  await ddl(`CREATE INDEX IF NOT EXISTS subtasks_card_id_idx ON subtasks (card_id, position, id)`);
   // Card links: any http(s) URL a card points at (a Slack thread, a doc, a
   // design), beside the GitHub issue and PR fields. One row per URL per card,
   // so linking the same URL again updates it instead of adding a duplicate.
-  await sql`
+  await ddl(`
     CREATE TABLE IF NOT EXISTS card_links (
       id SERIAL PRIMARY KEY,
       card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -235,10 +250,10 @@ export async function ensureTables() {
       created_at TIMESTAMP DEFAULT NOW(),
       UNIQUE (card_id, url)
     )
-  `;
+  `);
   // GitHub App (card 1000): installation bindings and handled deliveries
   // (see github-tables.js). Needs teams.
-  await db.query(GITHUB_APP_MIGRATION);
+  await ddl(GITHUB_APP_MIGRATION);
   // A team's default settings are written when the team is first resolved
   // (see src/lib/tenant.ts), not here: they belong to a team now.
 }
