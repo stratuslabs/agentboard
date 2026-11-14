@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
+import { loadPreferences } from '../lib/preferences-load';
 import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups, type Grouping, groupingPrefKey, mergeGroupings, normalizeGroupings } from '../lib/list-groups';
 
 interface Preferences {
@@ -29,7 +31,10 @@ interface PreferencesContextType {
   setHideDoneToday: (hide: boolean) => void;
   toggleCollapsedGroup: (list: string, key: string) => void;
   setListGrouping: (list: string, grouping: Grouping) => void;
+  /** The first load has finished, from the server or, if that failed, from the local cache. */
   isLoaded: boolean;
+  /** A load from the server has succeeded, so its values are known (AB-152). */
+  isServerLoaded: boolean;
 }
 
 const DEFAULT_PREFS: Preferences = {
@@ -88,6 +93,8 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     listGrouping: normalizeGroupings(readLS<unknown>(LS_KEYS.listGrouping, {})),
   }));
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isServerLoaded, setIsServerLoaded] = useState(false);
+  const pathname = usePathname();
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Record<string, unknown>>({});
   // Keys changed locally since mount. The initial GET may carry an older server
@@ -96,7 +103,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Collapsed-group choices made before the initial GET lands. They are replayed onto
   // the server's value when it arrives, and nothing is saved until then, so an early
   // click neither snaps back nor wipes groups collapsed in another browser. If the GET
-  // fails, they stay local for this page load and are never saved.
+  // fails, they stay local and unsaved until a later load succeeds and replays them.
   const serverLoaded = useRef(false);
   const earlyToggles = useRef<Array<[string, string, boolean]>>([]);
 
@@ -122,15 +129,27 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     flushToServer();
   }, [flushToServer]);
 
-  // Fetch from server on mount, server wins on conflict. A superseded request (React
-  // Strict Mode mounts effects twice in development) is aborted, so a stale second
-  // response can't land after the first and undo a click made in between.
+  // Fetch from the server, server wins on conflict. The provider sits in the root
+  // layout, so this first runs on /login, before there is a session. Until a load
+  // succeeds it asks again on every navigation, which covers the client-side push
+  // after signing in (AB-152). A superseded request (a navigation, or React Strict
+  // Mode mounting effects twice in development) is aborted, so a stale response
+  // can't land after a newer one and undo a click made in between.
   useEffect(() => {
+    if (serverLoaded.current) return;
     const request = new AbortController();
-    fetch('/api/preferences', { signal: request.signal })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`preferences ${r.status}`))))
-      .then((received: Record<string, unknown>) => {
+    loadPreferences(fetch, request.signal)
+      .then((result) => {
         if (request.signal.aborted) return;
+        if (!result.ok) {
+          // Keep the local state, so the app works from the local cache. Collapse
+          // clicks stay local: the cache was never merged with the server value, so
+          // saving it could wipe groups collapsed in another browser. serverLoaded
+          // stays false, so the next navigation tries again.
+          setIsLoaded(true);
+          return;
+        }
+        const received = result.prefs;
         // Computed once, outside the updater, so a double-invoked updater can't replay twice.
         // Early collapse clicks send no PATCH, so this key is never in `touched` here.
         serverLoaded.current = true;
@@ -182,17 +201,15 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           return merged;
         });
         if (early.length) queuePatch(SERVER_KEYS.collapsedGroups, collapsed);
+        setIsServerLoaded(true);
         setIsLoaded(true);
       })
       .catch(() => {
-        if (request.signal.aborted) return;
-        // Keep the local state. Collapse clicks stay local for this page load: the
-        // local cache was never merged with the server value, so saving it could
-        // wipe groups collapsed in another browser. serverLoaded stays false.
-        setIsLoaded(true); // Even on error, mark loaded so app works with localStorage data
+        // Merging the answer failed. Keep the app usable from the local cache.
+        if (!request.signal.aborted) setIsLoaded(true);
       });
     return () => request.abort();
-  }, [queuePatch]);
+  }, [queuePatch, pathname]);
 
   const updatePref = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((prev) => ({ ...prev, [key]: value }));
@@ -288,6 +305,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       toggleCollapsedGroup,
       setListGrouping,
       isLoaded,
+      isServerLoaded,
     }}>
       {children}
     </PreferencesContext.Provider>

@@ -3,19 +3,22 @@
 import { useId, useState } from "react";
 import { UserRound } from "lucide-react";
 import { usePreferences } from "../contexts/PreferencesContext";
+import { needsProfileSetup } from "../lib/preferences-load";
 import { Avatar, Button, ColorSwatches, Dialog, Field, Input, PRESET_COLORS } from "./ui";
 
 
 export default function ProfileSetup() {
-  const { prefs, isLoaded, setProfileMemberId } = usePreferences();
+  const { prefs, isServerLoaded, setProfileMemberId } = usePreferences();
   const titleId = useId();
   const [name, setName] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[5]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Don't render if prefs not loaded yet or profile already set
-  if (!isLoaded || prefs.profileMemberId !== null) {
+  // Only when the server has answered and has no profile. A failed load (signed
+  // out on /login, a server error) says nothing about it, and Continue would
+  // add a second member for someone who has one (AB-152).
+  if (!needsProfileSetup({ serverLoaded: isServerLoaded, profileMemberId: prefs.profileMemberId })) {
     return null;
   }
 
