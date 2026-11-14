@@ -202,6 +202,7 @@
     "./lib/members": "./src/lib/members.ts",
     "./lib/org-slug": "./src/lib/org-slug.ts",
     "./lib/page-title": "./src/lib/page-title.ts",
+    "./lib/preferences-load": "./src/lib/preferences-load.js",
     "./lib/product-update": "./src/lib/product-update.js",
     "./lib/products-changed": "./src/lib/products-changed.ts",
     "./lib/public-url": "./src/lib/public-url.ts",
