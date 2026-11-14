@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { Button, IconButton, cx } from "../ui";
 import { DEFAULT_COLUMNS } from "../../lib/default-columns";
+import { loadSettings } from "../../lib/settings-load";
 import { saveSetting } from "../../lib/settings-save";
+import { ListLoadError } from "./ListLoadError";
 
 interface ColumnDef {
   name: string;
@@ -14,17 +16,47 @@ interface ColumnDef {
 const FALLBACK_BOARDS = ["Development", "Marketing", "Sales", "Support"];
 const FALLBACK_COLUMNS: ColumnDef[] = DEFAULT_COLUMNS;
 
-function useSetting<T>(key: string, fallback: T) {
-  const [value, setValue] = useState<T | null>(null);
+export type ListSetting<T> = { status: "loading" } | { status: "failed" } | { status: "ready"; value: T[] };
+
+/**
+ * What a list section shows after a settings load. A failed load is "failed",
+ * never the built-in list: shown as if it were the team's, Save would
+ * overwrite the real setting with it. A list that was never saved shows the
+ * built-in one, which is what the server uses for new products too.
+ */
+export function listSetting<T>(
+  result: { ok: true; settings: Record<string, unknown> } | { ok: false },
+  key: string,
+  fallback: T[],
+): ListSetting<T> {
+  if (!result.ok) return { status: "failed" };
+  const saved = result.settings[key];
+  return { status: "ready", value: Array.isArray(saved) ? (saved as T[]) : fallback };
+}
+
+/**
+ * One list setting. `retry` loads it again after a failure, and keeps the
+ * failure on screen until the new answer arrives, so Try again keeps focus.
+ */
+function useListSetting<T>(key: string, fallback: T[]) {
+  const [state, setState] = useState<ListSetting<T>>({ status: "loading" });
+  // fallback is a module constant; key never changes for a mounted section
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data) => setValue((data[key] as T) || fallback))
-      .catch(() => setValue(fallback));
-    // fallback is a module constant; key never changes for a mounted section
+    let live = true;
+    void loadSettings().then((result) => {
+      if (live) setState(listSetting(result, key, fallback));
+    });
+    return () => {
+      live = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return [value, setValue] as const;
+  const retry = useCallback(async () => {
+    setState(listSetting(await loadSettings(), key, fallback));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const setValue = useCallback((value: T[]) => setState({ status: "ready", value }), []);
+  return { state, setValue, retry };
 }
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
@@ -98,9 +130,11 @@ function Footer({ addLabel, onAdd, state, onSave }: { addLabel: string; onAdd: (
 const ROW_INPUT = "min-w-0 flex-1 bg-transparent text-[13.5px] text-text-1 placeholder:text-text-4 focus:outline-none";
 
 export function DefaultBoards() {
-  const [boards, setBoards] = useSetting<string[]>("default_boards", FALLBACK_BOARDS);
+  const { state: loaded, setValue: setBoards, retry } = useListSetting<string>("default_boards", FALLBACK_BOARDS);
   const { state, save } = useSaver("default_boards");
-  if (!boards) return <div className="text-xs text-text-3">Loading…</div>;
+  if (loaded.status === "loading") return <div className="text-xs text-text-3">Loading…</div>;
+  if (loaded.status === "failed") return <ListLoadError title="Couldn't load default boards" onRetry={retry} />;
+  const boards = loaded.value;
   return (
     <>
       <div className="overflow-hidden rounded-[10px] border border-border bg-surface-1">
@@ -117,9 +151,11 @@ export function DefaultBoards() {
 }
 
 export function DefaultColumns() {
-  const [columns, setColumns] = useSetting<ColumnDef[]>("default_columns", FALLBACK_COLUMNS);
+  const { state: loaded, setValue: setColumns, retry } = useListSetting<ColumnDef>("default_columns", FALLBACK_COLUMNS);
   const { state, save } = useSaver("default_columns");
-  if (!columns) return <div className="text-xs text-text-3">Loading…</div>;
+  if (loaded.status === "loading") return <div className="text-xs text-text-3">Loading…</div>;
+  if (loaded.status === "failed") return <ListLoadError title="Couldn't load default columns" onRetry={retry} />;
+  const columns = loaded.value;
   return (
     <>
       <div className="overflow-hidden rounded-[10px] border border-border bg-surface-1">
