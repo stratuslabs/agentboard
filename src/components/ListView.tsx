@@ -18,6 +18,8 @@ export interface ViewCard extends Card {
   /** Where the card lives, for the full page's breadcrumbs. */
   org_id?: number;
   org_slug?: string;
+  /** Whether the org has a page at /<org_slug>, for the org crumb. Sent by the views, not by a single-card fetch. */
+  org_page?: boolean;
   product_slug?: string;
   board_id?: number;
   column_name: string;
@@ -117,6 +119,7 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
         orgName: openCard.org_name || undefined,
         orgId: openCard.org_id,
         orgSlug: openCard.org_slug,
+        orgPage: openCard.org_page,
         productEmoji: openCard.product_emoji,
         productName: openCard.product_name,
         productSlug: openCard.product_slug,

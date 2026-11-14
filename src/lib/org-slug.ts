@@ -47,16 +47,6 @@ export function orgSlugFromName(name: string): string {
 }
 
 /**
- * The org page for an org slug, /<orgSlug>, or null when the org has none.
- *
- * An org kept on a slug the core reserved later (an existing `today` org keeps
- * its URLs) has no org page: /today is the Today page. This runs in the
- * browser, where configure() isn't loaded, so it checks only the core's own
- * list. Slugs the consuming app reserved are the server's call: the board
- * gets `org_page` from /api/products/by-slug and passes it on as the
- * KanbanBoard `orgPage` prop.
- */
-/**
  * Whether /<slug> is that org's page, on the server: the app mounts org pages
  * and the slug isn't one of the app's own paths (the core's, or one the
  * consuming app reserved). /api/products/by-slug returns it as `org_page`.
@@ -65,6 +55,39 @@ export function hasOrgPage(slug: string): boolean {
   return orgPagesMounted() && !isReservedOrgSlug(slug);
 }
 
+/**
+ * Add `org_page` to a card or a list of cards that carry `org_slug`, for the
+ * cross-product views (Today, Assigned, Past due): a card page opened from one
+ * links its org crumb only when the org has a page. Anything without an org
+ * slug is returned unchanged.
+ */
+export function withOrgPage<T>(data: T): T {
+  const add = (row: unknown) =>
+    row && typeof row === "object" && typeof (row as { org_slug?: unknown }).org_slug === "string"
+      ? { ...row, org_page: hasOrgPage((row as { org_slug: string }).org_slug) }
+      : row;
+  return (Array.isArray(data) ? data.map(add) : add(data)) as T;
+}
+
+/**
+ * The org page for an org slug, /<orgSlug>, or null when the org has none.
+ *
+ * An org kept on a slug the core reserved later (an existing `today` org keeps
+ * its URLs) has no org page: /today is the Today page. This runs in the
+ * browser, where configure() isn't loaded, so it checks only the core's own
+ * list. Slugs the consuming app reserved are the server's call: it sends
+ * `org_page` (from /api/products/by-slug and the card views), and the
+ * breadcrumbs go through orgCrumbHref.
+ */
 export function orgPageHref(slug: string): string | null {
   return RESERVED_ORG_SLUGS.has(slug.toLowerCase()) ? null : `/${slug}`;
+}
+
+/**
+ * Where the org name in a breadcrumb links: the org page when the server said
+ * the org has one (`org_page`), else nowhere. The board and the card page both
+ * use it, so the org crumb works the same in both.
+ */
+export function orgCrumbHref(slug: string | null | undefined, orgPage: boolean | undefined): string | null {
+  return orgPage === true && slug ? orgPageHref(slug) : null;
 }

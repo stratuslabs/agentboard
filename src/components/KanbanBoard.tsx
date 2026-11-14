@@ -32,7 +32,7 @@ import CardDetail from "./CardDetail";
 import { readBoardParam, stripBoardParam } from "../lib/breadcrumbs";
 import CardContextMenu, { type CardMenuTarget } from "./CardContextMenu";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
-import { orgPageHref } from "../lib/org-slug";
+import { orgCrumbHref } from "../lib/org-slug";
 import ConfirmModal from "./ConfirmModal";
 import { Button, IconButton, MenuDivider, MenuItem, MenuPanel, Select, cx } from "./ui";
 import { usePreferences } from "../contexts/PreferencesContext";
@@ -92,7 +92,7 @@ interface KanbanBoardProps {
   orgId?: number;
   orgSlug?: string;
   productSlug?: string;
-  /** Whether the org has a page at /<orgSlug> in this app. When it does, the org name in the board's breadcrumb links there. */
+  /** Whether the org has a page at /<orgSlug> in this app. When it does, the org name in the board's and its cards' breadcrumbs links there. */
   orgPage?: boolean;
   productName: string;
   productEmoji: string;
@@ -853,7 +853,7 @@ export default function KanbanBoard({
       card,
       columns,
       context: {
-        orgName, orgId, orgSlug, productEmoji, productName, productSlug, productKey,
+        orgName, orgId, orgSlug, orgPage, productEmoji, productName, productSlug, productKey,
         boardName: activeBoard?.name,
         boardId: activeBoard?.id,
         // Already on screen behind the card: close it, and for the product
@@ -887,6 +887,7 @@ export default function KanbanBoard({
   }
 
   const cardMenuCard = cardMenu ? cards.find((c) => c.id === cardMenu.cardId) : undefined;
+  const orgLink = orgCrumbHref(orgSlug, orgPage);
   const columnMenuColumn = columnContextMenu ? columns.find((c) => c.id === columnContextMenu.columnId) : null;
   const columnMenuIndex = columnContextMenu ? columns.findIndex((c) => c.id === columnContextMenu.columnId) : -1;
 
@@ -899,8 +900,8 @@ export default function KanbanBoard({
             <ArrowLeft className="h-4 w-4" />
           </IconButton>
         )}
-        {orgPage && orgSlug && orgPageHref(orgSlug) ? (
-          <Link href={orgPageHref(orgSlug)!} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
+        {orgLink ? (
+          <Link href={orgLink} className="truncate rounded-[4px] text-text-3 transition-colors hover:text-text-1 hover:underline">{orgName}</Link>
         ) : (
           <span className="truncate text-text-3">{orgName}</span>
         )}

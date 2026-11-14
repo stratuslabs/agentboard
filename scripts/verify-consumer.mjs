@@ -221,6 +221,23 @@ try {
     JSON.stringify(legacy),
   );
 
+  // The card views (Today, Assigned, Past due) say the same per card, so a
+  // card page opened from one links its org crumb by the same rule (AB-145).
+  const today = new Date().toISOString().slice(0, 10);
+  const legacyBoard = await call(teamA, `/api/board?product_id=${legacyProduct.data?.id}`);
+  const legacyCard = await call(teamA, "/api/cards", {
+    method: "POST", body: { column_id: legacyBoard.data?.columns?.[0]?.id, title: "Legacy org card", due_date: today },
+  });
+  await call(teamA, `/api/cards/${card.data.id}`, { method: "PATCH", body: { due_date: today } });
+  const todayView = await call(teamA, "/api/cards/views?view=today&tz=UTC");
+  const viewRow = (id) => (Array.isArray(todayView.data) ? todayView.data.find((c) => c.id === id) : undefined);
+  check("the Today view says a card's org has an org page", viewRow(card.data.id)?.org_page === true, JSON.stringify(todayView));
+  check(
+    "the Today view says an org on a consumer-reserved slug has none",
+    viewRow(legacyCard.data?.id)?.org_page === false,
+    JSON.stringify(viewRow(legacyCard.data?.id) ?? legacyCard),
+  );
+
   const html = String(page.data);
   check(
     "the consumer's sidebar footer slot renders in the core's sidebar",
