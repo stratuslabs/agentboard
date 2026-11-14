@@ -217,6 +217,7 @@
     "./lib/slug": "./src/lib/slug.js",
     "./lib/sql": "./src/lib/sql.js",
     "./lib/subtasks": "./src/lib/subtasks.js",
+    "./lib/team-product-keys": "./src/lib/team-product-keys.js",
     "./lib/tenancy": "./src/lib/tenancy.js",
     "./lib/tenant": "./src/lib/tenant.ts",
     "./lib/useBoardStream": "./src/lib/useBoardStream.ts",
