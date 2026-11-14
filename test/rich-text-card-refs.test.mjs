@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseInline, parseRichText } from "../src/lib/rich-text.js";
+import { parseInline, parseRichText, stoplistedPrefixes } from "../src/lib/rich-text.js";
 
 const text = (t) => ({ type: "text", text: t });
 const card = (ref, label = ref) => ({ type: "card", ref, children: [text(label)] });
@@ -208,4 +208,40 @@ test("'card #N' glued to a formatting construct stays text (card 837 review)", (
   for (const s of ["card #57", "(card #57)", "\"card #57\"", "**see** card #57"]) {
     assert.ok(parseInline(s).some((n) => n.type === "card"), s);
   }
+});
+
+// AB-148: a card only knows its own product's key, so a description that
+// mentions TLS-13 from another product has to ask for the team's keys. These
+// are the prefixes worth asking about: stoplisted, and written like a key.
+test("stoplistedPrefixes finds the stoplisted prefixes written as keys", () => {
+  assert.deepEqual(stoplistedPrefixes("Blocked by TLS-13 and AB-2."), ["TLS"]);
+  assert.deepEqual(stoplistedPrefixes("- UTC-5\n\n## TLS-1, TLS-2 and RFC-9110"), ["RFC", "TLS", "UTC"]);
+  assert.deepEqual(stoplistedPrefixes("**TLS-13**"), ["TLS"]);
+});
+
+test("stoplistedPrefixes ignores everything that could never link", () => {
+  for (const s of [
+    "",
+    "AB-142 and OKB2-7",
+    "tls-13",
+    "xTLS-13",
+    "TLS-0",
+    "TLS-13x",
+    "repo/TLS-13",
+    "TLS-",
+    "TLS 13",
+    "`TLS-13`",
+    "[TLS-13](https://example.com)",
+    "https://example.com/TLS-13",
+  ]) {
+    assert.deepEqual(stoplistedPrefixes(s), [], s);
+  }
+  assert.deepEqual(stoplistedPrefixes(null), []);
+});
+
+test("a team key from another product links once the caller passes it", () => {
+  // CardDetail adds the team's keys to its own, so TLS-13 from an AB card links,
+  // while RFC-9110 (not a product here) stays text.
+  const opts = { cardKeys: ["AB", "TLS"] };
+  assert.deepEqual(parseInline("TLS-13 per RFC-9110", opts), [card("TLS-13"), text(" per RFC-9110")]);
 });
