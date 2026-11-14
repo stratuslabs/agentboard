@@ -1,4 +1,4 @@
-import { sql, db } from "./sql";
+import { sql, db, withAdvisoryLock } from "./sql";
 import { DEFAULT_BOARD_MIGRATION } from "./default-board-migration";
 import { columnsFromSetting } from "./default-columns";
 import { SHADOWED_ORG_SLUGS } from "./org-slug";
@@ -9,12 +9,29 @@ import { TENANCY_MIGRATION } from "./tenancy";
 import { AGENT_NAME_MIGRATION } from "./agent-names";
 import { GITHUB_APP_MIGRATION } from "./github-tables";
 
-let initialized = false;
+/** Advisory lock key that serializes schema setup across processes (AB-147). */
+const INIT_DB_LOCK = 147147;
 
-export async function initDb() {
-  if (initialized) return;
-  await ensureTables();
-  initialized = true;
+let ready: Promise<void> | null = null;
+
+/**
+ * Create and migrate the schema, once per process, on the first request.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is not safe to run twice at once: on an empty
+ * database both runs see the table missing, and one fails on Postgres's
+ * catalog index (`pg_type_typname_nsp_index`). So requests in this process
+ * share one run, and processes take turns under an advisory lock; a later
+ * run finds the tables there and only checks the migrations.
+ *
+ * A failure is not cached, so a database that was briefly unreachable is
+ * tried again by the next request.
+ */
+export function initDb(): Promise<void> {
+  ready ??= withAdvisoryLock(INIT_DB_LOCK, ensureTables).catch((err) => {
+    ready = null;
+    throw err;
+  });
+  return ready;
 }
 
 export async function ensureTables() {
