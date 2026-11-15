@@ -149,9 +149,10 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Fetch from the server, server wins on conflict. The provider sits in the root
   // layout, so this first runs on /login, before there is a session. Until a load
   // succeeds it asks again on every navigation, which covers the client-side push
-  // after signing in (AB-152), and on reloadPreferences (Try again). A superseded request (a navigation, or React Strict
-  // Mode mounting effects twice in development) is aborted, so a stale response
-  // can't land after a newer one and undo a click made in between.
+  // after signing in (AB-152), and on reloadPreferences (Try again). A superseded
+  // request (a navigation, or React Strict Mode mounting effects twice in
+  // development) is aborted, so a stale response can't land after a newer one and
+  // undo a click made in between.
   useEffect(() => {
     if (serverLoaded.current) return;
     const request = new AbortController();
