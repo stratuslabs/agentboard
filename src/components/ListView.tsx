@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { ArrowLeft, Calendar, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, ChevronRight, CloudOff } from "lucide-react";
 import CardDetail from "./CardDetail";
-import { Avatar, EmptyState, IconButton, PriorityDot, StatusBadge, cx } from "./ui";
+import { Avatar, Button, EmptyState, IconButton, PageLoader, PriorityDot, StatusBadge, cx } from "./ui";
 import { pageTitle, useDocumentTitle } from "../lib/page-title";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { GROUPINGS, type Grouping, groupCards, isCollapsed, normalizeGrouping } from "../lib/list-groups";
@@ -42,11 +42,19 @@ interface ListViewProps {
   actions?: React.ReactNode;
   emptyIcon?: React.ReactNode;
   tone?: "default" | "danger";
-  onRefresh: () => void;
+  /**
+   * Whether the cards have arrived. While loading, the list area shows the
+   * loader; after a failed load, an error with Try again. Only "ready" shows
+   * the empty state, so a list still on its way or one that failed never says
+   * "No cards found" (AB-156). Defaults to "ready".
+   */
+  status?: "loading" | "ready" | "failed";
+  /** Reloads the cards. Try again waits for it when it returns a promise. */
+  onRefresh: () => void | Promise<unknown>;
   onBack?: () => void;
 }
 
-export default function ListView({ cards, title, listId = title, icon, emptyMessage, emptyTitle = "No cards found", note, actions, emptyIcon, tone = "default", onRefresh, onBack }: ListViewProps) {
+export default function ListView({ cards, title, listId = title, icon, emptyMessage, emptyTitle = "No cards found", note, actions, emptyIcon, tone = "default", status = "ready", onRefresh, onBack }: ListViewProps) {
   const [openCardId, setOpenCardId] = useState<number | null>(null);
   const [cardView, setCardView] = useState<"panel" | "page">("panel");
   // The open card, held here as well as read from `cards`: an edit can take it
@@ -150,9 +158,11 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
         )}
         <span className={cx("flex [&>svg]:h-[17px] [&>svg]:w-[17px]", tone === "danger" ? "text-danger" : "text-text-1")}>{icon}</span>
         <h1 className="text-base font-semibold tracking-[-0.2px] text-text-1">{title}</h1>
-        <span className="whitespace-nowrap font-mono text-[11.5px] text-text-3">
-          {cards.length} {cards.length === 1 ? "card" : "cards"}
-        </span>
+        {status === "ready" && (
+          <span className="whitespace-nowrap font-mono text-[11.5px] text-text-3">
+            {cards.length} {cards.length === 1 ? "card" : "cards"}
+          </span>
+        )}
         {note && <span className="whitespace-nowrap font-mono text-[11.5px] text-text-4 max-md:hidden">· {note}</span>}
         {(actions || cards.length > 0) && (
           <div className="ml-auto flex items-center gap-1.5">
@@ -164,7 +174,11 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
 
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-y-auto px-8 py-7 max-md:px-4">
-        {cards.length === 0 ? (
+        {status === "loading" ? (
+          <PageLoader />
+        ) : status === "failed" ? (
+          <LoadError onRetry={onRefresh} />
+        ) : cards.length === 0 ? (
           <EmptyState className="flex-1 pb-20" icon={emptyIcon ?? icon} title={emptyTitle} body={emptyMessage} />
         ) : (
           <div className="flex max-w-[880px] flex-col gap-6">
@@ -229,6 +243,39 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
       </div>
 
       {detail}
+    </div>
+  );
+}
+
+/**
+ * In the list's place when its cards couldn't load. The error stays on screen
+ * while Try again runs, so the button keeps focus and a keyboard user can
+ * press it again if the retry fails too.
+ */
+function LoadError({ onRetry }: { onRetry: () => void | Promise<unknown> }) {
+  const [retrying, setRetrying] = useState(false);
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  }
+  return (
+    <div role="alert" className="flex flex-1 flex-col pb-20">
+      <EmptyState
+        className="flex-1"
+        icon={<CloudOff />}
+        title="Couldn't load these cards"
+        body="Check your connection and try again."
+        action={
+          <Button variant="primary" onClick={retry} aria-disabled={retrying || undefined} className={retrying ? "cursor-wait opacity-60" : undefined}>
+            {retrying ? "Trying again…" : "Try again"}
+          </Button>
+        }
+      />
     </div>
   );
 }

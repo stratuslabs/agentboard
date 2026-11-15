@@ -222,6 +222,7 @@
     "./lib/tenancy": "./src/lib/tenancy.js",
     "./lib/tenant": "./src/lib/tenant.ts",
     "./lib/useBoardStream": "./src/lib/useBoardStream.ts",
+    "./lib/view-cards": "./src/lib/view-cards.ts",
     "./middleware": "./src/middleware.ts",
     "./package.json": "./package.json"
   }

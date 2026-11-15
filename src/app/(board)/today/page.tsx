@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarCheck, CalendarDays, Eye, EyeOff } from "lucide-react";
 import ListView, { type ViewCard } from "../../../components/ListView";
@@ -8,25 +7,19 @@ import { Button } from "../../../components/ui";
 import { useSidebar } from "../../../contexts/SidebarContext";
 import { usePreferences } from "../../../contexts/PreferencesContext";
 import { withoutDone } from "../../../lib/done-cards";
+import { fetchJsonList, useViewCards } from "../../../lib/view-cards";
+
+function fetchToday() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return fetchJsonList<ViewCard>(`/api/cards/views?view=today&tz=${encodeURIComponent(tz)}`);
+}
 
 
 export default function TodayPage() {
   const router = useRouter();
   const { isMobile } = useSidebar();
   const { prefs, setHideDoneToday } = usePreferences();
-  const [cards, setCards] = useState<ViewCard[]>([]);
-
-  const loadCards = useCallback(async () => {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const res = await fetch(`/api/cards/views?view=today&tz=${encodeURIComponent(tz)}`);
-    if (res.ok) {
-      setCards(await res.json());
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCards();
-  }, [loadCards]);
+  const { state, cards, reload } = useViewCards(fetchToday);
 
   const hide = prefs.hideDoneToday;
   const { cards: shown, hidden } = withoutDone(cards, hide);
@@ -35,6 +28,7 @@ export default function TodayPage() {
   return (
     <ListView
       cards={shown}
+      status={state.status}
       title="Today"
       listId="today"
       icon={<CalendarDays />}
@@ -53,7 +47,7 @@ export default function TodayPage() {
       emptyTitle={allDone ? "Nothing left for today" : undefined}
       emptyMessage={allDone ? "Everything due today is done." : "No cards are due today."}
       emptyIcon={<CalendarCheck />}
-      onRefresh={loadCards}
+      onRefresh={reload}
       onBack={isMobile ? () => router.push("/") : undefined}
     />
   );
