@@ -59,7 +59,6 @@ import OrgProductsDialog from "./OrgProductsDialog";
 import { usePreferences } from "../contexts/PreferencesContext";
 import { openQuickSearch, searchShortcut } from "../lib/quick-search";
 import { agentSetupPrompt as coreSetupPrompt, type AgentSetupPrompt } from "../lib/agent-prompt";
-import { profileMember } from "../lib/view-cards";
 import { Button, IconButton, Logo, MenuDivider, MenuItem, MenuPanel, Wordmark, cx } from "./ui";
 
 const EmojiPicker = dynamic(() => import("./EmojiPicker"), {
@@ -408,7 +407,7 @@ const noSubscribe = () => () => {};
 export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { prefs, isLoaded, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
+  const { prefs, confirmedProfileMemberId: pastDueMember, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
   // The quick search shortcut, once the platform is known (not during SSR).
   const shortcut = useSyncExternalStore(noSubscribe, searchShortcut, () => null);
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -448,9 +447,9 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
   useEffect(() => { loadOrgs(); loadMembers(); }, []);
 
   // The badge counts the person's own overdue cards, as Past Due lists them:
-  // their profile member's (AB-162). Counted again when that becomes known or
-  // changes; the ref lets a recount drop an answer for an earlier member.
-  const pastDueMember = profileMember({ isLoaded, profileMemberId: prefs.profileMemberId });
+  // the profile member the server confirms (AB-162). Counted again when that
+  // becomes known or changes; the ref lets a recount drop an answer for an
+  // earlier member.
   const pastDueMemberRef = useRef(pastDueMember);
   useEffect(() => {
     pastDueMemberRef.current = pastDueMember;
@@ -478,7 +477,7 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
   // whole nav entry vanish on any blip, since it is gated on the count.
   async function loadPastDueCount() {
     const member = pastDueMemberRef.current;
-    // Not known until the preferences load; the effect above counts then.
+    // Not known until the server confirms it; the effect above counts then.
     if (member === undefined) return;
     if (member === null) {
       // No profile yet, so nothing is assigned to "me".

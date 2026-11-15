@@ -35,3 +35,21 @@ export async function loadPreferences(fetchImpl = fetch, signal) {
 export function needsProfileSetup({ serverLoaded, profileMemberId }) {
   return serverLoaded && profileMemberId === null;
 }
+
+/**
+ * The profile member the server confirms for this user and team, once a load
+ * has succeeded: its saved value, or null when it has none. Never the local
+ * cache, which everyone who signs in on this browser shares, across every
+ * team; taking it for "me" showed the previous person's cards on Assigned to
+ * me and Past Due (AB-162). A profile set in this session while the load was
+ * in flight wins over the answer.
+ *
+ * @param {unknown} saved  the server's value for the profile key, undefined if it has none
+ * @param {boolean} touched  whether the profile was set in this session
+ * @param {number | null} local  the profile as set in this session
+ * @returns {number | null}
+ */
+export function confirmedProfileMember(saved, touched, local) {
+  if (touched) return local;
+  return Number.isInteger(saved) && saved > 0 ? saved : null;
+}

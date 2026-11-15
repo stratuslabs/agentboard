@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadPreferences, needsProfileSetup } from "../src/lib/preferences-load.js";
+import { confirmedProfileMember, loadPreferences, needsProfileSetup } from "../src/lib/preferences-load.js";
 
 const respond = (status, body) => async () =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), {
@@ -64,4 +64,29 @@ test("profile setup opens only when the server says there is no profile", () => 
   // we don't know, and asking would create a duplicate member.
   assert.equal(needsProfileSetup({ serverLoaded: false, profileMemberId: null }), false);
   assert.equal(needsProfileSetup({ serverLoaded: false, profileMemberId: 372 }), false);
+});
+
+// "Me" on Assigned to me, Past Due and the Past Due badge is the profile the
+// server confirms for this user and team. The local cache is shared by
+// everyone who signs in on the browser and by every team, so trusting it
+// showed the previous person's cards, or another team's member (AB-162).
+
+test("the confirmed profile is the server's saved value", () => {
+  assert.equal(confirmedProfileMember(372, false, 9), 372);
+});
+
+test("no saved profile on the server is no profile, whatever the cache holds", () => {
+  assert.equal(confirmedProfileMember(undefined, false, 9), null);
+  assert.equal(confirmedProfileMember(null, false, 9), null);
+});
+
+test("a saved value that isn't a member id is no profile", () => {
+  for (const bad of ["dylan", 1.5, {}, [], true, 0, -3]) {
+    assert.equal(confirmedProfileMember(bad, false, null), null, JSON.stringify(bad));
+  }
+});
+
+test("a profile set in this session while the load was in flight wins", () => {
+  assert.equal(confirmedProfileMember(372, true, 9), 9);
+  assert.equal(confirmedProfileMember(undefined, true, 9), 9);
 });

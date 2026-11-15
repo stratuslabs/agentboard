@@ -24,7 +24,7 @@ const { default: ListView } = await import("../src/components/ListView.tsx");
 const { default: TodayPage } = await import("../src/app/(board)/today/page.tsx");
 const { default: AssignedPage } = await import("../src/app/(board)/assigned/page.tsx");
 const { default: PastDuePage } = await import("../src/app/(board)/past-due/page.tsx");
-const { fetchJsonList, settleViewCards, viewCardsLoader, memberViewFetcher, profileMember } = await import("../src/lib/view-cards.ts");
+const { fetchJsonList, settleViewCards, viewCardsLoader, memberViewFetcher } = await import("../src/lib/view-cards.ts");
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -115,19 +115,10 @@ test("an older load that answers late doesn't overwrite a newer one", async () =
 });
 
 // ---------------------------------------------------------------------------
-// Assigned and Past Due belong to the person using the app: their profile
-// member. They used to take the team's first human member, so on a team with
-// two people one of them saw the other's cards (AB-162).
-
-test("\"me\" isn't known until the preferences have loaded", () => {
-  assert.equal(profileMember({ isLoaded: false, profileMemberId: 9 }), undefined);
-  assert.equal(profileMember({ isLoaded: false, profileMemberId: null }), undefined);
-});
-
-test("once the preferences have loaded, \"me\" is the profile member, or no one yet", () => {
-  assert.equal(profileMember({ isLoaded: true, profileMemberId: 9 }), 9);
-  assert.equal(profileMember({ isLoaded: true, profileMemberId: null }), null);
-});
+// Assigned and Past Due belong to the person using the app: the profile
+// member the server confirms (see test/preferences-load.test.mjs). They used
+// to take the team's first human member, so on a team with two people one of
+// them saw the other's cards (AB-162).
 
 test("a member list asks for that member's cards in one request, without the members", async () => {
   const urls = [];

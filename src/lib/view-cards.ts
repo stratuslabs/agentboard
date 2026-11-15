@@ -55,21 +55,6 @@ export function viewCardsLoader(
 }
 
 /**
- * Who "me" is on Assigned to me and Past Due: the person's profile member.
- * undefined until the preferences have loaded, because until then it isn't
- * known. After that it's the saved profile, from the server or, if that load
- * failed, from the local cache like the rest of the app; null means no profile
- * yet. This used to be the team's first human member, so on a team with two
- * people one of them saw the other's cards (AB-162).
- */
-export function profileMember({ isLoaded, profileMemberId }: {
-  isLoaded: boolean;
-  profileMemberId: number | null;
-}): number | null | undefined {
-  return isLoaded ? profileMemberId : undefined;
-}
-
-/**
  * Cards for a list of one member's cards (Assigned to me, Past Due), in one
  * request. With no member the list is empty without asking: the route answers
  * 400 without a member, and an "everyone" list would be wrong.
