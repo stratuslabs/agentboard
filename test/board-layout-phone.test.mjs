@@ -93,3 +93,28 @@ test("isMobile and the phone classes use one breakpoint, in px", () => {
   // Tailwind compiles max-[768px]: to @media not all and (min-width: 768px).
   assert.equal(PHONE_QUERY, "not all and (min-width: 768px)");
 });
+
+/** Render "/" in a browser-like global with a stored collapse and a window width. */
+function renderStoredCollapse(phone) {
+  const saved = { window: globalThis.window, localStorage: globalThis.localStorage, matchMedia: globalThis.matchMedia };
+  globalThis.window = globalThis;
+  globalThis.localStorage = { getItem: (k) => (k === "agentboard-sidebar-collapsed" ? "true" : null), setItem() {} };
+  globalThis.matchMedia = (q) => ({ matches: q === PHONE_QUERY && phone, addEventListener() {}, removeEventListener() {} });
+  try {
+    return region(render("/"), "sidebar").after.match(/^<div[^>]*>/)?.[0] ?? "";
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete globalThis[k]; else globalThis[k] = v;
+  }
+}
+
+test("a stored collapse waits for isMobile on a phone, so \"/\" never shows the rail first", () => {
+  // Read in the first client render, it turned the full sidebar the server sent
+  // into the 52px rail before isMobile was known, then back to full width.
+  const box = renderStoredCollapse(true);
+  assert.ok(classes(box).includes("max-[768px]:w-full"), `first render is the full sidebar: ${box}`);
+  assert.ok(!classes(box).includes("w-[52px]"), `first render is not the rail: ${box}`);
+});
+
+test("a stored collapse still shows from the first render on a desktop", () => {
+  assert.ok(classes(renderStoredCollapse(false)).includes("w-[52px]"), "desktop first render is the rail");
+});
