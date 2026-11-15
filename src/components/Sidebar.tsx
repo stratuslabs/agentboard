@@ -366,7 +366,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, 
   const done = [hasOrg, hasProduct, false].filter(Boolean).length;
 
   return (
-    <div className="px-3 pt-1 pb-3">
+    <div className="shrink-0 px-3 pt-1.5 pb-3">
       <div className="rounded-lg border border-border bg-surface-1 p-3">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-[13px] font-semibold text-text-1">Get started</span>
@@ -799,24 +799,6 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
         )}
       </div>
 
-      {/* Getting Started — shows until first agent is connected, waits for data to avoid flash */}
-      {membersLoaded && (
-        <GetStartedCard
-          orgs={orgs}
-          productsByOrg={productsByOrg}
-          members={members}
-          setupPrompt={agentSetupPrompt}
-          onAddOrg={() => setShowAddOrg(true)}
-          onAddProduct={(orgId) => {
-            setAddingProductOrg(orgId);
-            setAddingProductName("");
-            if (!expandedOrgs.has(orgId)) {
-              setExpandedOrgs([...prefs.expandedOrgs, orgId]);
-            }
-          }}
-        />
-      )}
-
       {/* Quick views */}
       <nav className="flex flex-col gap-px px-3 pt-1 pb-2">
         {pastDueCount > 0 && (
@@ -912,6 +894,30 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
           )}
         </div>
       </div>
+
+      {/* Getting Started: shows until the first agent is connected. It needs the
+          members, which load after the page does, so it sits below the org list
+          and above the footer: the list gives up the space, and nothing already
+          on screen moves when it appears. Above the nav it pushed the nav and
+          the org list down as "/" loaded (CLS 0.15 on a phone, AB-159), and a
+          placeholder would have pushed things up for every team that has an
+          agent. */}
+      {membersLoaded && (
+        <GetStartedCard
+          orgs={orgs}
+          productsByOrg={productsByOrg}
+          members={members}
+          setupPrompt={agentSetupPrompt}
+          onAddOrg={() => setShowAddOrg(true)}
+          onAddProduct={(orgId) => {
+            setAddingProductOrg(orgId);
+            setAddingProductName("");
+            if (!expandedOrgs.has(orgId)) {
+              setExpandedOrgs([...prefs.expandedOrgs, orgId]);
+            }
+          }}
+        />
+      )}
 
       {/* Footer: the consuming app's slot, settings & logout */}
       <div className="flex shrink-0 flex-col gap-px border-t border-border px-3 py-2">
