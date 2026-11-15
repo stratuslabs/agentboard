@@ -197,8 +197,8 @@ function MoveHandle({ label, attributes, keyboard, setRef, dragging, className }
 }) {
   return (
     <button type="button" ref={setRef} {...attributes} {...keyboard} aria-label={label} title="Drag to move"
-      className={cx("absolute top-0 -left-3 flex h-full w-3 cursor-grab items-center justify-center rounded-sm text-text-4 transition-opacity hover:text-text-2 active:cursor-grabbing",
-        "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ivory/30",
+      className={cx("absolute top-0 -left-3 flex h-full w-3 cursor-grab items-center justify-center rounded-sm text-text-3 transition-opacity hover:text-text-1 active:cursor-grabbing",
+        "focus-visible:text-text-1 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ivory/30 focus-visible:ring-inset",
         dragging ? "opacity-100" : cx("opacity-0", className))}>
       <GripVertical aria-hidden className="h-3 w-3" />
     </button>
@@ -602,10 +602,16 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
     return org?.name ?? "the organization";
   }
 
+  // A drag starts over its own row, so saying so would talk over "Picked up".
+  // Coming back to it later is worth saying.
+  const leftStartRef = useRef(false);
   const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${dragName(active.id)}.`,
-    onDragOver: ({ active, over }) =>
-      over ? `${dragName(active.id)} is over ${dragName(over.id)}.` : `${dragName(active.id)} is not over a drop target.`,
+    onDragStart: ({ active }) => { leftStartRef.current = false; return `Picked up ${dragName(active.id)}.`; },
+    onDragOver: ({ active, over }) => {
+      if (over?.id === active.id) return leftStartRef.current ? `${dragName(active.id)} is back where it started.` : undefined;
+      leftStartRef.current = true;
+      return over ? `${dragName(active.id)} is over ${dragName(over.id)}.` : `${dragName(active.id)} is not over a drop target.`;
+    },
     onDragEnd: ({ active, over }) =>
       over && over.id !== active.id ? `${dragName(active.id)} was dropped on ${dragName(over.id)}.` : `${dragName(active.id)} was dropped where it was.`,
     onDragCancel: ({ active }) => `Moving ${dragName(active.id)} was cancelled.`,
