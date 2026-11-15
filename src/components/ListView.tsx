@@ -175,7 +175,8 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-y-auto px-8 py-7 max-md:px-4">
         {status === "loading" ? (
-          <PageLoader />
+          // Same box as the empty and error states, so the loader sits where they appear.
+          <div className="flex flex-1 flex-col pb-20"><PageLoader /></div>
         ) : status === "failed" ? (
           <LoadError onRetry={onRefresh} />
         ) : cards.length === 0 ? (
