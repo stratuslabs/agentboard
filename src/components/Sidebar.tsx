@@ -87,8 +87,13 @@ interface Product {
 }
 
 interface SidebarProps {
-  /** null while the page hydrates: draw both forms and let BoardLayout's preload style pick. */
-  collapsed: boolean | null;
+  collapsed: boolean;
+  /**
+   * True while the page hydrates: draw both forms, and let BoardLayout's
+   * preload style pick the one that shows (AB-157). collapsed then only says
+   * which form React keeps afterwards.
+   */
+  bothForms?: boolean;
   onToggle: () => void;
   isMobile?: boolean;
   /** Rendered above Settings in the expanded sidebar footer. */
@@ -399,7 +404,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, 
 const noSubscribe = () => () => {};
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
+export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
@@ -735,15 +740,18 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
     }
   }
 
-  // collapsed is null while the page hydrates: the server can't read a saved
-  // collapse, so the first render draws both forms and the preload style in
-  // BoardLayout picks one before it paints (AB-157). The slots wait for the
-  // next render, so a control a consuming app passes for both forms, such as
-  // Cloud's team switcher, mounts once.
-  const bothForms = collapsed === null;
+  // While the page hydrates the server can't know a saved collapse, so this
+  // draws both forms and the preload style in BoardLayout shows one before it
+  // paints (AB-157). Only the keys use collapsed then: keys aren't in the HTML,
+  // so hydration still matches, and the form that shows is the one keyed
+  // "sidebar", which React keeps. Collapsing and expanding later reuse that
+  // same box, so its width still animates. The slots wait for the next render,
+  // so a control a consuming app passes for both forms, such as Cloud's team
+  // switcher, mounts once.
+  const shown = collapsed && !isMobile ? "rail" : "full";
   const rail = (
     <div
-      key="rail"
+      key={shown === "rail" ? "sidebar" : "rail"}
       data-sidebar-form={bothForms ? "rail" : undefined}
       className={cx("sidebar-transition w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3", bothForms ? "hidden" : "flex")}
     >
@@ -763,11 +771,11 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       </IconButton>
     </div>
   );
-  if (collapsed && !isMobile) return rail;
+  if (shown === "rail" && !bothForms) return rail;
 
   const full = (
     <div
-      key="full"
+      key={shown === "full" ? "sidebar" : "full"}
       data-sidebar-form={bothForms ? "full" : undefined}
       className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}
     >

@@ -68,7 +68,8 @@ function BoardLayoutInner({ children, sidebarFooter, sidebarRail, agentSetupProm
       <div data-layout="sidebar" className={cx("contents", !isHome && "max-[768px]:hidden")}>
         {showSidebar && (
           <Sidebar
-            collapsed={!hydrated ? null : isMobile ? false : collapsed}
+            collapsed={isMobile ? false : collapsed}
+            bothForms={!hydrated}
             onToggle={toggleCollapsed}
             isMobile={isMobile}
             footerSlot={sidebarFooter}
