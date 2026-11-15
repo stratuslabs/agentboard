@@ -209,22 +209,29 @@ export default function ListView({ cards, title, listId = title, icon, emptyMess
                     const displayName = displayAssignee(card);
                     const key = cardKey(card);
 
+                    // One line on a desktop. On a phone, two: the title gets
+                    // the row's width (up to two lines) and the key, status,
+                    // assignee and due date sit under it, so titles aren't cut
+                    // to a few characters (AB-158). The grid keeps the DOM
+                    // order, so the row reads the same to a screen reader.
                     return (
                       <button
                         key={card.id}
                         onClick={() => open(card)}
-                        className={cx("flex h-11 w-full items-center gap-3 rounded-lg border px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2", openCardId === card.id ? "border-text-3 bg-surface-2" : "border-border bg-surface-1")}
+                        className={cx("flex h-11 w-full items-center gap-3 rounded-lg border px-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2 max-md:grid max-md:h-auto max-md:min-h-11 max-md:grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] max-md:gap-x-2.5 max-md:gap-y-1.5 max-md:py-2.5", openCardId === card.id ? "border-text-3 bg-surface-2" : "border-border bg-surface-1")}
                       >
-                        <PriorityDot priority={card.priority} />
-                        {key && <span className="min-w-[52px] shrink-0 font-mono text-[11.5px] text-text-4">{key}</span>}
-                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-text-1">{card.title}</span>
-                        <StatusBadge color={card.column_color}>{card.column_name}</StatusBadge>
+                        <PriorityDot priority={card.priority} className="max-md:col-start-1 max-md:row-start-1 max-md:mt-[6.5px] max-md:self-start" />
+                        {key && <span className="min-w-[52px] shrink-0 font-mono text-[11.5px] text-text-4 max-md:col-start-2 max-md:row-start-2">{key}</span>}
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-text-1 max-md:col-span-4 max-md:col-start-2 max-md:row-start-1 max-md:line-clamp-2 max-md:whitespace-normal max-md:leading-5">{card.title}</span>
+                        <StatusBadge color={card.column_color} className="max-md:col-start-3 max-md:row-start-2 max-md:min-w-0 max-md:max-w-full max-md:justify-self-start">
+                          <span className="truncate">{card.column_name}</span>
+                        </StatusBadge>
                         {displayName ? (
-                          <span title={displayName}><Avatar name={displayName} color={card.assignee_color} size={22} /></span>
+                          <span title={displayName} className="max-md:col-start-4 max-md:row-start-2"><Avatar name={displayName} color={card.assignee_color} size={22} /></span>
                         ) : (
-                          <span className="w-[22px] shrink-0" />
+                          <span className="w-[22px] shrink-0 max-md:col-start-4 max-md:row-start-2" />
                         )}
-                        <span className={cx("flex w-[62px] shrink-0 items-center gap-[5px] font-mono text-[11.5px]", dueStatus ? DUE_TEXT[dueStatus] : "")}>
+                        <span className={cx("flex w-[62px] shrink-0 items-center gap-[5px] font-mono text-[11.5px] max-md:col-start-5 max-md:row-start-2", dueStatus ? DUE_TEXT[dueStatus] : "")}>
                           {card.due_date && (
                             <>
                               <Calendar className="h-3 w-3" />
