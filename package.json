@@ -197,6 +197,7 @@
     "./lib/github-install": "./src/lib/github-install.js",
     "./lib/github-tables": "./src/lib/github-tables.js",
     "./lib/github-webhook": "./src/lib/github-webhook.ts",
+    "./lib/home-restore": "./src/lib/home-restore.js",
     "./lib/list-groups": "./src/lib/list-groups.js",
     "./lib/login-next": "./src/lib/login-next.js",
     "./lib/member-save": "./src/lib/member-save.js",

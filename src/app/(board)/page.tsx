@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePreferences } from "../../contexts/PreferencesContext";
 import { Columns3 } from "lucide-react";
-import { useSidebar } from "../../contexts/SidebarContext";
+import { PHONE_QUERY, useSidebar } from "../../contexts/SidebarContext";
 import { EmptyState, PageLoader } from "../../components/ui";
+import { restoreLastProduct } from "../../lib/home-restore.js";
 
 export default function HomePage() {
   const router = useRouter();
@@ -14,33 +15,21 @@ export default function HomePage() {
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded || isMobile) {
-      // On mobile, "/" is the sidebar view — don't redirect
+    if (!isLoaded) {
       setChecked(true);
       return;
     }
-
-    // On desktop, try to restore the last selected product
-    if (prefs.selectedProduct) {
-      const { productId, orgId } = prefs.selectedProduct;
-      // Fetch the org and product to get their slugs
-      Promise.all([
-        fetch("/api/orgs").then((r) => r.json()),
-        fetch(`/api/products?org_id=${orgId}`).then((r) => r.json()),
-      ])
-        .then(([orgs, products]) => {
-          const org = orgs.find((o: { id: number }) => o.id === orgId);
-          const product = products.find((p: { id: number }) => p.id === productId);
-          if (org && product) {
-            router.replace(`/${org.slug}/${product.slug}`);
-          } else {
-            setChecked(true);
-          }
-        })
-        .catch(() => setChecked(true));
-    } else {
-      setChecked(true);
-    }
+    // On a phone "/" is the sidebar view and never redirects. isMobile alone
+    // isn't enough: after a client-side navigation from Settings the frame
+    // mounts with this page, and this effect runs before the frame's has set
+    // isMobile (AB-160). The query is what isMobile reads, so ask it too.
+    return restoreLastProduct({
+      onPhone: isMobile || window.matchMedia(PHONE_QUERY).matches,
+      selected: prefs.selectedProduct,
+      fetchJson: (url) => fetch(url).then((r) => r.json()),
+      go: (path) => router.replace(path),
+      stay: () => setChecked(true),
+    });
   }, [isLoaded, isMobile, prefs.selectedProduct, router]);
 
   // On mobile, this page is never visible (sidebar shows instead via layout)
