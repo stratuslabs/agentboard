@@ -55,35 +55,46 @@ export function viewCardsLoader(
 }
 
 /**
- * Cards for a list that belongs to the board's first human member (Assigned
- * to me, Past Due). The member is looked up once and kept; if that lookup
- * fails the load fails, and the next load (Try again) asks again. With no
- * human member the list is empty.
+ * Who "me" is on Assigned to me and Past Due: the person's profile member.
+ * undefined until the preferences have loaded, because until then it isn't
+ * known. After that it's the saved profile, from the server or, if that load
+ * failed, from the local cache like the rest of the app; null means no profile
+ * yet. This used to be the team's first human member, so on a team with two
+ * people one of them saw the other's cards (AB-162).
+ */
+export function profileMember({ isLoaded, profileMemberId }: {
+  isLoaded: boolean;
+  profileMemberId: number | null;
+}): number | null | undefined {
+  return isLoaded ? profileMemberId : undefined;
+}
+
+/**
+ * Cards for a list of one member's cards (Assigned to me, Past Due), in one
+ * request. With no member the list is empty without asking: the route answers
+ * 400 without a member, and an "everyone" list would be wrong.
  */
 export function memberViewFetcher(
+  member: number | null,
   url: (memberId: number) => string,
   fetchList: typeof fetchJsonList = fetchJsonList,
 ) {
-  let member: number | null | undefined;
-  return async (): Promise<ViewCard[] | null> => {
-    if (member === undefined) {
-      const members = await fetchList<{ id: number; type: string }>("/api/members");
-      if (!members) return null;
-      member = members.find((m) => m.type === "human")?.id ?? null;
-    }
-    return member === null ? [] : fetchList<ViewCard>(url(member));
-  };
+  return async (): Promise<ViewCard[] | null> =>
+    member === null ? [] : fetchList<ViewCard>(url(member));
 }
 
 /**
  * Loads a list page's cards on mount. `reload` resolves once its answer is
  * applied, so Try again can show progress until then. `fetchCards` is read
- * once, on the first render.
+ * once, on the first render; null means there's nothing to ask for yet, and
+ * the list stays loading.
  */
-export function useViewCards(fetchCards: () => Promise<ViewCard[] | null>) {
+export function useViewCards(fetchCards: (() => Promise<ViewCard[] | null>) | null) {
   const [state, setState] = useState<ViewCardsState>({ status: "loading" });
   const [reload] = useState(() =>
-    viewCardsLoader((next) => setState((prev) => settleViewCards(prev, next)), fetchCards),
+    fetchCards
+      ? viewCardsLoader((next) => setState((prev) => settleViewCards(prev, next)), fetchCards)
+      : async () => {},
   );
   useEffect(() => {
     reload();
