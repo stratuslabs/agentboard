@@ -617,8 +617,8 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
     onDragCancel: ({ active }) => `Moving ${dragName(active.id)} was cancelled.`,
   };
 
-  // Escape, or a pointer drag that ends outside the sidebar, cancels a drag;
-  // without this the drop-zone highlight stayed on.
+  // Escape cancels a drag, by keyboard or pointer. Without this the product
+  // drop-zone highlight stayed on after a cancelled product drag.
   function handleDragCancel() {
     setActiveProductDrag(null);
     setDragOverOrgId(null);
