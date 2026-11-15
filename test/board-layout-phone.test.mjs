@@ -71,8 +71,9 @@ test("/: a phone gets the sidebar alone, full width, from the server's HTML", ()
   const page = region(html, "page");
   assert.ok(!hiddenOnPhone(sidebar.tag), `sidebar region should show on a phone: ${sidebar.tag}`);
   assert.ok(hiddenOnPhone(page.tag), `page region should be hidden on a phone: ${page.tag}`);
-  // The sidebar's own box: 256px on a desktop, the whole width on a phone.
-  const box = sidebar.after.match(/^<div[^>]*>/)?.[0] ?? "";
+  // The full sidebar's box: 256px on a desktop, the whole width on a phone.
+  // (The hidden 52px rail sits beside it until hydration, see AB-157's test.)
+  const box = sidebar.after.match(/<div[^>]*\sdata-sidebar-form="full"[^>]*>/)?.[0] ?? "";
   assert.ok(classes(box).includes("w-64"), `sidebar is 256px on a desktop: ${box}`);
   assert.ok(classes(box).includes("max-[768px]:w-full"), `sidebar fills a phone: ${box}`);
 });
@@ -101,20 +102,21 @@ function renderStoredCollapse(phone) {
   globalThis.localStorage = { getItem: (k) => (k === "agentboard-sidebar-collapsed" ? "true" : null), setItem() {} };
   globalThis.matchMedia = (q) => ({ matches: q === PHONE_QUERY && phone, addEventListener() {}, removeEventListener() {} });
   try {
-    return region(render("/"), "sidebar").after.match(/^<div[^>]*>/)?.[0] ?? "";
+    const after = region(render("/"), "sidebar").after;
+    const form = (name) => after.match(new RegExp(`<div[^>]*\\sdata-sidebar-form="${name}"[^>]*>`))?.[0] ?? "";
+    return { rail: form("rail"), full: form("full") };
   } finally {
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete globalThis[k]; else globalThis[k] = v;
   }
 }
 
-test("a stored collapse waits for isMobile on a phone, so \"/\" never shows the rail first", () => {
-  // Read in the first client render, it turned the full sidebar the server sent
-  // into the 52px rail before isMobile was known, then back to full width.
-  const box = renderStoredCollapse(true);
-  assert.ok(classes(box).includes("max-[768px]:w-full"), `first render is the full sidebar: ${box}`);
-  assert.ok(!classes(box).includes("w-[52px]"), `first render is not the rail: ${box}`);
-});
-
-test("a stored collapse still shows from the first render on a desktop", () => {
-  assert.ok(classes(renderStoredCollapse(false)).includes("w-[52px]"), "desktop first render is the rail");
+test("a stored collapse never shows the rail first on a phone: \"/\" paints the full sidebar", () => {
+  // Read in the first client render, it once turned the full sidebar the
+  // server sent into the 52px rail before isMobile was known (AB-155). Now the
+  // first render is both forms with the rail hidden, and the preload style
+  // that shows it applies from 768px up only (test/sidebar-collapse-first-paint).
+  const { rail, full } = renderStoredCollapse(true);
+  assert.ok(classes(rail).includes("hidden"), `the rail is hidden: ${rail}`);
+  assert.ok(classes(full).includes("max-[768px]:w-full"), `the full sidebar fills a phone: ${full}`);
+  assert.ok(!classes(full).includes("hidden"), `the full sidebar shows: ${full}`);
 });

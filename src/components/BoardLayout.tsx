@@ -14,13 +14,16 @@
  * for a first agent. It is a function, so the layout that passes it must be a
  * client component.
  */
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import type { AgentSetupPrompt } from "../lib/agent-prompt";
 import ProfileSetup from "./ProfileSetup";
 import QuickSearch from "./QuickSearch";
-import { SidebarProvider, useSidebar } from "../contexts/SidebarContext";
+import { SIDEBAR_PRELOAD, SIDEBAR_PRELOAD_STYLE, SidebarProvider, useSidebar } from "../contexts/SidebarContext";
 import { cx } from "./ui/cx";
+
+const noSubscribe = () => () => {};
 
 export interface BoardLayoutProps {
   children: React.ReactNode;
@@ -35,6 +38,14 @@ export interface BoardLayoutProps {
 function BoardLayoutInner({ children, sidebarFooter, sidebarRail, agentSetupPrompt }: BoardLayoutProps) {
   const { collapsed, toggleCollapsed, isMobile } = useSidebar();
   const pathname = usePathname();
+  // False in the server's HTML and the render that hydrates it, true from the
+  // next render on, and true from the start when the frame mounts after a
+  // client-side navigation. Until then the sidebar draws both its forms and
+  // the preload script below picks one (AB-157).
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  useEffect(() => {
+    if (hydrated) document.head.querySelector(`style[${SIDEBAR_PRELOAD_STYLE}]`)?.remove();
+  }, [hydrated]);
 
   // On mobile: "/" shows sidebar only, any other route shows content only
   // On desktop: sidebar + content side by side always
@@ -50,12 +61,15 @@ function BoardLayoutInner({ children, sidebarFooter, sidebarRail, agentSetupProm
   // display: contents keeps the sidebar and the page this row's flex items.
   return (
     <div className="h-screen flex overflow-hidden bg-bg">
+      {/* Only in the server's HTML: React never runs a script it adds later. */}
+      {!hydrated && <script dangerouslySetInnerHTML={{ __html: SIDEBAR_PRELOAD }} />}
       <ProfileSetup />
       <QuickSearch />
       <div data-layout="sidebar" className={cx("contents", !isHome && "max-[768px]:hidden")}>
         {showSidebar && (
           <Sidebar
             collapsed={isMobile ? false : collapsed}
+            bothForms={!hydrated}
             onToggle={toggleCollapsed}
             isMobile={isMobile}
             footerSlot={sidebarFooter}

@@ -88,6 +88,12 @@ interface Product {
 
 interface SidebarProps {
   collapsed: boolean;
+  /**
+   * True while the page hydrates: draw both forms, and let BoardLayout's
+   * preload style pick the one that shows (AB-157). collapsed then only says
+   * which form React keeps afterwards.
+   */
+  bothForms?: boolean;
   onToggle: () => void;
   isMobile?: boolean;
   /** Rendered above Settings in the expanded sidebar footer. */
@@ -398,7 +404,7 @@ function GetStartedCard({ orgs, productsByOrg, members, onAddOrg, onAddProduct, 
 const noSubscribe = () => () => {};
 
 // --- Main Sidebar ---
-export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
+export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { prefs, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
@@ -734,29 +740,47 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
     }
   }
 
-  if (collapsed && !isMobile) {
-    return (
-      <div className="sidebar-transition flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3">
-        <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
-          <Logo size={32} />
-        </button>
-        <IconButton onClick={openQuickSearch} size={32} title={`Search${shortcut ? ` (${shortcut})` : ""}`} aria-label="Search" className="mt-2 text-text-2">
-          <Search className="h-4 w-4" />
-        </IconButton>
-        <div className="flex-1" />
-        {railSlot}
-        <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
-          <Settings className="h-4 w-4" />
-        </IconButton>
-        <IconButton onClick={handleLogout} size={32} title="Logout" aria-label="Logout" className="text-text-2">
-          <LogOut className="h-4 w-4" />
-        </IconButton>
-      </div>
-    );
-  }
+  // While the page hydrates the server can't know a saved collapse, so this
+  // draws both forms and the preload style in BoardLayout shows one before it
+  // paints (AB-157). Only the keys use collapsed then: keys aren't in the HTML,
+  // so hydration still matches, and the form that shows is the one keyed
+  // "sidebar", which React keeps. Collapsing and expanding later reuse that
+  // same box, so its width still animates. The footer slot is in the server's
+  // HTML as it always was; the rail's slot waits for the next render, so for
+  // most people a control a consuming app passes for both forms, such as
+  // Cloud's team switcher, mounts once. (With a saved collapse the footer's
+  // copy mounts in the hidden full sidebar until hydration ends.)
+  const shown = collapsed && !isMobile ? "rail" : "full";
+  const rail = (
+    <div
+      key={shown === "rail" ? "sidebar" : "rail"}
+      data-sidebar-form={bothForms ? "rail" : undefined}
+      className={cx("sidebar-transition w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3", bothForms ? "hidden" : "flex")}
+    >
+      <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
+        <Logo size={32} />
+      </button>
+      <IconButton onClick={openQuickSearch} size={32} title={`Search${shortcut ? ` (${shortcut})` : ""}`} aria-label="Search" className="mt-2 text-text-2">
+        <Search className="h-4 w-4" />
+      </IconButton>
+      <div className="flex-1" />
+      {!bothForms && railSlot}
+      <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
+        <Settings className="h-4 w-4" />
+      </IconButton>
+      <IconButton onClick={handleLogout} size={32} title="Logout" aria-label="Logout" className="text-text-2">
+        <LogOut className="h-4 w-4" />
+      </IconButton>
+    </div>
+  );
+  if (shown === "rail" && !bothForms) return rail;
 
-  return (
-    <div className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}>
+  const full = (
+    <div
+      key={shown === "full" ? "sidebar" : "full"}
+      data-sidebar-form={bothForms ? "full" : undefined}
+      className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}
+    >
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 pr-3.5 pl-4">
         <Logo size={28} />
@@ -941,4 +965,5 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       )}
     </div>
   );
+  return bothForms ? <>{rail}{full}</> : full;
 }
