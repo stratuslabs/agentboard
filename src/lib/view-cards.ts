@@ -55,24 +55,17 @@ export function viewCardsLoader(
 }
 
 /**
- * Cards for a list that belongs to the board's first human member (Assigned
- * to me, Past Due). The member is looked up once and kept; if that lookup
- * fails the load fails, and the next load (Try again) asks again. With no
- * human member the list is empty.
+ * Cards for a list of one member's cards (Assigned to me, Past Due), in one
+ * request. With no member the list is empty without asking: the route answers
+ * 400 without a member, and an "everyone" list would be wrong.
  */
 export function memberViewFetcher(
+  member: number | null,
   url: (memberId: number) => string,
   fetchList: typeof fetchJsonList = fetchJsonList,
 ) {
-  let member: number | null | undefined;
-  return async (): Promise<ViewCard[] | null> => {
-    if (member === undefined) {
-      const members = await fetchList<{ id: number; type: string }>("/api/members");
-      if (!members) return null;
-      member = members.find((m) => m.type === "human")?.id ?? null;
-    }
-    return member === null ? [] : fetchList<ViewCard>(url(member));
-  };
+  return async (): Promise<ViewCard[] | null> =>
+    member === null ? [] : fetchList<ViewCard>(url(member));
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { loadPreferences } from '../lib/preferences-load';
+import { confirmedProfileMember, loadPreferences } from '../lib/preferences-load';
 import { normalizeCollapsed, toggleCollapsed, isCollapsed, replayChoices, type CollapsedGroups, type Grouping, groupingPrefKey, mergeGroupings, normalizeGroupings } from '../lib/list-groups';
 
 interface Preferences {
@@ -35,6 +35,17 @@ interface PreferencesContextType {
   isLoaded: boolean;
   /** A load from the server has succeeded, so its values are known (AB-152). */
   isServerLoaded: boolean;
+  /**
+   * The profile member the server confirms for this user and team: undefined
+   * until a load succeeds, then the saved one or null. Unlike
+   * prefs.profileMemberId it never comes from the local cache, which everyone
+   * on this browser shares, so it is the one to use as "me" (AB-162).
+   */
+  confirmedProfileMemberId: number | null | undefined;
+  /** The latest load from the server failed and no other is under way. */
+  serverLoadFailed: boolean;
+  /** Asks the server again after a failed load. */
+  reloadPreferences: () => void;
 }
 
 const DEFAULT_PREFS: Preferences = {
@@ -94,7 +105,13 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   }));
   const [isLoaded, setIsLoaded] = useState(false);
   const [isServerLoaded, setIsServerLoaded] = useState(false);
+  const [confirmedProfileMemberId, setConfirmedProfileMemberId] = useState<number | null | undefined>(undefined);
   const pathname = usePathname();
+  // Which attempt failed, so a new one (a navigation or reloadPreferences)
+  // reads as under way rather than failed until it answers.
+  const [attempt, setAttempt] = useState(0);
+  const [failedAttempt, setFailedAttempt] = useState<string | null>(null);
+  const attemptKey = `${attempt}:${pathname}`;
   const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatches = useRef<Record<string, unknown>>({});
   // Keys changed locally since mount. The initial GET may carry an older server
@@ -132,12 +149,14 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
   // Fetch from the server, server wins on conflict. The provider sits in the root
   // layout, so this first runs on /login, before there is a session. Until a load
   // succeeds it asks again on every navigation, which covers the client-side push
-  // after signing in (AB-152). A superseded request (a navigation, or React Strict
-  // Mode mounting effects twice in development) is aborted, so a stale response
-  // can't land after a newer one and undo a click made in between.
+  // after signing in (AB-152), and on reloadPreferences (Try again). A superseded
+  // request (a navigation, or React Strict Mode mounting effects twice in
+  // development) is aborted, so a stale response can't land after a newer one and
+  // undo a click made in between.
   useEffect(() => {
     if (serverLoaded.current) return;
     const request = new AbortController();
+    const thisAttempt = attemptKey;
     loadPreferences(fetch, request.signal)
       .then((result) => {
         if (request.signal.aborted) return;
@@ -146,6 +165,7 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           // clicks stay local: the cache was never merged with the server value, so
           // saving it could wipe groups collapsed in another browser. serverLoaded
           // stays false, so the next navigation tries again.
+          setFailedAttempt(thisAttempt);
           setIsLoaded(true);
           return;
         }
@@ -201,15 +221,20 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
           return merged;
         });
         if (early.length) queuePatch(SERVER_KEYS.collapsedGroups, collapsed);
+        const profileTouched = touched.current.has(SERVER_KEYS.profileMemberId);
+        setConfirmedProfileMemberId((local) =>
+          confirmedProfileMember(received[SERVER_KEYS.profileMemberId], profileTouched, local ?? null));
         setIsServerLoaded(true);
         setIsLoaded(true);
       })
       .catch(() => {
         // Merging the answer failed. Keep the app usable from the local cache.
-        if (!request.signal.aborted) setIsLoaded(true);
+        if (request.signal.aborted) return;
+        setFailedAttempt(thisAttempt);
+        setIsLoaded(true);
       });
     return () => request.abort();
-  }, [queuePatch, pathname]);
+  }, [queuePatch, attemptKey]);
 
   const updatePref = useCallback(<K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     setPrefs((prev) => ({ ...prev, [key]: value }));
@@ -263,7 +288,11 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const setProfileMemberId = useCallback((id: number) => {
     updatePref('profileMemberId', id);
+    setConfirmedProfileMemberId(id);
   }, [updatePref]);
+
+  const reloadPreferences = useCallback(() => setAttempt((n) => n + 1), []);
+  const serverLoadFailed = !isServerLoaded && failedAttempt === attemptKey;
 
   const setHideDoneToday = useCallback((hide: boolean) => {
     updatePref('hideDoneToday', hide);
@@ -306,6 +335,9 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
       setListGrouping,
       isLoaded,
       isServerLoaded,
+      confirmedProfileMemberId,
+      serverLoadFailed,
+      reloadPreferences,
     }}>
       {children}
     </PreferencesContext.Provider>

@@ -115,47 +115,36 @@ test("an older load that answers late doesn't overwrite a newer one", async () =
 });
 
 // ---------------------------------------------------------------------------
-// Assigned and Past Due belong to the board's first human member.
+// Assigned and Past Due belong to the person using the app: the profile
+// member the server confirms (see test/preferences-load.test.mjs). They used
+// to take the team's first human member, so on a team with two people one of
+// them saw the other's cards (AB-162).
 
-test("a member list fails when the members can't load, and asks again next time", async () => {
+test("a member list asks for that member's cards in one request, without the members", async () => {
   const urls = [];
-  const lists = { "/api/members": [null, [{ id: 4, type: "human" }]], "/cards/4": [[card]] };
   const fetchList = async (url) => {
     urls.push(url);
-    return lists[url].shift();
+    return [card];
   };
-  const fetchCards = memberViewFetcher((id) => `/cards/${id}`, fetchList);
-  assert.equal(await fetchCards(), null);
+  const fetchCards = memberViewFetcher(9, (id) => `/cards/${id}`, fetchList);
   assert.deepEqual(await fetchCards(), [card]);
-  assert.deepEqual(urls, ["/api/members", "/api/members", "/cards/4"]);
+  assert.deepEqual(await fetchCards(), [card]);
+  assert.deepEqual(urls, ["/cards/9", "/cards/9"]);
 });
 
-test("a member list is empty, without asking for cards, when there's no human member", async () => {
+test("a member list is empty, without asking for cards, when there's no profile yet", async () => {
   const urls = [];
   const fetchList = async (url) => {
     urls.push(url);
-    return [{ id: 2, type: "agent" }];
+    return [card];
   };
-  const fetchCards = memberViewFetcher((id) => `/cards/${id}`, fetchList);
-  assert.deepEqual(await fetchCards(), []);
-  assert.deepEqual(urls, ["/api/members"]);
-});
-
-test("a member list looks the member up once, then only refreshes the cards", async () => {
-  const urls = [];
-  const fetchList = async (url) => {
-    urls.push(url);
-    return url === "/api/members" ? [{ id: 2, type: "agent" }, { id: 9, type: "human" }] : [card];
-  };
-  const fetchCards = memberViewFetcher((id) => `/cards/${id}`, fetchList);
-  await fetchCards();
-  await fetchCards();
-  assert.deepEqual(urls, ["/api/members", "/cards/9", "/cards/9"]);
+  assert.deepEqual(await memberViewFetcher(null, (id) => `/cards/${id}`, fetchList)(), []);
+  assert.deepEqual(urls, []);
 });
 
 test("a member list whose cards fail to load is a failure", async () => {
-  const fetchList = async (url) => (url === "/api/members" ? [{ id: 9, type: "human" }] : null);
-  assert.equal(await memberViewFetcher((id) => `/cards/${id}`, fetchList)(), null);
+  const fetchList = async () => null;
+  assert.equal(await memberViewFetcher(9, (id) => `/cards/${id}`, fetchList)(), null);
 });
 
 // ---------------------------------------------------------------------------

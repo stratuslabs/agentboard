@@ -407,7 +407,7 @@ const noSubscribe = () => () => {};
 export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobile, footerSlot, railSlot, agentSetupPrompt = coreSetupPrompt }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { prefs, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
+  const { prefs, confirmedProfileMemberId: pastDueMember, toggleExpandedOrg, setExpandedOrgs } = usePreferences();
   // The quick search shortcut, once the platform is known (not during SSR).
   const shortcut = useSyncExternalStore(noSubscribe, searchShortcut, () => null);
   const [orgs, setOrgs] = useState<Org[]>([]);
@@ -444,7 +444,17 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
     useSensor(KeyboardSensor, { coordinateGetter: sidebarKeyboardCoordinates }),
   );
 
-  useEffect(() => { loadOrgs(); loadMembers(); loadPastDueCount(); }, []);
+  useEffect(() => { loadOrgs(); loadMembers(); }, []);
+
+  // The badge counts the person's own overdue cards, as Past Due lists them:
+  // the profile member the server confirms (AB-162). Counted again when that
+  // becomes known or changes; the ref lets a recount drop an answer for an
+  // earlier member.
+  const pastDueMemberRef = useRef(pastDueMember);
+  useEffect(() => {
+    pastDueMemberRef.current = pastDueMember;
+    loadPastDueCount();
+  }, [pastDueMember]);
 
   // Keep the past-due badge live. It used to load once on mount and then sit
   // there, so a card falling overdue — or being dealt with — was invisible
@@ -466,21 +476,18 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
   // we do not know and the last count stands. Zeroing on failure would make the
   // whole nav entry vanish on any blip, since it is gated on the count.
   async function loadPastDueCount() {
+    const member = pastDueMemberRef.current;
+    // Not known until the server confirms it; the effect above counts then.
+    if (member === undefined) return;
+    if (member === null) {
+      // No profile yet, so nothing is assigned to "me".
+      setPastDueCount(0);
+      return;
+    }
     try {
-      // Find the first human member (same approach as Assigned page)
-      const membersRes = await fetch("/api/members");
-      if (!membersRes.ok) return;
-      const allMembers: { id: number; type: string }[] = await membersRes.json();
-      const human = allMembers.find((m) => m.type === "human");
-      if (!human) {
-        // Nobody left to be assigned anything — including after deleting the
-        // member whose overdue cards this badge was counting.
-        setPastDueCount(0);
-        return;
-      }
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${human.id}&tz=${encodeURIComponent(tz)}`);
-      if (res.ok) {
+      const res = await fetch(`/api/cards/views?view=past-due-count&member_id=${member}&tz=${encodeURIComponent(tz)}`);
+      if (res.ok && pastDueMemberRef.current === member) {
         const data = await res.json();
         setPastDueCount(data.count || 0);
       }
