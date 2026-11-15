@@ -12,6 +12,12 @@ interface SidebarContextType {
 
 const SidebarContext = createContext<SidebarContextType | null>(null);
 
+/**
+ * A phone: narrower than 768px. BoardLayout's max-[768px]: classes compile to
+ * this same query, so CSS and isMobile never disagree about a width.
+ */
+export const PHONE_QUERY = 'not all and (min-width: 768px)';
+
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -21,7 +27,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
 
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia(PHONE_QUERY);
     setIsMobile(mq.matches);
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
     mq.addEventListener('change', handler);

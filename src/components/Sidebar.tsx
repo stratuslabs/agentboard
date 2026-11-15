@@ -756,13 +756,13 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   }
 
   return (
-    <div className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border")}>
+    <div className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}>
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 pr-3.5 pl-4">
         <Logo size={28} />
         <Wordmark className="flex-1 text-sm" />
         {!isMobile && (
-          <IconButton onClick={onToggle} title="Collapse sidebar" aria-label="Collapse sidebar">
+          <IconButton onClick={onToggle} title="Collapse sidebar" aria-label="Collapse sidebar" className="max-[768px]:hidden">
             <PanelLeftClose className="h-4 w-4" />
           </IconButton>
         )}
