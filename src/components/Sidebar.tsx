@@ -127,7 +127,7 @@ function NavButton({ onClick, icon, label, trailing }: { onClick: () => void; ic
 }
 
 // --- Sortable Org Header ---
-function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
+export function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
   org: Org; expanded: boolean; onToggle: () => void; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   onMenuClick: (e: React.MouseEvent) => void; menuOpen: boolean;
@@ -182,7 +182,7 @@ function DroppableOrgZone({ orgId, children, isOver }: { orgId: number; children
 }
 
 // --- Sortable Product Item ---
-function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
+export function SortableProductItem({ product, isSelected, href, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, emojiPickerOpen, onEmojiToggle, onEmojiChange }: {
   product: Product; isSelected: boolean; href: string; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
