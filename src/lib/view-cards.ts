@@ -71,15 +71,12 @@ export function memberViewFetcher(
 /**
  * Loads a list page's cards on mount. `reload` resolves once its answer is
  * applied, so Try again can show progress until then. `fetchCards` is read
- * once, on the first render; null means there's nothing to ask for yet, and
- * the list stays loading.
+ * once, on the first render.
  */
-export function useViewCards(fetchCards: (() => Promise<ViewCard[] | null>) | null) {
+export function useViewCards(fetchCards: () => Promise<ViewCard[] | null>) {
   const [state, setState] = useState<ViewCardsState>({ status: "loading" });
   const [reload] = useState(() =>
-    fetchCards
-      ? viewCardsLoader((next) => setState((prev) => settleViewCards(prev, next)), fetchCards)
-      : async () => {},
+    viewCardsLoader((next) => setState((prev) => settleViewCards(prev, next)), fetchCards),
   );
   useEffect(() => {
     reload();
