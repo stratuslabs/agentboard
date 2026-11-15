@@ -10,15 +10,25 @@ import {
   DragOverEvent,
   DragStartEvent,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  type Announcements,
+  type CollisionDetection,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+  type DroppableContainer,
+  type DroppableContainers,
+  type KeyboardCoordinateGetter,
+  type UniqueIdentifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
   arrayMove,
+  sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -31,6 +41,7 @@ import {
   CircleUserRound,
   Copy,
   Ellipsis,
+  GripVertical,
   List,
   LogOut,
   PanelLeftClose,
@@ -126,14 +137,83 @@ function NavButton({ onClick, icon, label, trailing }: { onClick: () => void; ic
   );
 }
 
+// --- Drag and drop ---
+// Orgs reorder among orgs. Products reorder among products and move into
+// another org's product list (its drop zone). Each drag only considers its own
+// kind of target, so an org dragged past an expanded org lands on the next org
+// rather than on one of its products, where the drop would do nothing. That
+// holds for the pointer and for the arrow keys.
+const DRAG_ID = /^(org|org-drop|product)-\d+$/;
+type DragKind = "org" | "org-drop" | "product";
+
+/** What a sidebar drag id names: an org header, an org's product list, or a product. */
+function dragKind(id: UniqueIdentifier): DragKind | null {
+  return (String(id).match(DRAG_ID)?.[1] as DragKind | undefined) ?? null;
+}
+
+/** The numeric id at the end of a sidebar drag id, such as 7 in "org-drop-7". */
+function dragNumber(id: UniqueIdentifier): number {
+  return Number(String(id).slice(String(id).lastIndexOf("-") + 1));
+}
+
+/** True when the dragged row can be dropped on the target with this id. */
+export function canDropOn(activeId: UniqueIdentifier, overId: UniqueIdentifier): boolean {
+  const active = dragKind(activeId);
+  const over = dragKind(overId);
+  if (active === "org") return over === "org";
+  if (active === "product") return over === "product" || over === "org-drop";
+  return false;
+}
+
+const sidebarCollisions: CollisionDetection = (args) =>
+  closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => canDropOn(args.active.id, c.id)) });
+
+// The arrow keys step to the next target of the same kind. dnd-kit's sortable
+// stepper picks from every droppable, so it gets a copy of its own container
+// map holding only the targets this drag can land on.
+const sidebarKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  const { active, droppableContainers } = args.context;
+  if (!active) return sortableKeyboardCoordinates(event, args);
+  const SameMap = droppableContainers.constructor as new (entries: Iterable<[UniqueIdentifier, DroppableContainer]>) => DroppableContainers;
+  const targets = new SameMap([...droppableContainers].filter(([id]) => canDropOn(active.id, id)));
+  return sortableKeyboardCoordinates(event, { ...args, context: { ...args.context, droppableContainers: targets } });
+};
+
+/** dnd-kit's listeners, split: the pointer drags the whole row, the keyboard belongs to the Move handle. */
+function splitListeners(listeners: DraggableSyntheticListeners) {
+  const { onKeyDown, ...pointer } = listeners ?? {};
+  return { pointer, keyboard: onKeyDown ? { onKeyDown } : {} };
+}
+
+/**
+ * The keyboard way to move a row, in the gutter to its left: Space picks the
+ * row up, the arrow keys move it, Space drops it and Escape cancels. It shows
+ * on hover and on focus. The row is not a button itself, because it holds its
+ * own link and buttons, and it still drags by pointer from anywhere on it.
+ */
+function MoveHandle({ label, attributes, keyboard, setRef, dragging, className }: {
+  label: string; attributes: DraggableAttributes; keyboard: Record<string, unknown>;
+  setRef: (el: HTMLElement | null) => void; dragging: boolean; className: string;
+}) {
+  return (
+    <button type="button" ref={setRef} {...attributes} {...keyboard} aria-label={label} title="Drag to move"
+      className={cx("absolute top-0 -left-3 flex h-full w-3 cursor-grab items-center justify-center rounded-sm text-text-4 transition-opacity hover:text-text-2 active:cursor-grabbing",
+        "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ivory/30",
+        dragging ? "opacity-100" : cx("opacity-0", className))}>
+      <GripVertical aria-hidden className="h-3 w-3" />
+    </button>
+  );
+}
+
 // --- Sortable Org Header ---
 export function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEditing, editingName, editError, onEditChange, onEditSubmit, onEditCancel, onMenuClick, menuOpen }: {
   org: Org; expanded: boolean; onToggle: () => void; onContextMenu: (e: React.MouseEvent) => void;
   isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   onMenuClick: (e: React.MouseEvent) => void; menuOpen: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `org-${org.id}` });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: `org-${org.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const { pointer, keyboard } = splitListeners(listeners);
 
   if (isEditing) {
     return (
@@ -150,7 +230,9 @@ export function SortableOrgHeader({ org, expanded, onToggle, onContextMenu, isEd
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="group/org flex h-6 cursor-default items-center">
+    <div ref={setNodeRef} style={style} {...pointer} className="group/org relative flex h-6 cursor-default items-center">
+      <MoveHandle label={`Move ${org.name}`} attributes={attributes} keyboard={keyboard} setRef={setActivatorNodeRef}
+        dragging={isDragging} className="group-hover/org:opacity-100" />
       <button onClick={onToggle} onContextMenu={onContextMenu}
         className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5 text-left font-mono text-[10.5px] font-medium tracking-[0.8px] text-text-3 uppercase transition-colors hover:text-text-2">
         {expanded ? <ChevronDown className="h-3 w-3 shrink-0 text-text-4" /> : <ChevronRight className="h-3 w-3 shrink-0 text-text-4" />}
@@ -187,8 +269,9 @@ export function SortableProductItem({ product, isSelected, href, onContextMenu, 
   isEditing: boolean; editingName: string; editError: string | null; onEditChange: (v: string) => void; onEditSubmit: () => void; onEditCancel: () => void;
   emojiPickerOpen: boolean; onEmojiToggle: () => void; onEmojiChange: (emoji: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `product-${product.id}` });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: `product-${product.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const { pointer, keyboard } = splitListeners(listeners);
 
   if (isEditing) {
     return (
@@ -205,9 +288,11 @@ export function SortableProductItem({ product, isSelected, href, onContextMenu, 
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+    <div ref={setNodeRef} style={style} {...pointer}
       className={cx("group/product relative flex h-[29px] cursor-default items-center gap-1 rounded-md pl-1 transition-colors",
         isSelected ? "bg-surface-3" : "hover:bg-surface-2")}>
+      <MoveHandle label={`Move ${product.name}`} attributes={attributes} keyboard={keyboard} setRef={setActivatorNodeRef}
+        dragging={isDragging} className="group-hover/product:opacity-100" />
       <button onClick={(e) => { e.stopPropagation(); onEmojiToggle(); }}
         className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[14px] leading-none transition-colors hover:bg-surface-4"
         title="Change emoji" aria-label={`Change emoji for ${product.name}`}>
@@ -348,7 +433,10 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   const starredProducts = new Set(prefs.starredProducts);
   const showAllProducts = prefs.showAllOrgs;
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sidebarKeyboardCoordinates }),
+  );
 
   useEffect(() => { loadOrgs(); loadMembers(); loadPastDueCount(); }, []);
 
@@ -504,6 +592,32 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
   }, [contextMenu, orgMenuId]);
 
   // --- Unified drag handlers ---
+  /** A dragged row or drop target by name, for screen reader announcements. */
+  function dragName(id: UniqueIdentifier): string {
+    const kind = dragKind(id);
+    const n = dragNumber(id);
+    if (kind === "product") return Object.values(productsByOrg).flat().find((p) => p.id === n)?.name ?? "the product";
+    const org = orgs.find((o) => o.id === n);
+    if (kind === "org-drop") return org ? `${org.name}'s products` : "the organization's products";
+    return org?.name ?? "the organization";
+  }
+
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${dragName(active.id)}.`,
+    onDragOver: ({ active, over }) =>
+      over ? `${dragName(active.id)} is over ${dragName(over.id)}.` : `${dragName(active.id)} is not over a drop target.`,
+    onDragEnd: ({ active, over }) =>
+      over && over.id !== active.id ? `${dragName(active.id)} was dropped on ${dragName(over.id)}.` : `${dragName(active.id)} was dropped where it was.`,
+    onDragCancel: ({ active }) => `Moving ${dragName(active.id)} was cancelled.`,
+  };
+
+  // Escape, or a pointer drag that ends outside the sidebar, cancels a drag;
+  // without this the drop-zone highlight stayed on.
+  function handleDragCancel() {
+    setActiveProductDrag(null);
+    setDragOverOrgId(null);
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const id = String(event.active.id);
     if (id.startsWith("product-")) {
@@ -681,7 +795,8 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
 
       {/* Org/Product tree */}
       <div className="flex-1 overflow-y-auto px-3 pt-3 pb-1.5">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={sidebarCollisions} accessibility={{ announcements }}
+          onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
           <SortableContext items={orgs.map((o) => `org-${o.id}`)} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col gap-2.5">
             {orgs.map((org) => {
