@@ -87,7 +87,8 @@ interface Product {
 }
 
 interface SidebarProps {
-  collapsed: boolean;
+  /** null while the page hydrates: draw both forms and let BoardLayout's preload style pick. */
+  collapsed: boolean | null;
   onToggle: () => void;
   isMobile?: boolean;
   /** Rendered above Settings in the expanded sidebar footer. */
@@ -734,29 +735,42 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
     }
   }
 
-  if (collapsed && !isMobile) {
-    return (
-      <div className="sidebar-transition flex w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3">
-        <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
-          <Logo size={32} />
-        </button>
-        <IconButton onClick={openQuickSearch} size={32} title={`Search${shortcut ? ` (${shortcut})` : ""}`} aria-label="Search" className="mt-2 text-text-2">
-          <Search className="h-4 w-4" />
-        </IconButton>
-        <div className="flex-1" />
-        {railSlot}
-        <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
-          <Settings className="h-4 w-4" />
-        </IconButton>
-        <IconButton onClick={handleLogout} size={32} title="Logout" aria-label="Logout" className="text-text-2">
-          <LogOut className="h-4 w-4" />
-        </IconButton>
-      </div>
-    );
-  }
+  // collapsed is null while the page hydrates: the server can't read a saved
+  // collapse, so the first render draws both forms and the preload style in
+  // BoardLayout picks one before it paints (AB-157). The slots wait for the
+  // next render, so a control a consuming app passes for both forms, such as
+  // Cloud's team switcher, mounts once.
+  const bothForms = collapsed === null;
+  const rail = (
+    <div
+      key="rail"
+      data-sidebar-form={bothForms ? "rail" : undefined}
+      className={cx("sidebar-transition w-[52px] shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-sidebar py-3", bothForms ? "hidden" : "flex")}
+    >
+      <button onClick={onToggle} className="rounded-lg transition-opacity hover:opacity-80" title="Expand sidebar" aria-label="Expand sidebar">
+        <Logo size={32} />
+      </button>
+      <IconButton onClick={openQuickSearch} size={32} title={`Search${shortcut ? ` (${shortcut})` : ""}`} aria-label="Search" className="mt-2 text-text-2">
+        <Search className="h-4 w-4" />
+      </IconButton>
+      <div className="flex-1" />
+      {!bothForms && railSlot}
+      <IconButton onClick={() => router.push("/settings")} size={32} title="Settings" aria-label="Settings" className="text-text-2">
+        <Settings className="h-4 w-4" />
+      </IconButton>
+      <IconButton onClick={handleLogout} size={32} title="Logout" aria-label="Logout" className="text-text-2">
+        <LogOut className="h-4 w-4" />
+      </IconButton>
+    </div>
+  );
+  if (collapsed && !isMobile) return rail;
 
-  return (
-    <div className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}>
+  const full = (
+    <div
+      key="full"
+      data-sidebar-form={bothForms ? "full" : undefined}
+      className={cx("sidebar-transition flex shrink-0 flex-col bg-bg-sidebar", isMobile ? "w-full" : "w-64 border-r border-border max-[768px]:w-full max-[768px]:border-r-0")}
+    >
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 pr-3.5 pl-4">
         <Logo size={28} />
@@ -884,7 +898,7 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
 
       {/* Footer: the consuming app's slot, settings & logout */}
       <div className="flex shrink-0 flex-col gap-px border-t border-border px-3 py-2">
-        {footerSlot}
+        {!bothForms && footerSlot}
         <NavButton onClick={() => router.push("/settings")} icon={<Settings />} label="Settings" />
         <NavButton onClick={handleLogout} icon={<LogOut />} label="Logout" />
       </div>
@@ -941,4 +955,5 @@ export default function Sidebar({ collapsed, onToggle, isMobile, footerSlot, rai
       )}
     </div>
   );
+  return bothForms ? <>{rail}{full}</> : full;
 }
