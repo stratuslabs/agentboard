@@ -16,7 +16,7 @@ export function StatusBadge({ color, children, className }: { color: string; chi
       className={cx("inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[11px] font-medium whitespace-nowrap", className)}
       style={{ color, backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       {children}
     </span>
   );
