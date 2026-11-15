@@ -122,13 +122,16 @@ test("no saved collapse, or storage that throws: the preload script adds nothing
   assert.equal(runPreload(code, { getItem() { throw new Error("SecurityError"); } }).length, 0);
 });
 
-test("sidebar slots wait for the browser, so one control doesn't mount in both forms", () => {
+test("the footer slot is in the server's HTML as before; the rail's slot waits for the browser", () => {
   // Cloud passes its team switcher for both forms, and each one fetches the
-  // account when it mounts. Rendering both forms with slots would fetch twice.
+  // account when it mounts. The footer's copy stays server-rendered, since a
+  // consuming app may put content there that should paint with the page
+  // (scripts/verify-consumer.mjs checks it). The rail's never was: the server
+  // always sent the full sidebar. Holding it back keeps one mount for most people.
   const html = render("/", {
     sidebarFooter: h("span", { "data-testid": "footer-slot" }),
     sidebarRail: h("span", { "data-testid": "rail-slot" }),
   });
-  assert.ok(!html.includes("footer-slot"), "footer slot is not in the server's HTML");
+  assert.ok(html.includes("footer-slot"), "footer slot is in the server's HTML");
   assert.ok(!html.includes("rail-slot"), "rail slot is not in the server's HTML");
 });

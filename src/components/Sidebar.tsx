@@ -745,9 +745,11 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
   // paints (AB-157). Only the keys use collapsed then: keys aren't in the HTML,
   // so hydration still matches, and the form that shows is the one keyed
   // "sidebar", which React keeps. Collapsing and expanding later reuse that
-  // same box, so its width still animates. The slots wait for the next render,
-  // so a control a consuming app passes for both forms, such as Cloud's team
-  // switcher, mounts once.
+  // same box, so its width still animates. The footer slot is in the server's
+  // HTML as it always was; the rail's slot waits for the next render, so for
+  // most people a control a consuming app passes for both forms, such as
+  // Cloud's team switcher, mounts once. (With a saved collapse the footer's
+  // copy mounts in the hidden full sidebar until hydration ends.)
   const shown = collapsed && !isMobile ? "rail" : "full";
   const rail = (
     <div
@@ -906,7 +908,7 @@ export default function Sidebar({ collapsed, bothForms = false, onToggle, isMobi
 
       {/* Footer: the consuming app's slot, settings & logout */}
       <div className="flex shrink-0 flex-col gap-px border-t border-border px-3 py-2">
-        {!bothForms && footerSlot}
+        {footerSlot}
         <NavButton onClick={() => router.push("/settings")} icon={<Settings />} label="Settings" />
         <NavButton onClick={handleLogout} icon={<LogOut />} label="Logout" />
       </div>
