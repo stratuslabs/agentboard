@@ -137,6 +137,7 @@
     "./components/KanbanBoard": "./src/components/KanbanBoard.tsx",
     "./components/KanbanCard": "./src/components/KanbanCard.tsx",
     "./components/ListView": "./src/components/ListView.tsx",
+    "./components/MemberListView": "./src/components/MemberListView.tsx",
     "./components/OrgProductsDialog": "./src/components/OrgProductsDialog.tsx",
     "./components/ProfileSetup": "./src/components/ProfileSetup.tsx",
     "./components/QuickSearch": "./src/components/QuickSearch.tsx",
